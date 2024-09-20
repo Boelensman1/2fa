@@ -16,7 +16,7 @@ clean: $(PACKAGES:%=clean-%)
 	rm -rf ./packages/*/node_modules
 
 node_modules: package.json package-lock.json $(SUB_PACKAGE_JSONS)
-	npm ci
+	npm ci || ( sleep 1; touch package-lock.json; exit 1 ) # add the touch so if npm ci fails it will get rerun
 
 build-%: node_modules
 	make -C ./packages/$* build

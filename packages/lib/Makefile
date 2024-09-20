@@ -3,7 +3,7 @@ SRC_FILES:=$(shell find src/)
 
 build: $(INSTALL_DEPS) $(SRC_FILES) tsconfig.json tsconfig.build.json
 	npx tsc --project ./tsconfig.build.json
-	touch build
+	@touch build
 
 ../jpake/build:
 	$(MAKE) -C ../jpake build

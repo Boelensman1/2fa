@@ -2,7 +2,7 @@ INSTALL_DEPS=node_modules
 SRC_FILES=$(shell find src/)
 
 node_modules: package.json ../../package-lock.json
-	(cd ../.. && $(MAKE) node_modules)
+	$(MAKE) -C ../.. node_modules
 	touch node_modules
 
 clean:

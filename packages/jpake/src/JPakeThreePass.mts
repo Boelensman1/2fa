@@ -7,18 +7,34 @@ export interface Pass2Result {
 }
 export type Pass3Result = Round2Result
 
+/**
+ * Implements a three-pass J-PAKE protocol.
+ */
 class JPakeThreePass {
   private jpake: JPake
 
+  /**
+   * Creates a new instance of JPakeThreePass.
+   * @param userId - The unique identifier for the current user.
+   */
   constructor(readonly userId: string) {
     this.jpake = new JPake(this.userId)
   }
 
+  /**
+   * Performs the first pass of the J-PAKE protocol. Ran on the initiator.
+   */
   public pass1(): Pass1Result {
     const round1Result = this.jpake.round1()
     return round1Result
   }
 
+  /**
+   * Performs the second pass of the J-PAKE protocol. Ran on the responder.
+   * @param peerRound1Result - The result from the peer's first round.
+   * @param s - The shared secret.
+   * @param peerUserId - The identifier for the peer user.
+   */
   public pass2(
     peerRound1Result: Round1Result,
     s: bigint,
@@ -29,6 +45,12 @@ class JPakeThreePass {
     return { round1Result, round2Result }
   }
 
+  /**
+   * Performs the third pass of the J-PAKE protocol. Ran on the initiator.
+   * @param pass2Result - The result from the second pass.
+   * @param s - The shared secret.
+   * @param peerUserId - The identifier for the peer user.
+   */
   public pass3(
     pass2Result: Pass2Result,
     s: bigint,
@@ -44,10 +66,19 @@ class JPakeThreePass {
     return round2Result
   }
 
+  /**
+   * Processes the results from the third pass received from the peer.
+   * Ran on the responder.
+   * @param pass3Result - The result from the peer's third pass.
+   */
   public receivePass3Results(pass3Result: Pass3Result) {
     this.jpake.setRound2ResultFromBob(pass3Result)
   }
 
+  /**
+   * Derives the shared key after completing the J-PAKE protocol. Ran on both
+   * the initiator and the responder.
+   */
   public deriveSharedKey() {
     return this.jpake.deriveSharedKey()
   }

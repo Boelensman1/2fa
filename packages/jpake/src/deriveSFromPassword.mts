@@ -1,7 +1,6 @@
 import { sha256 } from '@noble/hashes/sha256'
-import { bytesToNumberBE } from '@noble/curves/abstract/utils'
+import { bytesToNumberBE, numberToBytesBE } from '@noble/curves/abstract/utils'
 import { mod } from '@noble/curves/abstract/modular'
-
 import { n } from './constants.mjs'
 
 /**
@@ -9,7 +8,7 @@ import { n } from './constants.mjs'
  * @param password - The password to derive s from.
  * @returns The derived s value.
  */
-const deriveSFromPassword = (password: string): bigint => {
+const deriveSFromPassword = (password: string): Uint8Array => {
   if (!password) {
     throw new Error('Missing password')
   }
@@ -23,7 +22,7 @@ const deriveSFromPassword = (password: string): bigint => {
     s = mod(bytesToNumberBE(passwordHash), n)
   }
 
-  return s
+  return numberToBytesBE(s, 32)
 }
 
 export default deriveSFromPassword

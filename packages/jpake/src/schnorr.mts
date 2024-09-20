@@ -108,7 +108,7 @@ export const generateSchnorrProof = (
   )
 
   // Verify the proof before returning it
-  const isValidProof = verifSchnorrProof(userId, gx, proof, g, otherInfo)
+  const isValidProof = verifySchnorrProof(userId, gx, proof, g, otherInfo)
   if (!isValidProof) {
     throw new Error('Generated Schnorr proof is invalid')
   }
@@ -124,7 +124,7 @@ export const generateSchnorrProof = (
  * @param g - The generator point.
  * @returns True if the proof is valid, false otherwise.
  */
-export const verifSchnorrProof = (
+export const verifySchnorrProof = (
   peerUserId: string,
   gx: ProjPointType<bigint>,
   proof: Uint8Array,

@@ -37,7 +37,7 @@ class JPakeThreePass {
    */
   public pass2(
     peerRound1Result: Round1Result,
-    s: bigint,
+    s: Uint8Array,
     peerUserId: string,
   ): Pass2Result {
     const round1Result = this.jpake.round1()
@@ -53,7 +53,7 @@ class JPakeThreePass {
    */
   public pass3(
     pass2Result: Pass2Result,
-    s: bigint,
+    s: Uint8Array,
     peerUserId: string,
   ): Pass3Result {
     const round2Result = this.jpake.round2(

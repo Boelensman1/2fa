@@ -2,20 +2,20 @@ import { ProjPointType } from '@noble/curves/abstract/weierstrass'
 import { secp256k1 } from '@noble/curves/secp256k1'
 import { sha256 } from '@noble/hashes/sha256'
 import { bytesToNumberBE, numberToBytesBE } from '@noble/curves/abstract/utils'
-import { generateSchnorrProof, verifSchnorrProof } from './schnorr.mjs'
+import { generateSchnorrProof, verifySchnorrProof } from './schnorr.mjs'
 import { mod } from '@noble/curves/abstract/modular'
 
 import { n, G } from './constants.mjs'
 
 export interface Round1Result {
-  G1: ProjPointType<bigint>
-  G2: ProjPointType<bigint>
+  G1: Uint8Array
+  G2: Uint8Array
   ZKPx1: Uint8Array
   ZKPx2: Uint8Array
 }
 
 export interface Round2Result {
-  A: ProjPointType<bigint>
+  A: Uint8Array
   ZKPx2s: Uint8Array
 }
 
@@ -87,7 +87,7 @@ class JPake {
       throw new Error('PeerUserId is empty.')
     }
 
-    return verifSchnorrProof(peerUserId, gx, proof, g, this.otherInfo)
+    return verifySchnorrProof(peerUserId, gx, proof, g, this.otherInfo)
   }
 
   /**
@@ -139,7 +139,7 @@ class JPake {
     }
 
     this.state = JPakeState.ROUND1FINISHED
-    return { G1: this.G1, G2: this.G2, ZKPx1, ZKPx2 }
+    return { G1: this.G1.toRawBytes(), G2: this.G2.toRawBytes(), ZKPx1, ZKPx2 }
   }
 
   /**
@@ -158,7 +158,7 @@ class JPake {
    */
   public round2(
     round1ResultBob: Round1Result,
-    s: bigint,
+    s: Uint8Array,
     bobUserId: string,
   ): Round2Result {
     if (this.state !== JPakeState.ROUND1FINISHED) {
@@ -172,7 +172,7 @@ class JPake {
       !round1ResultBob.G2 ||
       !round1ResultBob.ZKPx1 ||
       !round1ResultBob.ZKPx2 ||
-      typeof s !== 'bigint' ||
+      !s ||
       !bobUserId
     ) {
       throw new Error('Missing required arguments for round 2')
@@ -182,18 +182,20 @@ class JPake {
       throw new Error('Missing required data for round 2')
     }
 
-    // Validate that G1 and G2 are valid ProjectivePoints
-    if (
-      !(round1ResultBob.G1 instanceof secp256k1.ProjectivePoint) ||
-      !(round1ResultBob.G2 instanceof secp256k1.ProjectivePoint)
-    ) {
+    let round1ResultBobG1, round1ResultBobG2
+    try {
+      round1ResultBobG1 = secp256k1.ProjectivePoint.fromHex(round1ResultBob.G1)
+      round1ResultBobG2 = secp256k1.ProjectivePoint.fromHex(round1ResultBob.G2)
+    } catch {
       throw new Error(
         'Invalid points received: G1 or G2 is not a valid ProjectivePoint',
       )
     }
 
+    const sBigInt = bytesToNumberBE(s)
+
     // from RFC: s MUST not be equal to 0 mod n
-    if (mod(s, n) === 0n) {
+    if (mod(sBigInt, n) === 0n) {
       throw new Error('Invalid s: s MUST not be equal to 0 mod n')
     }
 
@@ -202,7 +204,7 @@ class JPake {
     // Verify the received ZKPs and userIds
     const isValidZKP = this.verifyPeerProof(
       bobUserId,
-      round1ResultBob.G1,
+      round1ResultBobG1,
       round1ResultBob.ZKPx1,
       G,
     )
@@ -210,10 +212,10 @@ class JPake {
       throw new Error('ZKP verification failed')
     }
 
-    this.G3 = round1ResultBob.G1 // Bob's G1
-    this.G4 = round1ResultBob.G2 // Bob's G2
+    this.G3 = round1ResultBobG1 // Bob's G1
+    this.G4 = round1ResultBobG2 // Bob's G2
 
-    this.x2s = numberToBytesBE(mod(bytesToNumberBE(this.x2) * s, n), 32)
+    this.x2s = numberToBytesBE(mod(bytesToNumberBE(this.x2) * sBigInt, n), 32)
 
     //  A = (G1 + G3 + G4) x [x2*s]
     const A = this.G1.add(this.G3)
@@ -244,7 +246,7 @@ class JPake {
     }
 
     this.state = JPakeState.ROUND2FINISHED
-    return { A, ZKPx2s }
+    return { A: A.toRawBytes(true), ZKPx2s }
   }
 
   /**
@@ -263,7 +265,7 @@ class JPake {
       throw new Error('Missing required arguments for setRound2ResultFromBob')
     }
 
-    this.B = round2ResultBob.A
+    this.B = secp256k1.ProjectivePoint.fromHex(round2ResultBob.A)
     this.ZKPx2sBob = round2ResultBob.ZKPx2s
     this.state = JPakeState.ROUND2RESULTSRECEIVED
   }

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { JPake, deriveSFromPassword } from '../src/main.mjs'
 import { n } from '../src/constants.mjs'
-import { ProjPointType } from '@noble/curves/abstract/weierstrass'
+import { numberToBytesBE } from '@noble/curves/abstract/utils'
 
 describe('JPake', () => {
   let alice: JPake
@@ -210,7 +210,7 @@ describe('JPake', () => {
   })
 
   it('should successfully complete a key exchange when s > n', () => {
-    const largeS = 10n * n + 1n // s is larger than n
+    const largeS = numberToBytesBE(2n * n + 1n, 64) // s is larger than n
     const aliceWithLargeS = new JPake('AliceWithLargeS')
     const bobWithLargeS = new JPake('BobWithLargeS')
 
@@ -244,12 +244,12 @@ describe('JPake', () => {
     const bobRound1 = bob.round1()
 
     // Test when s = 0
-    expect(() => alice.round2(bobRound1, 0n, bob.userId)).toThrow(
-      'Invalid s: s MUST not be equal to 0 mod n',
-    )
+    expect(() =>
+      alice.round2(bobRound1, numberToBytesBE(0n, 32), bob.userId),
+    ).toThrow('Invalid s: s MUST not be equal to 0 mod n')
 
     // Test when s mod n = 0
-    const largeS = n * 2n // s is a multiple of n
+    const largeS = numberToBytesBE(n * 2n, 64) // s is a multiple of n
     expect(() => alice.round2(bobRound1, largeS, bob.userId)).toThrow(
       'Invalid s: s MUST not be equal to 0 mod n',
     )
@@ -260,13 +260,19 @@ describe('JPake', () => {
     alice.round1()
 
     const invalidRound1Result = {
-      G1: {} as ProjPointType<bigint>, // Invalid G1
-      G2: {} as ProjPointType<bigint>, // Invalid G2
+      G1: new Uint8Array(32), // Invalid G1
+      G2: new Uint8Array(32), // Invalid G2
       ZKPx1: new Uint8Array(32),
       ZKPx2: new Uint8Array(32),
     }
 
-    expect(() => alice.round2(invalidRound1Result, BigInt(123), 'Bob')).toThrow(
+    expect(() =>
+      alice.round2(
+        invalidRound1Result,
+        numberToBytesBE(BigInt(123), 32),
+        'Bob',
+      ),
+    ).toThrow(
       'Invalid points received: G1 or G2 is not a valid ProjectivePoint',
     )
   })

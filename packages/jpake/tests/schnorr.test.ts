@@ -4,7 +4,7 @@ import { bytesToNumberBE } from '@noble/curves/abstract/utils'
 import {
   generateSchnorrChallenge,
   generateSchnorrProof,
-  verifSchnorrProof,
+  verifySchnorrProof,
 } from '../src/schnorr.mjs'
 import { G } from '../src/constants.mjs'
 
@@ -27,7 +27,7 @@ describe('Schnorr Signature Scheme', () => {
     expect(proof).toBeDefined()
     expect(proof instanceof Uint8Array).toBe(true)
 
-    const isValid = verifSchnorrProof(userId, publicKey, proof, G)
+    const isValid = verifySchnorrProof(userId, publicKey, proof, G)
     expect(isValid).toBe(true)
   })
 
@@ -36,13 +36,13 @@ describe('Schnorr Signature Scheme', () => {
     const tamperedProof = new Uint8Array(proof)
     tamperedProof[10] ^= 1 // Flip a bit to tamper with the proof
 
-    const isValid = verifSchnorrProof(userId, publicKey, tamperedProof, G)
+    const isValid = verifySchnorrProof(userId, publicKey, tamperedProof, G)
     expect(isValid).toBe(false)
   })
 
   it('should fail verification with mismatched userId', () => {
     const proof = generateSchnorrProof(userId, privateKey, publicKey, G)
-    const isValid = verifSchnorrProof('wrongUser', publicKey, proof, G)
+    const isValid = verifySchnorrProof('wrongUser', publicKey, proof, G)
     expect(isValid).toBe(false)
   })
 
@@ -61,7 +61,7 @@ describe('Schnorr Signature Scheme', () => {
       G,
       otherInfo,
     )
-    const isValid = verifSchnorrProof(userId, publicKey, proof, G, otherInfo)
+    const isValid = verifySchnorrProof(userId, publicKey, proof, G, otherInfo)
     expect(isValid).toBe(true)
   })
 
@@ -92,25 +92,25 @@ describe('Schnorr Signature Scheme', () => {
     const incorrectVLength = new Uint8Array(validProof)
     incorrectVLength[0] = 32 // Change VLength to an incorrect value
     expect(() =>
-      verifSchnorrProof(userId, publicKey, incorrectVLength, G),
+      verifySchnorrProof(userId, publicKey, incorrectVLength, G),
     ).toThrow('Invalid proof, V must be 33 bytes and r must be 32 bytes')
 
     // Test incorrect rLength
     const incorrectRLength = new Uint8Array(validProof)
     incorrectRLength[34] = 31 // Change rLength to an incorrect value
     expect(() =>
-      verifSchnorrProof(userId, publicKey, incorrectRLength, G),
+      verifySchnorrProof(userId, publicKey, incorrectRLength, G),
     ).toThrow('Invalid proof, V must be 33 bytes and r must be 32 bytes')
 
     // Test incorrect total number of bytes
     const incorrectTotalBytes = new Uint8Array(validProof.slice(0, -1)) // Remove last byte
     expect(() =>
-      verifSchnorrProof(userId, publicKey, incorrectTotalBytes, G),
+      verifySchnorrProof(userId, publicKey, incorrectTotalBytes, G),
     ).toThrow('Invalid proof, must be 33 + 32 + 2 bytes long')
 
     // Test only VLength
     const onlyVLength = new Uint8Array([33])
-    expect(() => verifSchnorrProof(userId, publicKey, onlyVLength, G)).toThrow(
+    expect(() => verifySchnorrProof(userId, publicKey, onlyVLength, G)).toThrow(
       'Invalid proof, must be 33 + 32 + 2 bytes long',
     )
   })

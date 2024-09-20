@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { deriveSFromPassword } from '../src/main.mjs'
 import { n } from '../src/constants.mjs'
+import { bytesToNumberBE } from '@noble/curves/abstract/utils'
 
 describe('deriveSFromPassword', () => {
   it('should derive a valid s value from a password', () => {
@@ -8,9 +9,11 @@ describe('deriveSFromPassword', () => {
     const s = deriveSFromPassword(password)
 
     expect(s).toBeDefined()
-    expect(typeof s).toBe('bigint')
-    expect(s).toBeGreaterThan(0n)
-    expect(s).toBeLessThan(n)
+    expect(s instanceof Uint8Array).toBe(true)
+    expect(s.length).toBe(32)
+    const sBigInt = bytesToNumberBE(s)
+    expect(sBigInt).toBeGreaterThan(0n)
+    expect(sBigInt).toBeLessThan(n)
   })
 
   it('should derive different s values for different passwords', () => {
@@ -41,9 +44,11 @@ describe('deriveSFromPassword', () => {
     const s = deriveSFromPassword(password)
 
     expect(s).toBeDefined()
-    expect(typeof s).toBe('bigint')
-    expect(s).toBeGreaterThan(0n)
-    expect(s).toBeLessThan(n)
+    expect(s instanceof Uint8Array).toBe(true)
+    expect(s.length).toBe(32)
+    const sBigInt = bytesToNumberBE(s)
+    expect(sBigInt).toBeGreaterThan(0n)
+    expect(sBigInt).toBeLessThan(n)
   })
 
   it('should handle long passwords', () => {
@@ -51,8 +56,10 @@ describe('deriveSFromPassword', () => {
     const s = deriveSFromPassword(password)
 
     expect(s).toBeDefined()
-    expect(typeof s).toBe('bigint')
-    expect(s).toBeGreaterThan(0n)
-    expect(s).toBeLessThan(n)
+    expect(s instanceof Uint8Array).toBe(true)
+    expect(s.length).toBe(32)
+    const sBigInt = bytesToNumberBE(s)
+    expect(sBigInt).toBeGreaterThan(0n)
+    expect(sBigInt).toBeLessThan(n)
   })
 })

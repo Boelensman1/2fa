@@ -1,6 +1,6 @@
 import { ProjPointType } from '@noble/curves/abstract/weierstrass'
 import { secp256k1 } from '@noble/curves/secp256k1'
-import { sha256 } from '@noble/hashes/sha256'
+import { sha3_256 } from '@noble/hashes/sha3'
 import { bytesToNumberBE, numberToBytesBE } from '@noble/curves/abstract/utils'
 import { generateSchnorrProof, verifySchnorrProof } from './schnorr.mjs'
 import { mod } from '@noble/curves/abstract/modular'
@@ -331,7 +331,7 @@ class JPake {
     }
 
     this.state = JPakeState.KEYDERIVED
-    return sha256(sharedSecret)
+    return sha3_256(sharedSecret)
   }
 }
 

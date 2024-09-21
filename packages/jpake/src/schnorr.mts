@@ -1,6 +1,6 @@
 import { ProjPointType } from '@noble/curves/abstract/weierstrass'
 import { secp256k1 } from '@noble/curves/secp256k1'
-import { sha256 } from '@noble/hashes/sha256'
+import { sha3_256 } from '@noble/hashes/sha3'
 import { concatBytes } from '@noble/hashes/utils'
 import { bytesToNumberBE, numberToBytesBE } from '@noble/curves/abstract/utils'
 import { mod } from '@noble/curves/abstract/modular'
@@ -41,7 +41,7 @@ export const generateSchnorrChallenge = (
 
   const challenge = mod(
     bytesToNumberBE(
-      sha256(
+      sha3_256(
         concatBytes(
           new Uint8Array([gxBytes.length]),
           gx.toRawBytes(true),

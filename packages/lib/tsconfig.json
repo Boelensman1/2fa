@@ -1,6 +1,6 @@
 {
   "extends": "@tsconfig/node20/tsconfig.json",
-  "include": ["eslint.config.mjs", "src/**/*", "tests/**/*", "global.d.ts"],
+  "include": ["src/**/*", "tests/**/*"],
   "compilerOptions": {
     "allowJs": true,
     "types": ["node"],

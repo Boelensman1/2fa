@@ -8,6 +8,7 @@ import {
   Passphrase,
   Salt,
 } from '2falib'
+import { syncServerUrl } from '../parameters'
 
 const Login: Component = () => {
   const [, dispatch] = useStore()
@@ -40,6 +41,7 @@ const Login: Component = () => {
       encryptedSymmetricKey as EncryptedSymmetricKey,
       salt as Salt,
       password() as Passphrase,
+      syncServerUrl,
     )
     await twoFaLib.loadFromLockedRepresentation(lockedRepresentation)
 

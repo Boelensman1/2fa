@@ -4,6 +4,7 @@ const initial: State = {
   entries: [],
   twoFaLib: null,
   vaultIsUnlocked: false,
+  isConnectingToExistingVault: false,
   settings: {
     maskEntries: false,
   },

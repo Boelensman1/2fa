@@ -15,7 +15,7 @@ const ItemList = () => {
 
   const filteredEntries = createMemo(() => {
     if (!searchTerm()) return state.entries
-    return state.twoFaLib!.searchEntriesMetas(searchTerm())
+    return state.twoFaLib!.vault.searchEntriesMetas(searchTerm())
   })
 
   return (

@@ -14,10 +14,8 @@ const EntryComponent = (props: {
 
   const generateTOTP = (entryId: EntryId, timestamp: number) => {
     try {
-      const { otp, validFrom, validTill } = twoFaLib.generateTokenForEntry(
-        entryId,
-        timestamp,
-      )
+      const { otp, validFrom, validTill } =
+        twoFaLib.vault.generateTokenForEntry(entryId, timestamp)
       const totalTime = validTill - validFrom
       const remainingTime = validTill - timestamp
       const progress = (remainingTime / totalTime) * 100
@@ -48,7 +46,7 @@ const EntryComponent = (props: {
     )
 
     if (confirmDelete) {
-      void twoFaLib.deleteEntry(props.entry.id).then(() => {
+      void twoFaLib.vault.deleteEntry(props.entry.id).then(() => {
         syncStoreWithLib(twoFaLib)
       })
     }

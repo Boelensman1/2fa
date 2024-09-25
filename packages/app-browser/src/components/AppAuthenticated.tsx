@@ -3,11 +3,13 @@ import Add from './Add'
 import ItemList from './ItemList'
 import Importer from './Importer'
 import Settings from './Settings'
+import AddDevice from './AddDevice'
 
 const AppAuthenticated: Component = () => {
   const [showAdd, setShowAdd] = createSignal(false)
   const [showImporter, setShowImporter] = createSignal(false)
   const [showSettings, setShowSettings] = createSignal(false)
+  const [showAddDevice, setShowAddDevice] = createSignal(false)
 
   return (
     <div class="container mx-auto p-4">
@@ -32,6 +34,12 @@ const AppAuthenticated: Component = () => {
         >
           {showSettings() ? 'Hide Settings' : 'Show Settings'}
         </button>
+        <button
+          onClick={() => setShowAddDevice(!showAddDevice())}
+          class="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded transition duration-200"
+        >
+          {showAddDevice() ? 'Hide Add Device' : 'Show Add Device'}
+        </button>
       </div>
 
       <Show when={showAdd()}>
@@ -44,6 +52,10 @@ const AppAuthenticated: Component = () => {
 
       <Show when={showSettings()}>
         <Settings />
+      </Show>
+
+      <Show when={showAddDevice()}>
+        <AddDevice />
       </Show>
     </div>
   )

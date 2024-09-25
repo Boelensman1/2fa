@@ -20,9 +20,14 @@ const actions = {
     type: types.SET_AUTHENTICATED,
     payload: authenticated,
   }),
-  initialize: (twoFaLib: TwoFaLib | null): Action => ({
+  initialize: (twoFaLib: TwoFaLib | null, isConnecting?: boolean): Action => ({
     type: types.INITIALIZE,
-    payload: twoFaLib,
+    payload: twoFaLib
+      ? {
+          twoFaLib,
+          isConnecting: !!isConnecting,
+        }
+      : null,
   }),
   setSettings: (settings: State['settings']): Action => {
     // Update localStorage

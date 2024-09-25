@@ -11,9 +11,17 @@ interface SetAuthenticatedAction {
   payload: boolean
 }
 
+interface SetConnectingToExistingVault {
+  type: typeof types.SET_AUTHENTICATED
+  payload: boolean
+}
+
 interface InitializeAction {
   type: typeof types.INITIALIZE
-  payload: TwoFaLib | null
+  payload: null | {
+    twoFaLib: TwoFaLib
+    isConnecting: boolean
+  }
 }
 
 interface SetSettingsAction {
@@ -24,6 +32,7 @@ interface SetSettingsAction {
 }
 
 type Action =
+  | SetConnectingToExistingVault
   | SetEntriesAction
   | SetAuthenticatedAction
   | InitializeAction

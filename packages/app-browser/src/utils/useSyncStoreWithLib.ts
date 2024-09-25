@@ -7,7 +7,7 @@ const useSyncStoreWithLib = () => {
   const [, dispatch] = useContext(context)
 
   const syncStoreWithLib = (twoFaLib: TwoFaLib) => {
-    dispatch(actions.setEntries(twoFaLib.listEntriesMetas()))
+    dispatch(actions.setEntries(twoFaLib.vault.listEntriesMetas()))
   }
 
   return syncStoreWithLib

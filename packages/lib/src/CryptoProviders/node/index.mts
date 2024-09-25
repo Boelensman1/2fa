@@ -201,6 +201,10 @@ class NodeCryptoLib implements CryptoLib {
     decrypted += decipher.final('utf8')
     return Promise.resolve(decrypted)
   }
+
+  async getRandomBytes(count: number) {
+    return Promise.resolve(randomBytes(count))
+  }
 }
 
 export default NodeCryptoLib

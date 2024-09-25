@@ -1,0 +1,27 @@
+{
+  "name": "2faserver",
+  "version": "0.0.1",
+  "description": "",
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./build/src/main.mjs",
+      "types": "./build/src/main.d.mts"
+    },
+    "./cryptoProviders/browser": {
+      "import": "./build/src/CryptoProviders/browser/index.mjs",
+      "types": "./build/src/CryptoProviders/browser/index.d.mts"
+    },
+    "./cryptoProviders/node": {
+      "import": "./build/src/CryptoProviders/node/index.mjs",
+      "types": "./build/src/CryptoProviders/node/index.d.mts"
+    }
+  },
+  "types": "./build/src/main.d.mts",
+  "files": [
+    "build/**"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {}
+}

@@ -31,17 +31,19 @@ const Importer = () => {
       reader.onload = (event) => {
         const fileContents = event.target?.result?.toString()
         if (fileContents) {
-          void twoFaLib.importFromTextFile(fileContents).then((results) => {
-            results.forEach((result) => {
-              if (result.error) {
-                console.warn(
-                  `Failed to import line ${result.lineNr}`,
-                  result.error,
-                )
-              }
+          void twoFaLib.exportImport
+            .importFromTextFile(fileContents)
+            .then((results) => {
+              results.forEach((result) => {
+                if (result.error) {
+                  console.warn(
+                    `Failed to import line ${result.lineNr}`,
+                    result.error,
+                  )
+                }
+              })
+              syncStoreWithLib(twoFaLib)
             })
-            syncStoreWithLib(twoFaLib)
-          })
         }
       }
       reader.readAsText(file)

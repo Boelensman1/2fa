@@ -115,6 +115,8 @@ interface CryptoLib {
     symmetricKey: SymmetricKey,
     plainText: string,
   ) => Promise<string>
+
+  getRandomBytes: (count: number) => Promise<Uint8Array>
 }
 
 export default CryptoLib

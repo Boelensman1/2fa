@@ -2,11 +2,13 @@ import { type Component, createEffect } from 'solid-js'
 import { Show } from 'solid-js'
 import useStore from './store/useStore'
 import actions from './store/actions'
+import type State from './store/types/State'
 import { TwoFaLib } from '2falib'
 import BrowserCryptoProvider from '2falib/cryptoProviders/browser'
 
 import AppAuthenticated from './components/AppAuthenticated'
 import Login from './components/Login'
+import ConnectToExistingVault from './components/ConnectToExistingVault'
 import CreateVault from './components/CreateVault'
 import saveFunction from './utils/saveFunction'
 
@@ -20,6 +22,7 @@ const App: Component = () => {
     const encryptedSymmetricKey = localStorage.getItem('encryptedSymmetricKey')
     const salt = localStorage.getItem('salt')
     const settings = localStorage.getItem('settings')
+    const isConnectingToExistingVault = localStorage.getItem('connecting')
 
     if (
       !lockedRepresentation ||
@@ -32,13 +35,13 @@ const App: Component = () => {
     }
 
     if (settings) {
-      const parsedSettings = JSON.parse(settings)
+      const parsedSettings = JSON.parse(settings) as State['settings']
       dispatch(actions.setSettings(parsedSettings))
     }
 
     const cryptoLib = new BrowserCryptoProvider()
-    const twoFaLib = new TwoFaLib(cryptoLib, saveFunction)
-    dispatch(actions.initialize(twoFaLib))
+    const twoFaLib = new TwoFaLib('browser', cryptoLib, saveFunction)
+    dispatch(actions.initialize(twoFaLib, Boolean(isConnectingToExistingVault)))
   }
 
   // Run initializeApp when the component mounts
@@ -50,7 +53,12 @@ const App: Component = () => {
     <div class="container mx-auto p-4">
       <Show when={state.twoFaLib} fallback={<CreateVault />}>
         <Show when={state.vaultIsUnlocked} fallback={<Login />}>
-          <AppAuthenticated />
+          <Show
+            when={!state.isConnectingToExistingVault}
+            fallback={<ConnectToExistingVault />}
+          >
+            <AppAuthenticated />
+          </Show>
         </Show>
       </Show>
     </div>

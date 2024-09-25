@@ -265,6 +265,10 @@ class BrowserCryptoLib implements CryptoLib {
 
     return Buffer.from(decryptedBuffer).toString('utf8')
   }
+
+  async getRandomBytes(count: number) {
+    return Promise.resolve(window.crypto.getRandomValues(new Uint8Array(count)))
+  }
 }
 
 export default BrowserCryptoLib

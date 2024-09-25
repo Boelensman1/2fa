@@ -4,6 +4,7 @@ interface State {
   entries: EntryMeta[]
   vaultIsUnlocked: boolean
   twoFaLib: TwoFaLib | null
+  isConnectingToExistingVault: boolean
   settings: {
     maskEntries: boolean
   }

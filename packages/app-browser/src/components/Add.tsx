@@ -19,7 +19,7 @@ const Add = () => {
     if (!twoFaLib) {
       throw new Error('twoFaLib not loaded')
     }
-    await twoFaLib.addEntry({
+    await twoFaLib.vault.addEntry({
       name: name(),
       type: 'TOTP',
       issuer: issuer(),

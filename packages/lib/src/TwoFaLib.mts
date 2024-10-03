@@ -13,6 +13,7 @@ import LibraryLoader from './subclasses/LibraryLoader.mjs'
 import VaultManager from './subclasses/VaultManager.mjs'
 import ExportImportManager from './subclasses/ExportImportManager.mjs'
 import PersistentStorageManager from './subclasses/PersistentStorageManager.mjs'
+import { InitializationError } from './TwoFALibError.mjs'
 /**
  * Two-Factor Authentication Library
  * This library provides functionality for managing 2FA entries
@@ -33,10 +34,12 @@ class TwoFaLib {
     saveFunction?: SaveFunction,
   ) {
     if (!deviceIdentifier) {
-      throw new Error('Device identifier is required')
+      throw new InitializationError('Device identifier is required')
     }
     if (deviceIdentifier.length > 256) {
-      throw new Error('Device identifier is too long, max 256 characters')
+      throw new InitializationError(
+        'Device identifier is too long, max 256 characters',
+      )
     }
     this.deviceIdentifier = deviceIdentifier
 

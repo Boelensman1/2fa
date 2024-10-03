@@ -1,4 +1,5 @@
 import type { ImageData } from 'canvas'
+import { TwoFALibError } from '../TwoFALibError.mjs'
 
 export const getImageDataBrowser = (
   input: string | File,
@@ -11,13 +12,13 @@ export const getImageDataBrowser = (
       canvas.height = img.height
       const ctx = canvas.getContext('2d')
       if (!ctx) {
-        reject(new Error('Could not create canvas context'))
+        reject(new TwoFALibError('Could not create canvas context'))
         return
       }
       ctx.drawImage(img, 0, 0)
       resolve(ctx.getImageData(0, 0, img.width, img.height))
     }
-    img.onerror = () => reject(new Error('Failed to load image'))
+    img.onerror = () => reject(new TwoFALibError('Failed to load image'))
 
     if (typeof input === 'string') {
       // URL or Data URL
@@ -28,7 +29,7 @@ export const getImageDataBrowser = (
       reader.onload = (e) => {
         img.src = e.target?.result as string
       }
-      reader.onerror = () => reject(new Error('Failed to read file'))
+      reader.onerror = () => reject(new TwoFALibError('Failed to read file'))
       reader.readAsDataURL(input)
     }
   })

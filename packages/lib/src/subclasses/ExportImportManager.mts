@@ -17,6 +17,7 @@ import { EntryId } from '../interfaces/Entry.js'
 import type PersistentStorageManager from './PersistentStorageManager.mjs'
 import type LibraryLoader from './LibraryLoader.mjs'
 import type VaultManager from './VaultManager.mjs'
+import { ExportImportError } from '../TwoFALibError.mjs'
 
 class ExportImportManager {
   constructor(
@@ -42,7 +43,7 @@ class ExportImportManager {
     } else if (format === 'html') {
       exportData = await this.generateHtmlExport()
     } else {
-      throw new Error('Invalid export format')
+      throw new ExportImportError('Invalid export format')
     }
 
     if (password) {
@@ -103,7 +104,7 @@ class ExportImportManager {
    * Import an entry from an OTP URI.
    * @param otpUri - The OTP URI to import
    * @returns A promise that resolves to the newly added EntryId.
-   * @throws {Error} If the URI is invalid or contains unsupported OTP type.
+   * @throws {ExportImportError} If the URI is invalid or contains unsupported OTP type.
    */
   async importFromUri(otpUri: string): Promise<EntryId> {
     const UrlParser = await this.libraryLoader.getUrlParserLib()
@@ -117,7 +118,7 @@ class ExportImportManager {
    * Import an entry from a QR code image.
    * @param imageInput - The image input
    * @returns A promise that resolves to the newly added EntryId.
-   * @throws {InvalidInputError} If the QR code is invalid or doesn't contain a valid OTP URI.
+   * @throws {InvalidInputExportImportError} If the QR code is invalid or doesn't contain a valid OTP URI.
    */
   async importFromQRCode(imageInput: string | File | Buffer): Promise<EntryId> {
     const jsQr = await this.libraryLoader.getJsQrLib()
@@ -132,7 +133,7 @@ class ExportImportManager {
     }
     const qrCodeResult = jsQr(imageData.data, imageData.width, imageData.height)
     if (!qrCodeResult) {
-      throw new Error('Invalid QR code')
+      throw new ExportImportError('Invalid QR code')
     }
     const otpUri = qrCodeResult.data
     return this.importFromUri(otpUri)

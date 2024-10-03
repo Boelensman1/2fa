@@ -1,4 +1,5 @@
 import type CryptoLib from '../interfaces/CryptoLib.js'
+import { InitializationError, TwoFALibError } from '../TwoFALibError.mjs'
 
 class LibraryLoader {
   // libraries that are always loaded
@@ -13,7 +14,7 @@ class LibraryLoader {
 
   constructor(cryptoLib: CryptoLib) {
     if (!cryptoLib) {
-      throw new Error('CryptoLib is required')
+      throw new InitializationError('CryptoLib is required')
     }
     this.cryptoLib = cryptoLib
   }
@@ -48,7 +49,7 @@ class LibraryLoader {
 
   async getCanvasLib() {
     if (typeof window !== 'undefined') {
-      throw new Error('Canvas lib can not be loaded in browser env')
+      throw new TwoFALibError('Canvas lib can not be loaded in browser env')
     }
 
     if (!this.canvasLib) {

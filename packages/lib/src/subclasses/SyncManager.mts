@@ -18,7 +18,13 @@ import type ExportImportManager from './ExportImportManager.mjs'
 
 // Ensure Buffer is available globally for the browser environment
 import { Buffer } from 'buffer'
-import { InitializationError } from '../TwoFALibError.mjs'
+import {
+  InitializationError,
+  SyncAddDeviceFlowConflictError,
+  SyncError,
+  SyncInWrongStateError,
+  SyncNoServerConnectionError,
+} from '../TwoFALibError.mjs'
 globalThis.Buffer = Buffer
 
 interface SyncDevice {
@@ -89,7 +95,7 @@ class SyncManager {
     switch (message.type) {
       case 'addDeviceFlowRequestRegistered': {
         if (this.activeAddDeviceFlow?.state !== 'initiator:initiated') {
-          throw new Error('Active add device flow in wrong state')
+          throw new SyncInWrongStateError()
         }
         this.activeAddDeviceFlow.resolveContinuePromise(message)
         break
@@ -156,10 +162,10 @@ class SyncManager {
     returnQr: T = true as T,
   ): Promise<T extends true ? string : InitiateAddDeviceFlowResult> {
     if (this.activeAddDeviceFlow) {
-      throw new Error('Add device flow already active')
+      throw new SyncAddDeviceFlowConflictError()
     }
     if (!this.ws || !this.webSocketConnected) {
-      throw new Error('Server connection not available')
+      throw new SyncNoServerConnectionError()
     }
 
     const addDevicePassword = deriveSFromPassword(
@@ -239,10 +245,10 @@ class SyncManager {
     initiatorData: InitiateAddDeviceFlowResult | string | Buffer | File,
   ) {
     if (!this.ws || !this.webSocketConnected) {
-      throw new Error('Server connection not available')
+      throw new SyncNoServerConnectionError()
     }
     if (this.activeAddDeviceFlow) {
-      throw new Error('Add device flow already active')
+      throw new SyncAddDeviceFlowConflictError()
     }
 
     const {
@@ -264,7 +270,7 @@ class SyncManager {
       !pass1Result ||
       !initiatorDeviceIdentifier
     ) {
-      throw new Error('Missing required fields in initiator data')
+      throw new SyncError('Missing required fields in initiator data')
     }
 
     // Decode the base64 password
@@ -293,7 +299,7 @@ class SyncManager {
         initiatorUserIdString,
       )
     } catch {
-      throw new Error('Error processing initiator pass 1')
+      throw new SyncError('Error processing initiator pass 1')
     }
 
     this.activeAddDeviceFlow = {
@@ -327,11 +333,11 @@ class SyncManager {
     responderDeviceIdentifier: string,
   ) {
     if (!this.ws || !this.webSocketConnected) {
-      throw new Error('Server connection not available')
+      throw new SyncNoServerConnectionError()
     }
 
     if (this.activeAddDeviceFlow?.state !== 'initiator:initiated') {
-      throw new Error('Active add device flow in wrong state')
+      throw new SyncInWrongStateError()
     }
 
     const pass3Result = this.activeAddDeviceFlow.jpak.pass3(
@@ -369,15 +375,15 @@ class SyncManager {
     pass3Result: Pass3Result,
   ) {
     if (!this.ws || !this.webSocketConnected) {
-      throw new Error('Server connection not available')
+      throw new SyncNoServerConnectionError()
     }
 
     if (this.activeAddDeviceFlow?.state !== 'responder:initated') {
-      throw new Error('Active add device flow in wrong state')
+      throw new SyncInWrongStateError()
     }
 
     if (!this.publicKey) {
-      throw new Error('Public key not set')
+      throw new SyncError('Public key not set')
     }
 
     this.activeAddDeviceFlow.jpak.receivePass3Results(pass3Result)
@@ -414,15 +420,15 @@ class SyncManager {
     responderEncryptedPublicKey: EncryptedPublicKey,
   ) {
     if (!this.ws || !this.webSocketConnected) {
-      throw new Error('Server connection not available')
+      throw new SyncNoServerConnectionError()
     }
 
     if (this.activeAddDeviceFlow?.state !== 'initiator:syncKeyCreated') {
-      throw new Error('Active add device flow in wrong state')
+      throw new SyncInWrongStateError()
     }
 
     if (!this.publicKey) {
-      throw new Error('Public key not set')
+      throw new SyncError('Public key not set')
     }
 
     const syncKey = this.activeAddDeviceFlow.syncKey
@@ -471,7 +477,7 @@ class SyncManager {
     encryptedPublicKey: EncryptedPublicKey,
   ) {
     if (this.activeAddDeviceFlow?.state !== 'responder:syncKeyCreated') {
-      throw new Error('Active add device flow in wrong state')
+      throw new SyncInWrongStateError()
     }
 
     const syncKey = this.activeAddDeviceFlow.syncKey

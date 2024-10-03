@@ -2,6 +2,7 @@ import type { ImageData } from 'canvas'
 
 import { getImageDataBrowser, getImageDataNode } from './getImageData.mjs'
 import { InitiateAddDeviceFlowResult } from '../interfaces/SyncTypes.js'
+import { SyncError } from '../TwoFALibError.mjs'
 
 export const decodeInitiatorData = async (
   initiatorData: InitiateAddDeviceFlowResult | string | Buffer | File,
@@ -18,7 +19,7 @@ export const decodeInitiatorData = async (
 
       if (typeof window !== 'undefined') {
         if (initiatorData instanceof Buffer) {
-          throw new Error(
+          throw new SyncError(
             'Invalid initiator data type, should be a string or File in browser environment',
           )
         }
@@ -26,7 +27,7 @@ export const decodeInitiatorData = async (
         imageData = await getImageDataBrowser(initiatorData)
       } else {
         if (!(initiatorData instanceof Buffer)) {
-          throw new Error(
+          throw new SyncError(
             'Invalid initiator data type, should be a Buffer in Node.js environment',
           )
         }
@@ -41,16 +42,18 @@ export const decodeInitiatorData = async (
         imageData.height,
       )
       if (!qrCodeResult) {
-        throw new Error('Invalid QR code')
+        throw new SyncError('Invalid QR code')
       }
       return JSON.parse(qrCodeResult.data) as InitiateAddDeviceFlowResult
     } catch (error) {
-      throw new Error('Failed to decode QR code: ' + (error as Error).message)
+      throw new SyncError(
+        'Failed to decode QR code: ' + (error as Error).message,
+      )
     }
   }
 
   if (!initiatorData || typeof initiatorData !== 'object') {
-    throw new Error('Invalid initiator data')
+    throw new SyncError('Invalid initiator data')
   }
 
   return initiatorData

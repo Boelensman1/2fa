@@ -2,6 +2,7 @@ import type { NewEntry } from '../interfaces/Entry.js'
 import type Entry from '../interfaces/Entry.js'
 import type { SupportedAlgorithmsType } from './constants.mjs'
 import type { EntryId } from '../interfaces/Entry.js'
+import { ExportImportError } from '../TwoFALibError.mjs'
 
 /**
  * Determines the hashing algorithm based on the input string.
@@ -31,26 +32,26 @@ const parseOtpAlgorithm = (
  * @param UrlParser - The URL parsing library.
  * @param otpUri - The OTP URI to parse.
  * @returns An object representing the new entry.
- * @throws Error if the URI is invalid or contains unsupported features.
+ * @throws ExportImportError if the URI is invalid or contains unsupported features.
  */
 export const parseOtpUri = (
   UrlParser: typeof import('whatwg-url'),
   otpUri: string,
 ): NewEntry => {
   if (!otpUri.startsWith('otpauth://')) {
-    throw new Error('Invalid OTP URI')
+    throw new ExportImportError('Invalid OTP URI')
   }
   const parsedUri = UrlParser.parseURL(otpUri)
   if (!parsedUri) {
-    throw new Error('Failed to parse URI')
+    throw new ExportImportError('Failed to parse URI')
   }
 
   const { scheme, host, path, query } = parsedUri
   if (scheme !== 'otpauth') {
-    throw new Error(`Unsupported protocol "${scheme}"`)
+    throw new ExportImportError(`Unsupported protocol "${scheme}"`)
   }
   if (host !== 'totp') {
-    throw new Error(`Unsupported OTP type "${String(host)}"`)
+    throw new ExportImportError(`Unsupported OTP type "${String(host)}"`)
   }
   const searchParams = new URLSearchParams(query ?? '')
 
@@ -66,10 +67,12 @@ export const parseOtpUri = (
   const digits = parseInt(searchParams.get('digits') ?? '6', 10)
   const period = parseInt(searchParams.get('period') ?? '30', 10)
   if (!secret) {
-    throw new Error('Invalid OTP URI: missing secret')
+    throw new ExportImportError('Invalid OTP URI: missing secret')
   }
   if (!algorithm) {
-    throw new Error(`Unsupported algorithm "${searchParams.get('algorithm')}"`)
+    throw new ExportImportError(
+      `Unsupported algorithm "${searchParams.get('algorithm')}"`,
+    )
   }
 
   return {

@@ -13,6 +13,7 @@ import {
 } from 'node:crypto'
 import { argon2id } from 'hash-wasm'
 
+import { CryptoError } from '../../TwoFALibError.mjs'
 import type CryptoLib from '../../interfaces/CryptoLib.js'
 import type {
   EncryptedPrivateKey,
@@ -109,10 +110,10 @@ class NodeCryptoLib implements CryptoLib {
     } catch (err) {
       if (err instanceof Error && 'code' in err) {
         if (err.code === 'ERR_OSSL_BAD_DECRYPT') {
-          throw new Error('Invalid passphrase')
+          throw new CryptoError('Invalid passphrase')
         }
         if (err.code === 'ERR_OSSL_UNSUPPORTED') {
-          throw new Error('Invalid private key')
+          throw new CryptoError('Invalid private key')
         }
       }
       throw err

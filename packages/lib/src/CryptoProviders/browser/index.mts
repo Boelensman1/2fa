@@ -1,5 +1,8 @@
 import forge from 'node-forge'
 import { Buffer } from 'buffer'
+import { argon2id } from 'hash-wasm'
+
+import { CryptoError } from '../../TwoFALibError.mjs'
 import type CryptoLib from '../../interfaces/CryptoLib.js'
 import type {
   EncryptedPrivateKey,
@@ -12,7 +15,6 @@ import type {
   SymmetricKey,
   SyncKey,
 } from '../../interfaces/CryptoLib.js'
-import { argon2id } from 'hash-wasm'
 
 function normalizeLineEndings(str: string): string {
   return str.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
@@ -135,7 +137,7 @@ class BrowserCryptoLib implements CryptoLib {
         passphraseHash,
       )
       if (!privateKeyPem) {
-        throw new Error('Invalid passphrase')
+        throw new CryptoError('Invalid passphrase')
       }
       const privateKey = forge.pki.privateKeyToPem(privateKeyPem)
       const publicKey = forge.pki.publicKeyToPem(
@@ -148,10 +150,10 @@ class BrowserCryptoLib implements CryptoLib {
     } catch (err) {
       if (err instanceof Error) {
         if (err.message === 'Invalid passphrase') {
-          throw new Error('Invalid passphrase')
+          throw new CryptoError('Invalid passphrase')
         }
         if (err.message.includes('Unsupported private key')) {
-          throw new Error('Invalid private key')
+          throw new CryptoError('Invalid private key')
         }
       }
       throw err

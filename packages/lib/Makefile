@@ -2,6 +2,7 @@ INSTALL_DEPS:=node_modules ../jpake/build
 SRC_FILES:=$(shell find src/)
 
 build: $(INSTALL_DEPS) $(SRC_FILES) tsconfig.json tsconfig.build.json
+	$(MAKE) lint
 	npx tsc --project ./tsconfig.build.json
 	@touch build
 

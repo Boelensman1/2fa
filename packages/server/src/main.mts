@@ -7,8 +7,8 @@ console.log(`Server started on port ${port}`)
 interface RegisterAddDeviceFlowRequestMessage {
   type: 'registerAddDeviceFlowRequest'
   data: {
-    deviceIdentifier: string
-    userIdString: string
+    initiatorDeviceIdentifier: string
+    initiatorUserIdString: string
     timestamp: number
     nonce: string
   }
@@ -30,7 +30,8 @@ interface AddDevicePassPass2ResultMessage {
         ZKPx2s: Record<number, string>
       }
     }
-    userId: string
+    responderUserIdString: string
+    responderDeviceIdentifier: string
     initiatorUserIdString: string
   }
 }
@@ -39,8 +40,26 @@ interface AddDevicePassPass3ResultMessage {
   type: 'addDevicePassPass3Result'
   data: {
     nonce: string
-    userId: string
+    initiatorUserIdString: string
     pass3Result: Record<number, string>
+  }
+}
+
+interface AddDeviceSendPublicKey {
+  type: 'addDeviceFlowSendPublicKey'
+  data: {
+    initiatorUserIdString: string
+    nonce: string
+    encryptedPublicKey: string
+  }
+}
+
+interface SendInitialVaultData {
+  type: 'sendInitialVaultData'
+  data: {
+    nonce: string
+    initiatorUserIdString: string
+    encryptedVaultData: string
   }
 }
 
@@ -48,6 +67,8 @@ type Message =
   | RegisterAddDeviceFlowRequestMessage
   | AddDevicePassPass2ResultMessage
   | AddDevicePassPass3ResultMessage
+  | AddDeviceSendPublicKey
+  | SendInitialVaultData
 
 const ongoingAddDeviceRequests: (RegisterAddDeviceFlowRequestMessage['data'] & {
   wsInitiator: WebSocket
@@ -66,7 +87,7 @@ const handleMessage = (ws: WebSocket, message: Message) => {
       const { initiatorUserIdString } = message.data
       // find matching request
       const request = ongoingAddDeviceRequests.find(
-        (r) => r.userIdString === initiatorUserIdString,
+        (r) => r.initiatorUserIdString === initiatorUserIdString,
       )
       if (!request) {
         console.error('Request not found')
@@ -82,15 +103,10 @@ const handleMessage = (ws: WebSocket, message: Message) => {
       return
     }
     case 'addDevicePassPass3Result': {
-      const { userId } = message.data
+      const { initiatorUserIdString } = message.data
       // find matching request
       const request = ongoingAddDeviceRequests.find(
-        (r) => r.userIdString === userId,
-      )
-      console.log(
-        ongoingAddDeviceRequests.map((r) => r.userIdString),
-        userId,
-        typeof request,
+        (r) => r.initiatorUserIdString === initiatorUserIdString,
       )
       if (!request) {
         console.error('Request not found')
@@ -106,6 +122,49 @@ const handleMessage = (ws: WebSocket, message: Message) => {
           data: message.data,
         }),
       )
+      return
+    }
+    case 'addDeviceFlowSendPublicKey': {
+      const { initiatorUserIdString } = message.data
+      // find matching request
+      const request = ongoingAddDeviceRequests.find(
+        (r) => r.initiatorUserIdString === initiatorUserIdString,
+      )
+      if (!request) {
+        console.error('Request not found')
+        return
+      }
+
+      request.wsInitiator.send(
+        JSON.stringify({
+          type: 'receivePublicKey',
+          data: message.data,
+        }),
+      )
+      return
+    }
+    case 'sendInitialVaultData': {
+      const { initiatorUserIdString } = message.data
+      // find matching request
+      const request = ongoingAddDeviceRequests.find(
+        (r) => r.initiatorUserIdString === initiatorUserIdString,
+      )
+      if (!request) {
+        console.error('Request not found')
+        return
+      }
+      if (!request.wsResponder) {
+        console.error('Request not in correct state')
+        return
+      }
+
+      request.wsResponder.send(
+        JSON.stringify({
+          type: 'receiveInitialVaultData',
+          data: message.data,
+        }),
+      )
+      return
     }
   }
 }

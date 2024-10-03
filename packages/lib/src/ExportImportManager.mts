@@ -12,7 +12,7 @@ import { getImageDataBrowser, getImageDataNode } from './utils/getImageData.mjs'
 import type LibraryLoader from './LibraryLoader.mjs'
 import type TwoFaLib from './TwoFaLib.mjs'
 import { EntryId } from './interfaces/Entry.js'
-import VaultManager from './VaultManager.js'
+import VaultManager from './VaultManager.mjs'
 
 class ExportImportManager {
   constructor(

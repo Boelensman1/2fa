@@ -15,7 +15,7 @@ import { Vault } from './interfaces/Vault.js'
 
 import SyncManager from './SyncManager.mjs'
 import LibraryLoader from './LibraryLoader.mjs'
-import VaultManager from './VaultManager.js'
+import VaultManager from './VaultManager.mjs'
 import ExportImportManager from './ExportImportManager.mjs'
 
 /**
@@ -60,12 +60,17 @@ class TwoFaLib {
     this.saveFunction = saveFunction
 
     this.libraryLoader = new LibraryLoader(cryptoLib)
-    this.syncManager = new SyncManager(this.libraryLoader, deviceIdentifier)
     this.vaultManager = new VaultManager(this)
     this.exportImportManager = new ExportImportManager(
       this.libraryLoader,
       this,
       this.vaultManager,
+    )
+    this.syncManager = new SyncManager(
+      this.libraryLoader,
+      this.vaultManager,
+      this.exportImportManager,
+      deviceIdentifier,
     )
   }
 
@@ -138,12 +143,13 @@ class TwoFaLib {
     passphrase: Passphrase,
     serverUrl?: string,
   ): Promise<void> {
-    const { privateKey, symmetricKey } = await this.cryptoLib.decryptKeys(
-      encryptedPrivateKey,
-      encryptedSymmetricKey,
-      salt,
-      passphrase,
-    )
+    const { privateKey, symmetricKey, publicKey } =
+      await this.cryptoLib.decryptKeys(
+        encryptedPrivateKey,
+        encryptedSymmetricKey,
+        salt,
+        passphrase,
+      )
     this.privateKey = privateKey
     this.symmetricKey = symmetricKey
     this.encryptedPrivateKey = encryptedPrivateKey
@@ -155,6 +161,7 @@ class TwoFaLib {
       encryptedSymmetricKey: true,
       salt: true,
     }
+    this.syncManager.setPublicKey(publicKey)
 
     if (serverUrl) {
       if (!serverUrl.startsWith('ws://') && !serverUrl.startsWith('wss://')) {

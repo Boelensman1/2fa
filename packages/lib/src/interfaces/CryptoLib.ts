@@ -15,6 +15,9 @@ export type EncryptedPrivateKey = Tagged<string, 'EncryptedPrivateKey'>
 /** Represents an encrypted symmetric key (base64 encoded) */
 export type EncryptedSymmetricKey = Tagged<string, 'EncryptedSymmetricKey'>
 
+/** Represents an encrypted public key (base64 encoded) */
+export type EncryptedPublicKey = Tagged<string, 'EncryptedPublicKey'>
+
 /** Represents a private key */
 export type PrivateKey = Tagged<string, 'PrivateKey'>
 
@@ -23,6 +26,9 @@ export type PublicKey = Tagged<string, 'PublicKey'>
 
 /** Represents an symmetric key */
 export type SymmetricKey = Tagged<string, 'SymmetricKey'>
+
+/** Represents a sync (symmetric) key (base64 encoded) */
+export type SyncKey = Tagged<SymmetricKey, 'SyncKey'>
 
 /**
  * Interface for cryptographic operations.
@@ -84,7 +90,7 @@ interface CryptoLib {
    * @param plainText - The text to encrypt
    * @returns A promise that resolves to the encrypted text
    */
-  encrypt: (symmetric: PublicKey, plainText: string) => Promise<string>
+  encrypt: (publicKey: PublicKey, plainText: string) => Promise<string>
 
   /**
    * Decrypts an encrypted message using a private key
@@ -117,6 +123,14 @@ interface CryptoLib {
   ) => Promise<string>
 
   getRandomBytes: (count: number) => Promise<Uint8Array>
+
+  /**
+   * Creates a sync key from a shared key (that was created from a JPAKE exchange)
+   * @param sharedKey - The shared key to derive from
+   * @param salt - A salt to derive the key with
+   * @returns A promise that resolves to the derived key
+   */
+  createSyncKey: (sharedKey: Uint8Array, salt: string) => Promise<SyncKey>
 }
 
 export default CryptoLib

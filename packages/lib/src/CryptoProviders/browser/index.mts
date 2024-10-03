@@ -10,6 +10,7 @@ import type {
   PublicKey,
   Salt,
   SymmetricKey,
+  SyncKey,
 } from '../../interfaces/CryptoLib.js'
 import { argon2id } from 'hash-wasm'
 
@@ -268,6 +269,19 @@ class BrowserCryptoLib implements CryptoLib {
 
   async getRandomBytes(count: number) {
     return Promise.resolve(window.crypto.getRandomValues(new Uint8Array(count)))
+  }
+
+  async createSyncKey(sharedKey: Uint8Array, salt: string): Promise<SyncKey> {
+    const keyBuffer = await argon2id({
+      password: sharedKey,
+      salt,
+      parallelism: 1,
+      iterations: 256,
+      memorySize: 512,
+      hashLength: 32,
+      outputType: 'binary',
+    })
+    return Buffer.from(keyBuffer).toString('base64') as SyncKey
   }
 }
 

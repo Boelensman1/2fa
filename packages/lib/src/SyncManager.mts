@@ -12,17 +12,30 @@ import {
 import { decodeInitiatorData, jsonToUint8Array } from './utils/syncUtils.mjs'
 
 import type LibraryLoader from './LibraryLoader.mjs'
+import type VaultManager from './VaultManager.mjs'
+import type ExportImportManager from './ExportImportManager.mjs'
+import type { EncryptedPublicKey, PublicKey } from './interfaces/CryptoLib.js'
 
 // Ensure Buffer is available globally for the browser environment
 import { Buffer } from 'buffer'
 globalThis.Buffer = Buffer
 
+interface SyncDevice {
+  userIdString: string
+  deviceIdentifier: string
+  publicKey: PublicKey
+}
+
 class SyncManager {
   private ws?: WebSocket
   private activeAddDeviceFlow?: ActiveAddDeviceFlow
+  private publicKey?: PublicKey
+  syncDevices: SyncDevice[] = []
 
   constructor(
     private libraryLoader: LibraryLoader,
+    private readonly vaultManager: VaultManager,
+    private readonly exportImportManager: ExportImportManager,
     private readonly deviceIdentifier: string,
   ) {}
 
@@ -36,6 +49,15 @@ class SyncManager {
   get webSocketConnected(): boolean {
     return this.ws?.readyState === WebSocket.OPEN
   }
+  private async getNonce() {
+    return Buffer.from(await this.cryptoLib.getRandomBytes(16)).toString(
+      'base64',
+    )
+  }
+
+  setPublicKey(publicKey: PublicKey) {
+    this.publicKey = publicKey
+  }
 
   initServerConnection(serverUrl: string) {
     const ws = new WebSocket(serverUrl)
@@ -43,12 +65,6 @@ class SyncManager {
     // eslint-disable-next-line @typescript-eslint/no-this-alias
     const libInstance = this
     ws.addEventListener('error', console.error)
-
-    /*
-    ws.addEventListener('open', function open() {
-      ws.send('Hi!')
-    })
-    */
 
     ws.addEventListener('message', function message(message: MessageEvent) {
       try {
@@ -66,39 +82,60 @@ class SyncManager {
 
   private handleServerMessage(message: Record<string, unknown>) {
     switch (message.type) {
-      case 'addDeviceFlowRequestRegistered':
-        if (this.activeAddDeviceFlow?.resolveContinuePromise) {
-          this.activeAddDeviceFlow.resolveContinuePromise(message)
+      case 'addDeviceFlowRequestRegistered': {
+        if (this.activeAddDeviceFlow?.state !== 'initiator:initiated') {
+          throw new Error('Active add device flow in wrong state')
         }
+        this.activeAddDeviceFlow.resolveContinuePromise(message)
         break
-      case 'addDevicePassPass2Result':
-        if (this.activeAddDeviceFlow) {
-          const data = message.data as Record<string, unknown>
+      }
+      case 'addDevicePassPass2Result': {
+        const data = message.data as Record<string, unknown>
 
-          const unconvertedPass2Result = data.pass2Result as Record<
-            string,
-            Record<string, Record<string, number>>
-          >
-          const pass2Result = {
-            round1Result: jsonToUint8Array(unconvertedPass2Result.round1Result),
-            round2Result: jsonToUint8Array(unconvertedPass2Result.round2Result),
-          } as unknown as Pass2Result
+        const unconvertedPass2Result = data.pass2Result as Record<
+          string,
+          Record<string, Record<string, number>>
+        >
+        const pass2Result = {
+          round1Result: jsonToUint8Array(unconvertedPass2Result.round1Result),
+          round2Result: jsonToUint8Array(unconvertedPass2Result.round2Result),
+        } as unknown as Pass2Result
 
-          void this.finishAddDeviceFlow(pass2Result, data.userId as string)
-        }
+        void this.finishAddDeviceFlowKeyExchangeInitiator(
+          pass2Result,
+          data.responderUserIdString as string,
+          data.responderDeviceIdentifier as string,
+        )
         break
-      case 'addDevicePassPass3Result':
-        if (this.activeAddDeviceFlow) {
-          const data = message.data as Record<string, unknown>
+      }
+      case 'addDevicePassPass3Result': {
+        const data = message.data as Record<string, unknown>
 
-          const pass3Result = jsonToUint8Array(
-            (data as Record<string, Record<string, Record<string, number>>>)
-              .pass3Result,
-          ) as unknown as Pass3Result
+        const pass3Result = jsonToUint8Array(
+          (data as Record<string, Record<string, Record<string, number>>>)
+            .pass3Result,
+        ) as unknown as Pass3Result
 
-          this.finishAddDeviceFlow2(pass3Result)
-        }
+        void this.finishAddDeviceFlowKeyExchangeResponder(pass3Result)
         break
+      }
+      case 'receivePublicKey': {
+        const data = message.data as Record<string, unknown>
+        const { responderEncryptedPublicKey } = data
+        void this.sendInitialVaultData(
+          responderEncryptedPublicKey as EncryptedPublicKey,
+        )
+        break
+      }
+      case 'receiveInitialVaultData': {
+        const data = message.data as Record<string, unknown>
+        const { encryptedVaultData, initiatorEncryptedPublicKey } = data
+        void this.importInitialVaultData(
+          encryptedVaultData as string,
+          initiatorEncryptedPublicKey as EncryptedPublicKey,
+        )
+        break
+      }
     }
   }
 
@@ -125,19 +162,21 @@ class SyncManager {
     )
     const timestamp = Date.now()
 
-    const userId = await this.cryptoLib.getRandomBytes(3)
+    const initiatorUserId = await this.cryptoLib.getRandomBytes(3)
     // add a I (for initiator) to ensure no userId conflicts
-    const userIdString = 'I' + Buffer.from(userId).readUInt16BE(0).toString()
+    const initiatorUserIdString =
+      'I' + Buffer.from(initiatorUserId).readUInt16BE(0).toString()
 
-    const jpak = new JPakeThreePass(userIdString)
+    const jpak = new JPakeThreePass(initiatorUserIdString)
     const pass1Result = jpak.pass1()
 
     const continuePromise = new Promise((resolve, reject) => {
       this.activeAddDeviceFlow = {
+        state: 'initiator:initiated',
         jpak,
         addDevicePassword,
-        userId,
-        userIdString,
+        initiatorUserId,
+        initiatorUserIdString,
         timestamp,
         resolveContinuePromise: resolve,
         rejectContinuePromise: reject,
@@ -145,17 +184,14 @@ class SyncManager {
     })
 
     // register this add device request at the server
-    const nonce = Buffer.from(await this.cryptoLib.getRandomBytes(16)).toString(
-      'base64',
-    )
     this.ws.send(
       JSON.stringify({
         type: 'registerAddDeviceFlowRequest',
         data: {
-          deviceIdentifier: this.deviceIdentifier,
-          userIdString,
+          initiatorDeviceIdentifier: this.deviceIdentifier,
+          initiatorUserIdString,
           timestamp,
-          nonce,
+          nonce: await this.getNonce(),
         },
       }),
     )
@@ -165,7 +201,8 @@ class SyncManager {
 
     const returnData: InitiateAddDeviceFlowResult = {
       addDevicePassword: Buffer.from(addDevicePassword).toString('base64'),
-      userIdString,
+      initiatorUserIdString,
+      initiatorDeviceIdentifier: this.deviceIdentifier,
       timestamp,
       pass1Result: {
         G1: Buffer.from(pass1Result.G1).toString('hex'),
@@ -199,12 +236,16 @@ class SyncManager {
     if (!this.ws || !this.webSocketConnected) {
       throw new Error('Server connection not available')
     }
+    if (this.activeAddDeviceFlow) {
+      throw new Error('Add device flow already active')
+    }
 
     const {
       addDevicePassword,
-      userIdString: initiatorUserIdString,
+      initiatorUserIdString: initiatorUserIdString,
       timestamp,
       pass1Result,
+      initiatorDeviceIdentifier,
     } = await decodeInitiatorData(
       initiatorData,
       await this.libraryLoader.getJsQrLib(),
@@ -215,7 +256,8 @@ class SyncManager {
       !addDevicePassword ||
       !initiatorUserIdString ||
       !timestamp ||
-      !pass1Result
+      !pass1Result ||
+      !initiatorDeviceIdentifier
     ) {
       throw new Error('Missing required fields in initiator data')
     }
@@ -223,11 +265,12 @@ class SyncManager {
     // Decode the base64 password
     const decodedPassword = Buffer.from(addDevicePassword, 'base64')
 
-    const userId = await this.cryptoLib.getRandomBytes(3)
+    const responderUserId = await this.cryptoLib.getRandomBytes(3)
     // add a R (for responder) to ensure no userId conflicts
-    const userIdString = 'R' + Buffer.from(userId).readUInt16BE(0).toString()
+    const responderUserIdString =
+      'R' + Buffer.from(responderUserId).readUInt16BE(0).toString()
 
-    const jpak = new JPakeThreePass(userIdString)
+    const jpak = new JPakeThreePass(responderUserIdString)
 
     // Process the first pass from the initiator
     const initiatorPass1Result = {
@@ -249,79 +292,206 @@ class SyncManager {
     }
 
     this.activeAddDeviceFlow = {
+      state: 'responder:initated',
       jpak,
       addDevicePassword: decodedPassword,
-      userId,
-      userIdString,
+      responderUserIdString,
+      initiatorUserIdString,
+      initiatorDeviceIdentifier,
       timestamp: Date.now(),
     }
 
     // respond to this add device request at the server
-    const nonce = Buffer.from(await this.cryptoLib.getRandomBytes(16)).toString(
-      'base64',
-    )
     this.ws.send(
       JSON.stringify({
         type: 'addDevicePassPass2Result',
         data: {
-          nonce,
+          nonce: await this.getNonce(),
           pass2Result,
-          userId: userIdString,
+          responderUserIdString,
           initiatorUserIdString,
+          responderDeviceIdentifier: this.deviceIdentifier,
         },
       }),
     )
   }
 
-  private async finishAddDeviceFlow(
+  private async finishAddDeviceFlowKeyExchangeInitiator(
     pass2Result: Pass2Result,
-    responderUserId: string,
+    responderUserIdString: string,
+    responderDeviceIdentifier: string,
   ) {
     if (!this.ws || !this.webSocketConnected) {
       throw new Error('Server connection not available')
     }
 
-    if (!this.activeAddDeviceFlow) {
-      throw new Error('No active add device flow')
+    if (this.activeAddDeviceFlow?.state !== 'initiator:initiated') {
+      throw new Error('Active add device flow in wrong state')
     }
 
     const pass3Result = this.activeAddDeviceFlow.jpak.pass3(
       pass2Result,
       this.activeAddDeviceFlow.addDevicePassword,
-      responderUserId,
+      responderUserIdString,
     )
 
-    const nonce = Buffer.from(await this.cryptoLib.getRandomBytes(16)).toString(
-      'base64',
-    )
     this.ws.send(
       JSON.stringify({
         type: 'addDevicePassPass3Result',
         data: {
-          nonce,
-          userId: this.activeAddDeviceFlow.userIdString,
+          nonce: await this.getNonce(),
+          initiatorUserIdString: this.activeAddDeviceFlow.initiatorUserIdString,
           pass3Result,
         },
       }),
     )
 
     const sharedKey = this.activeAddDeviceFlow.jpak.deriveSharedKey()
-    console.log('1', sharedKey)
+    const syncKey = await this.cryptoLib.createSyncKey(
+      sharedKey,
+      responderUserIdString.repeat(3), // repeat it so it is long enough to be used as a salt
+    )
+    this.activeAddDeviceFlow = {
+      ...this.activeAddDeviceFlow,
+      state: 'initiator:syncKeyCreated',
+      responderUserIdString,
+      responderDeviceIdentifier,
+      syncKey,
+    }
   }
 
-  private finishAddDeviceFlow2(pass3Result: Pass3Result) {
+  private async finishAddDeviceFlowKeyExchangeResponder(
+    pass3Result: Pass3Result,
+  ) {
     if (!this.ws || !this.webSocketConnected) {
       throw new Error('Server connection not available')
     }
 
-    if (!this.activeAddDeviceFlow) {
-      throw new Error('No active add device flow')
+    if (this.activeAddDeviceFlow?.state !== 'responder:initated') {
+      throw new Error('Active add device flow in wrong state')
+    }
+
+    if (!this.publicKey) {
+      throw new Error('Public key not set')
     }
 
     this.activeAddDeviceFlow.jpak.receivePass3Results(pass3Result)
 
     const sharedKey = this.activeAddDeviceFlow.jpak.deriveSharedKey()
-    console.log('2', sharedKey)
+    const syncKey = await this.cryptoLib.createSyncKey(
+      sharedKey,
+      this.activeAddDeviceFlow.responderUserIdString.repeat(3), // repeat it so it is long enough to be used as a salt
+    )
+    this.activeAddDeviceFlow = {
+      ...this.activeAddDeviceFlow,
+      state: 'responder:syncKeyCreated',
+      syncKey,
+    }
+
+    const responderEncryptedPublicKey = await this.cryptoLib.encryptSymmetric(
+      syncKey,
+      this.publicKey,
+    )
+    // send our public key
+    this.ws.send(
+      JSON.stringify({
+        type: 'addDeviceFlowSendPublicKey',
+        data: {
+          nonce: await this.getNonce(),
+          responderEncryptedPublicKey,
+          initiatorUserIdString: this.activeAddDeviceFlow.initiatorUserIdString,
+        },
+      }),
+    )
+  }
+
+  private async sendInitialVaultData(
+    responderEncryptedPublicKey: EncryptedPublicKey,
+  ) {
+    if (!this.ws || !this.webSocketConnected) {
+      throw new Error('Server connection not available')
+    }
+
+    if (this.activeAddDeviceFlow?.state !== 'initiator:syncKeyCreated') {
+      throw new Error('Active add device flow in wrong state')
+    }
+
+    if (!this.publicKey) {
+      throw new Error('Public key not set')
+    }
+
+    const syncKey = this.activeAddDeviceFlow.syncKey
+
+    // Decrypt the received public key
+    const decryptedPublicKey = await this.cryptoLib.decryptSymmetric(
+      syncKey,
+      responderEncryptedPublicKey,
+    )
+
+    // get the vault data (encrypted with the sync key)
+    const encryptedVaultData = await this.exportImportManager.exportEntries(
+      'text',
+      Buffer.from(syncKey, 'base64').toString('utf8'),
+    )
+    const initiatorEncryptedPublicKey = await this.cryptoLib.encryptSymmetric(
+      syncKey,
+      this.publicKey,
+    )
+
+    // Send the encrypted vault data to the server
+    this.ws.send(
+      JSON.stringify({
+        type: 'sendInitialVaultData',
+        data: {
+          nonce: await this.getNonce(),
+          encryptedVaultData,
+          initiatorUserIdString: this.activeAddDeviceFlow.initiatorUserIdString,
+          initiatorEncryptedPublicKey,
+        },
+      }),
+    )
+
+    this.syncDevices.push({
+      userIdString: this.activeAddDeviceFlow.responderUserIdString,
+      deviceIdentifier: this.activeAddDeviceFlow.responderDeviceIdentifier,
+      publicKey: decryptedPublicKey as PublicKey,
+    })
+
+    // all done
+    this.activeAddDeviceFlow = undefined
+  }
+
+  private async importInitialVaultData(
+    encryptedVaultData: string,
+    encryptedPublicKey: EncryptedPublicKey,
+  ) {
+    if (this.activeAddDeviceFlow?.state !== 'responder:syncKeyCreated') {
+      throw new Error('Active add device flow in wrong state')
+    }
+
+    const syncKey = this.activeAddDeviceFlow.syncKey
+
+    // Decrypt the received public key
+    const decryptedPublicKey = await this.cryptoLib.decryptSymmetric(
+      syncKey,
+      encryptedPublicKey,
+    )
+
+    // Import the encrypted vault data using the ExportImportManager
+    await this.exportImportManager.importFromTextFile(
+      encryptedVaultData,
+      Buffer.from(syncKey, 'base64').toString('utf8'),
+    )
+
+    // Update the sync devices list with the initiator's information
+    this.syncDevices.push({
+      userIdString: this.activeAddDeviceFlow.initiatorUserIdString,
+      deviceIdentifier: this.activeAddDeviceFlow.initiatorDeviceIdentifier,
+      publicKey: decryptedPublicKey as PublicKey,
+    })
+
+    // Reset the active add device flow
+    this.activeAddDeviceFlow = undefined
   }
 }
 

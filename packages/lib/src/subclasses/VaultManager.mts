@@ -1,18 +1,18 @@
 import { TOTP } from 'totp-generator'
 import { v4 as genUuidV4 } from 'uuid'
 
-import type Entry from './interfaces/Entry.js'
-import type { EntryId, EntryMeta, NewEntry } from './interfaces/Entry.js'
+import type Entry from '../interfaces/Entry.js'
+import type { EntryId, EntryMeta, NewEntry } from '../interfaces/Entry.js'
 
-import { EntryNotFoundError, TokenGenerationError } from './TwoFALibError.mjs'
+import { EntryNotFoundError, TokenGenerationError } from '../TwoFALibError.mjs'
 
 import {
   SUPPORTED_ALGORITHMS,
   SupportedAlgorithmsType,
-} from './utils/constants.mjs'
+} from '../utils/constants.mjs'
 
-import type TwoFaLib from './TwoFaLib.mjs'
-import { Vault } from './interfaces/Vault.js'
+import type PersistentStorageManager from './PersistentStorageManager.mjs'
+import { Vault } from '../interfaces/Vault.js'
 
 const getMetaForEntry = (entry: Entry) => ({
   id: entry.id,
@@ -27,7 +27,7 @@ const getMetaForEntry = (entry: Entry) => ({
 class VaultManager {
   private vault: Vault = []
 
-  constructor(private twoFaLib: TwoFaLib) {}
+  constructor(private persistentStorageManager: PersistentStorageManager) {}
 
   /**
    * Retrieve metadata for a specific entry.
@@ -140,9 +140,11 @@ class VaultManager {
     }
     this.vault.push(newEntry)
 
-    this.twoFaLib.__updateWasChangedSinceLastSave(['lockedRepresentation'])
+    this.persistentStorageManager.__updateWasChangedSinceLastSave([
+      'lockedRepresentation',
+    ])
 
-    await this.twoFaLib.save()
+    await this.persistentStorageManager.save()
 
     return newId
   }
@@ -157,8 +159,10 @@ class VaultManager {
     if (index === -1) throw new EntryNotFoundError('Entry not found')
     this.vault.splice(index, 1)
 
-    this.twoFaLib.__updateWasChangedSinceLastSave(['lockedRepresentation'])
-    await this.twoFaLib.save()
+    this.persistentStorageManager.__updateWasChangedSinceLastSave([
+      'lockedRepresentation',
+    ])
+    await this.persistentStorageManager.save()
   }
 
   /**
@@ -178,8 +182,10 @@ class VaultManager {
 
     this.vault[index] = { ...this.vault[index], ...updates, id }
 
-    this.twoFaLib.__updateWasChangedSinceLastSave(['lockedRepresentation'])
-    await this.twoFaLib.save()
+    this.persistentStorageManager.__updateWasChangedSinceLastSave([
+      'lockedRepresentation',
+    ])
+    await this.persistentStorageManager.save()
 
     return this.getEntryMeta(id)
   }

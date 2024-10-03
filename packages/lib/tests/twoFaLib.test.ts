@@ -145,7 +145,8 @@ describe('2falib', () => {
 
     const entryId = await result.twoFaLib.vault.addEntry(totpEntry)
 
-    const locked = await result.twoFaLib.getLockedRepresentation()
+    const locked =
+      await result.twoFaLib.persistentStorage.getLockedRepresentation()
     expect(locked).toHaveLength(345)
 
     const second2faLib = new TwoFaLib(deviceIdentifier, cryptoLib)
@@ -155,7 +156,7 @@ describe('2falib', () => {
       result.salt,
       'testpassword' as Passphrase,
     )
-    await second2faLib.loadFromLockedRepresentation(locked)
+    await second2faLib.persistentStorage.loadFromLockedRepresentation(locked)
 
     const retrieved = second2faLib.vault.getEntryMeta(entryId)
     expect(retrieved).toEqual(
@@ -348,7 +349,10 @@ describe('2falib', () => {
     )
     const originalTwoFaLib = result.twoFaLib
 
-    await originalTwoFaLib.changePassphrase(oldPassphrase, newPassphrase)
+    await originalTwoFaLib.persistentStorage.changePassphrase(
+      oldPassphrase,
+      newPassphrase,
+    )
 
     // Verify that the save function was called
     expect(mockSaveFunction).toHaveBeenCalled()
@@ -368,22 +372,31 @@ describe('2falib', () => {
 
     // Verify that the new passphrase works
     await expect(
-      newTwoFaLib.validatePassphrase(savedData.salt, newPassphrase),
+      newTwoFaLib.persistentStorage.validatePassphrase(
+        savedData.salt,
+        newPassphrase,
+      ),
     ).resolves.toBe(true)
 
     // Verify that the old passphrase no longer works
     await expect(
-      newTwoFaLib.validatePassphrase(savedData.salt, oldPassphrase),
+      newTwoFaLib.persistentStorage.validatePassphrase(
+        savedData.salt,
+        oldPassphrase,
+      ),
     ).resolves.toBe(false)
   }, 15000) // long running test
 
   it('should validate correct passphrase', async () => {
-    const isValid = await twoFaLib.validatePassphrase(salt, passphrase)
+    const isValid = await twoFaLib.persistentStorage.validatePassphrase(
+      salt,
+      passphrase,
+    )
     expect(isValid).toBe(true)
   })
 
   it('should invalidate incorrect passphrase', async () => {
-    const isValid = await twoFaLib.validatePassphrase(
+    const isValid = await twoFaLib.persistentStorage.validatePassphrase(
       salt,
       'wrongpassword!' as Passphrase,
     )
@@ -801,6 +814,10 @@ describe('2falib', () => {
         passphrase,
         'ws://example.org',
       )
+
+      if (!senderTwoFaLib.sync || !receiverTwoFaLib.sync) {
+        throw new Error('Sync manager not initialized')
+      }
 
       const initiateResultPromise =
         senderTwoFaLib.sync.initiateAddDeviceFlow(false)

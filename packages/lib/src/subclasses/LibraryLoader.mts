@@ -1,4 +1,4 @@
-import type CryptoLib from './interfaces/CryptoLib.js'
+import type CryptoLib from '../interfaces/CryptoLib.js'
 
 class LibraryLoader {
   // libraries that are always loaded

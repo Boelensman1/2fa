@@ -7,17 +7,21 @@ import {
   processImportLines,
   encryptExport,
   decryptExport,
-} from './utils/exportImportUtils.mjs'
-import { getImageDataBrowser, getImageDataNode } from './utils/getImageData.mjs'
+} from '../utils/exportImportUtils.mjs'
+import {
+  getImageDataBrowser,
+  getImageDataNode,
+} from '../utils/getImageData.mjs'
+import { EntryId } from '../interfaces/Entry.js'
+
+import type PersistentStorageManager from './PersistentStorageManager.mjs'
 import type LibraryLoader from './LibraryLoader.mjs'
-import type TwoFaLib from './TwoFaLib.mjs'
-import { EntryId } from './interfaces/Entry.js'
-import VaultManager from './VaultManager.mjs'
+import type VaultManager from './VaultManager.mjs'
 
 class ExportImportManager {
   constructor(
     private libraryLoader: LibraryLoader,
-    private twoFaLib: TwoFaLib,
+    private persistentStorageManager: PersistentStorageManager,
     private vaultManager: VaultManager,
   ) {}
 
@@ -90,7 +94,7 @@ class ExportImportManager {
     )
 
     // call save again to make sure we're not caught in a race condition
-    await this.twoFaLib.save()
+    await this.persistentStorageManager.save()
 
     return result
   }

@@ -3,21 +3,16 @@ import type {
   EncryptedPrivateKey,
   EncryptedSymmetricKey,
   Passphrase,
-  PrivateKey,
   Salt,
-  SymmetricKey,
 } from './interfaces/CryptoLib.js'
 
-import { InitializationError, AuthenticationError } from './TwoFALibError.mjs'
 import { SaveFunction } from './interfaces/SaveFunction.js'
-import { WasChangedSinceLastSave } from './interfaces/WasChangedSinceLastSave.js'
-import { Vault } from './interfaces/Vault.js'
 
-import SyncManager from './SyncManager.mjs'
-import LibraryLoader from './LibraryLoader.mjs'
-import VaultManager from './VaultManager.mjs'
-import ExportImportManager from './ExportImportManager.mjs'
-
+import SyncManager from './subclasses/SyncManager.mjs'
+import LibraryLoader from './subclasses/LibraryLoader.mjs'
+import VaultManager from './subclasses/VaultManager.mjs'
+import ExportImportManager from './subclasses/ExportImportManager.mjs'
+import PersistentStorageManager from './subclasses/PersistentStorageManager.mjs'
 /**
  * Two-Factor Authentication Library
  * This library provides functionality for managing 2FA entries
@@ -26,24 +21,11 @@ import ExportImportManager from './ExportImportManager.mjs'
 class TwoFaLib {
   public readonly deviceIdentifier
 
-  private saveFunction?: SaveFunction
-  private privateKey?: PrivateKey
-  private encryptedPrivateKey?: EncryptedPrivateKey
-  private encryptedSymmetricKey?: EncryptedSymmetricKey
-  private symmetricKey?: SymmetricKey
-  private salt?: Salt
-
   private libraryLoader: LibraryLoader
-  private syncManager: SyncManager
   private exportImportManager: ExportImportManager
   private vaultManager: VaultManager
-
-  private wasChangedSinceLastSave: WasChangedSinceLastSave = {
-    lockedRepresentation: true,
-    encryptedPrivateKey: true,
-    encryptedSymmetricKey: true,
-    salt: true,
-  }
+  private persistentStorageManager: PersistentStorageManager
+  private syncManager?: SyncManager
 
   constructor(
     deviceIdentifier: string,
@@ -57,25 +39,18 @@ class TwoFaLib {
       throw new Error('Device identifier is too long, max 256 characters')
     }
     this.deviceIdentifier = deviceIdentifier
-    this.saveFunction = saveFunction
 
     this.libraryLoader = new LibraryLoader(cryptoLib)
-    this.vaultManager = new VaultManager(this)
+    this.persistentStorageManager = new PersistentStorageManager(
+      this.libraryLoader,
+      saveFunction,
+    )
+    this.vaultManager = new VaultManager(this.persistentStorageManager)
     this.exportImportManager = new ExportImportManager(
       this.libraryLoader,
-      this,
+      this.persistentStorageManager,
       this.vaultManager,
     )
-    this.syncManager = new SyncManager(
-      this.libraryLoader,
-      this.vaultManager,
-      this.exportImportManager,
-      deviceIdentifier,
-    )
-  }
-
-  private get cryptoLib() {
-    return this.libraryLoader.getCryptoLib()
   }
 
   get vault() {
@@ -90,41 +65,15 @@ class TwoFaLib {
     return this.syncManager
   }
 
+  get persistentStorage() {
+    return this.persistentStorageManager
+  }
+
   get inAddDeviceFlow(): boolean {
-    return this.syncManager.inAddDeviceFlow
+    return this.syncManager?.inAddDeviceFlow ?? false
   }
   get webSocketConnected(): boolean {
-    return this.syncManager.webSocketConnected
-  }
-
-  async save() {
-    if (
-      !this.encryptedPrivateKey ||
-      !this.encryptedSymmetricKey ||
-      !this.salt
-    ) {
-      throw new InitializationError('Initialisation not completed')
-    }
-
-    if (this.saveFunction) {
-      const wasChangedSinceLastSaveCache = this.wasChangedSinceLastSave
-      this.wasChangedSinceLastSave = {
-        lockedRepresentation: false,
-        encryptedPrivateKey: false,
-        encryptedSymmetricKey: false,
-        salt: false,
-      }
-      const lockedRepresentation = await this.getLockedRepresentation()
-      return this.saveFunction(
-        {
-          lockedRepresentation,
-          encryptedPrivateKey: this.encryptedPrivateKey,
-          encryptedSymmetricKey: this.encryptedSymmetricKey,
-          salt: this.salt,
-        },
-        wasChangedSinceLastSaveCache,
-      )
-    }
+    return this.syncManager?.webSocketConnected ?? false
   }
 
   /**
@@ -143,140 +92,24 @@ class TwoFaLib {
     passphrase: Passphrase,
     serverUrl?: string,
   ): Promise<void> {
-    const { privateKey, symmetricKey, publicKey } =
-      await this.cryptoLib.decryptKeys(
-        encryptedPrivateKey,
-        encryptedSymmetricKey,
-        salt,
-        passphrase,
-      )
-    this.privateKey = privateKey
-    this.symmetricKey = symmetricKey
-    this.encryptedPrivateKey = encryptedPrivateKey
-    this.encryptedSymmetricKey = encryptedSymmetricKey
-    this.salt = salt
-    this.wasChangedSinceLastSave = {
-      lockedRepresentation: true,
-      encryptedPrivateKey: true,
-      encryptedSymmetricKey: true,
-      salt: true,
-    }
-    this.syncManager.setPublicKey(publicKey)
+    const { publicKey } = await this.persistentStorageManager.init(
+      this.vaultManager, // passed here to avoid circular dependency
+      encryptedPrivateKey,
+      encryptedSymmetricKey,
+      salt,
+      passphrase,
+    )
 
     if (serverUrl) {
-      if (!serverUrl.startsWith('ws://') && !serverUrl.startsWith('wss://')) {
-        throw new Error('Invalid server URL, protocol must be ws or wss')
-      }
-      this.syncManager.initServerConnection(serverUrl)
-    }
-  }
-
-  /**
-   * Get a locked representation of the library's current state.
-   * This can be used for secure storage or transmission of the library's data.
-   * @returns A promise that resolves with a string representation of the locked state.
-   */
-  async getLockedRepresentation(): Promise<string> {
-    if (!this.symmetricKey) {
-      throw new InitializationError('PublicKey missing')
-    }
-    return await this.cryptoLib.encryptSymmetric(
-      this.symmetricKey,
-      JSON.stringify(this.vaultManager.__getEntriesForExport()),
-    )
-  }
-
-  /**
-   * Load the library state from a previously locked representation.
-   * @param lockedRepresentation - The string representation of the locked state.
-   * @returns A promise that resolves when loading is complete.
-   * @throws {InitializationError} If loading fails due to invalid or corrupted data.
-   */
-  async loadFromLockedRepresentation(
-    lockedRepresentation: string,
-  ): Promise<void> {
-    if (!this.symmetricKey) {
-      throw new InitializationError('PrivateKey missing')
-    }
-    const newVault = JSON.parse(
-      await this.cryptoLib.decryptSymmetric(
-        this.symmetricKey,
-        lockedRepresentation,
-      ),
-    ) as Vault
-    this.vaultManager.replaceVault(newVault)
-    this.wasChangedSinceLastSave.lockedRepresentation = true
-  }
-
-  /**
-   * Validate the provided passphrase against the current library passphrase.
-   * @param passphrase - The passphrase to validate.
-   * @returns A promise that resolves with a boolean indicating whether the passphrase is valid.
-   */
-  async validatePassphrase(
-    salt: Salt,
-    passphrase: Passphrase,
-  ): Promise<boolean> {
-    if (!this.encryptedPrivateKey)
-      throw new InitializationError('EncryptedPrivateKey missing')
-    if (!this.encryptedSymmetricKey)
-      throw new InitializationError('EncryptedSymmetricKey missing')
-    try {
-      await this.cryptoLib.decryptKeys(
-        this.encryptedPrivateKey,
-        this.encryptedSymmetricKey,
-        salt,
-        passphrase,
+      this.syncManager = new SyncManager(
+        this.libraryLoader,
+        this.vaultManager,
+        this.exportImportManager,
+        this.deviceIdentifier,
+        publicKey,
+        serverUrl,
       )
-      return true
-    } catch {
-      return false
     }
-  }
-
-  /**
-   * Change the library's passphrase.
-   * @param oldPassphrase - The current passphrase.
-   * @param newPassphrase - The new passphrase to set.
-   * @returns A promise that resolves when the passphrase change is complete.
-   * @throws {AuthenticationError} If the provided old passphrase is incorrect.
-   */
-  async changePassphrase(
-    oldPassphrase: Passphrase,
-    newPassphrase: Passphrase,
-  ): Promise<void> {
-    if (!this.privateKey) throw new InitializationError('PrivateKey missing')
-    if (!this.symmetricKey)
-      throw new InitializationError('SymmetricKey missing')
-    if (!this.salt) throw new InitializationError('Salt missing')
-
-    const isValid = await this.validatePassphrase(this.salt, oldPassphrase)
-    if (!isValid) throw new AuthenticationError('Invalid old passphrase')
-
-    const {
-      encryptedPrivateKey: newEncryptedPrivateKey,
-      encryptedSymmetricKey: newEncryptedSymmetricKey,
-    } = await this.cryptoLib.encryptKeys(
-      this.privateKey,
-      this.symmetricKey,
-      this.salt,
-      newPassphrase,
-    )
-    this.wasChangedSinceLastSave.encryptedPrivateKey = true
-    this.wasChangedSinceLastSave.lockedRepresentation = true
-    await this.init(
-      newEncryptedPrivateKey,
-      newEncryptedSymmetricKey,
-      this.salt,
-      newPassphrase,
-    )
-    await this.save()
-  }
-
-  __updateWasChangedSinceLastSave(changed: (keyof WasChangedSinceLastSave)[]) {
-    changed.forEach((change) => {
-      this.wasChangedSinceLastSave[change] = true
-    })
   }
 }
 
@@ -298,7 +131,7 @@ export const createTwoFaLib = async (
     passphrase,
     serverUrl,
   )
-  await twoFaLib.save()
+  await twoFaLib.persistentStorage.save()
 
   return {
     twoFaLib,

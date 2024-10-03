@@ -8,16 +8,17 @@ import {
 import {
   ActiveAddDeviceFlow,
   InitiateAddDeviceFlowResult,
-} from './interfaces/SyncTypes.js'
-import { decodeInitiatorData, jsonToUint8Array } from './utils/syncUtils.mjs'
+} from '../interfaces/SyncTypes.js'
+import { decodeInitiatorData, jsonToUint8Array } from '../utils/syncUtils.mjs'
+import type { EncryptedPublicKey, PublicKey } from '../interfaces/CryptoLib.js'
 
 import type LibraryLoader from './LibraryLoader.mjs'
 import type VaultManager from './VaultManager.mjs'
 import type ExportImportManager from './ExportImportManager.mjs'
-import type { EncryptedPublicKey, PublicKey } from './interfaces/CryptoLib.js'
 
 // Ensure Buffer is available globally for the browser environment
 import { Buffer } from 'buffer'
+import { InitializationError } from '../TwoFALibError.mjs'
 globalThis.Buffer = Buffer
 
 interface SyncDevice {
@@ -29,7 +30,6 @@ interface SyncDevice {
 class SyncManager {
   private ws?: WebSocket
   private activeAddDeviceFlow?: ActiveAddDeviceFlow
-  private publicKey?: PublicKey
   syncDevices: SyncDevice[] = []
 
   constructor(
@@ -37,7 +37,16 @@ class SyncManager {
     private readonly vaultManager: VaultManager,
     private readonly exportImportManager: ExportImportManager,
     private readonly deviceIdentifier: string,
-  ) {}
+    private readonly publicKey: PublicKey,
+    serverUrl: string,
+  ) {
+    if (!serverUrl.startsWith('ws://') && !serverUrl.startsWith('wss://')) {
+      throw new InitializationError(
+        'Invalid server URL, protocol must be ws or wss',
+      )
+    }
+    this.initServerConnection(serverUrl)
+  }
 
   private get cryptoLib() {
     return this.libraryLoader.getCryptoLib()
@@ -53,10 +62,6 @@ class SyncManager {
     return Buffer.from(await this.cryptoLib.getRandomBytes(16)).toString(
       'base64',
     )
-  }
-
-  setPublicKey(publicKey: PublicKey) {
-    this.publicKey = publicKey
   }
 
   initServerConnection(serverUrl: string) {

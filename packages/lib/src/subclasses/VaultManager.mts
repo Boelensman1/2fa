@@ -29,6 +29,10 @@ class VaultManager {
 
   constructor(private persistentStorageManager: PersistentStorageManager) {}
 
+  get size() {
+    return this.vault.length
+  }
+
   /**
    * Retrieve metadata for a specific entry.
    * @param entryId - The unique identifier of the entry.

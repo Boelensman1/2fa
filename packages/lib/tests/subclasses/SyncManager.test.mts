@@ -18,7 +18,12 @@ import {
   TwoFaLib,
 } from '../../src/main.mjs'
 
-import { createTwoFaLibForTests, passphrase, totpEntry } from '../testUtils.js'
+import {
+  anotherTotpEntry,
+  createTwoFaLibForTests,
+  passphrase,
+  totpEntry,
+} from '../testUtils.js'
 import { Client as WsClient } from 'mock-socket'
 import {
   SyncAddDeviceFlowConflictError,
@@ -196,5 +201,35 @@ describe('SyncManager', () => {
     // nonces must be different
     const nonces = messageDatas.map((d) => (d as { nonce: string }).nonce)
     expect(new Set(nonces).size).toEqual(nonces.length)
+
+    // if we now add an entry to one of the libs, it should also be pushed to the other
+    const addedEntryId = await senderTwoFaLib.vault.addEntry(anotherTotpEntry)
+    await vi.waitUntil(() => receiverTwoFaLib.vault.size !== 1, {
+      timeout: 1000,
+      interval: 20,
+    })
+    expect(receiverTwoFaLib.vault.listEntries()).toEqual(
+      senderTwoFaLib.vault.listEntries(),
+    )
+
+    // and the other way around
+    await receiverTwoFaLib.vault.addEntry(totpEntry)
+    await vi.waitUntil(() => senderTwoFaLib.vault.size !== 2, {
+      timeout: 1000,
+      interval: 20,
+    })
+    expect(senderTwoFaLib.vault.listEntries()).toEqual(
+      receiverTwoFaLib.vault.listEntries(),
+    )
+
+    // if we delete an entry in one of the libs, it should also be deleted in the other
+    await senderTwoFaLib.vault.deleteEntry(addedEntryId)
+    await vi.waitUntil(() => receiverTwoFaLib.vault.size !== 2, {
+      timeout: 1000,
+      interval: 20,
+    })
+    expect(receiverTwoFaLib.vault.listEntries()).toEqual(
+      senderTwoFaLib.vault.listEntries(),
+    )
   })
 })

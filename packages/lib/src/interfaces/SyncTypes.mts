@@ -1,5 +1,14 @@
+import { Tagged } from 'type-fest'
 import type { JPakeThreePass, Round1Result } from 'jpake'
-import { SyncKey } from './CryptoLib.mjs'
+import { PublicKey, SyncKey } from './CryptoLib.mjs'
+
+export type UserId = Tagged<string, 'UserId'>
+
+export interface SyncDevice {
+  userId: string
+  deviceIdentifier: string
+  publicKey: PublicKey
+}
 
 export interface BaseAddDeviceFlow {
   jpak: JPakeThreePass
@@ -12,7 +21,6 @@ export interface AddDeviceFlowInitiator_Initiated extends BaseAddDeviceFlow {
   state: 'initiator:initiated'
   resolveContinuePromise: (value: unknown) => void
   rejectContinuePromise: (error: Error) => void
-  initiatorUserId: Uint8Array
   initiatorUserIdString: string
 }
 

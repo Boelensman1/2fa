@@ -131,6 +131,12 @@ interface CryptoLib {
    * @returns A promise that resolves to the derived key
    */
   createSyncKey: (sharedKey: Uint8Array, salt: string) => Promise<SyncKey>
+
+  /**
+   * Creates a random symmetric key
+   * @returns A promise that resolves to the newly created symmetric key
+   */
+  createSymmetricKey: () => Promise<SymmetricKey>
 }
 
 export default CryptoLib

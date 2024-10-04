@@ -1,8 +1,7 @@
 import { TOTP } from 'totp-generator'
-import { v4 as genUuidV4 } from 'uuid'
 
 import type Entry from '../interfaces/Entry.mjs'
-import type { EntryId, EntryMeta, NewEntry } from '../interfaces/Entry.mjs'
+import type { EntryId } from '../interfaces/Entry.mjs'
 
 import { EntryNotFoundError, TokenGenerationError } from '../TwoFALibError.mjs'
 
@@ -14,16 +13,6 @@ import {
 import type PersistentStorageManager from './PersistentStorageManager.mjs'
 import { Vault } from '../interfaces/Vault.mjs'
 
-const getMetaForEntry = (entry: Entry) => ({
-  id: entry.id,
-  name: entry.name,
-  issuer: entry.issuer,
-  type: entry.type,
-  order: entry.order,
-  addedAt: entry.addedAt,
-  updatedAt: entry.updatedAt,
-})
-
 class VaultManager {
   private vault: Vault = []
 
@@ -34,63 +23,19 @@ class VaultManager {
   }
 
   /**
-   * Retrieve metadata for a specific entry.
+   * Retrieve a specific entry.
    * @param entryId - The unique identifier of the entry.
-   * @returns The entry's metadata.
+   * @returns The entry
    * @throws {EntryNotFoundError} If no entry exists with the given ID.
    */
-  getEntryMeta(entryId: EntryId): EntryMeta {
+  getFullEntry(entryId: EntryId): Entry {
     const entry = this.vault.find((e) => e.id === entryId)
     if (!entry) throw new EntryNotFoundError('Entry not found')
-    return getMetaForEntry(entry)
+    return entry
   }
 
-  /**
-   * Search for entries matching the provided query.
-   * @param query - The search query string.
-   * @returns An array of matching entry IDs.
-   */
-  searchEntries(query: string): EntryId[] {
-    const lowercaseQuery = query.toLowerCase()
+  getAllEntries() {
     return this.vault
-      .filter(
-        (entry) =>
-          entry.name.toLowerCase().includes(lowercaseQuery) ||
-          entry.issuer.toLowerCase().includes(lowercaseQuery),
-      )
-      .map((entry) => entry.id)
-  }
-
-  /**
-   * Search for entries matching the provided query.
-   * @param query - The search query string.
-   * @returns An array of matching entry metas.
-   */
-  searchEntriesMetas(query: string): EntryMeta[] {
-    const lowercaseQuery = query.toLowerCase()
-    return this.vault
-      .filter(
-        (entry) =>
-          entry.name.toLowerCase().includes(lowercaseQuery) ||
-          entry.issuer.toLowerCase().includes(lowercaseQuery),
-      )
-      .map((entry) => getMetaForEntry(entry))
-  }
-
-  /**
-   * Retrieve a list of all entry IDs in the library.
-   * @returns An array of all entry IDs.
-   */
-  listEntries(): EntryId[] {
-    return this.vault.map((entry) => entry.id)
-  }
-
-  /**
-   * Retrieve a list of all entry metas in the library.
-   * @returns An array of all entry metas.
-   */
-  listEntriesMetas(): EntryMeta[] {
-    return this.vault.map((entry) => getMetaForEntry(entry))
   }
 
   /**
@@ -133,24 +78,14 @@ class VaultManager {
    * @returns A promise that resolves to the newly generated EntryId.
    * @throws {InvalidInputError} If the provided entry data is invalid or incomplete.
    */
-  async addEntry(entry: NewEntry): Promise<EntryId> {
-    const newId = genUuidV4() as EntryId
-    const newEntry: Entry = {
-      ...entry,
-      id: newId,
-      order: entry.order ?? 0,
-      addedAt: Date.now(),
-      updatedAt: null,
-    }
-    this.vault.push(newEntry)
+  async addEntry(entry: Entry): Promise<void> {
+    this.vault.push(entry)
 
     this.persistentStorageManager.__updateWasChangedSinceLastSave([
       'lockedRepresentation',
     ])
 
     await this.persistentStorageManager.save()
-
-    return newId
   }
 
   /**
@@ -171,35 +106,26 @@ class VaultManager {
 
   /**
    * Update an existing entry in the library.
-   * @param id - The unique identifier of the entry to update.
-   * @param updates - An object containing the fields to update and their new values.
-   * @returns A promise that resolves to the updated entry's metadata.
+   * @param updatedEntry - An object containing the updated entry
+   * @returns A promise that resolves when done.
    * @throws {EntryNotFoundError} If no entry exists with the given ID.
    * @throws {InvalidInputError} If the update data is invalid or would result in an invalid entry.
    */
-  async updateEntry(
-    id: EntryId,
-    updates: Partial<Omit<Entry, 'id'>>,
-  ): Promise<EntryMeta> {
+  async updateEntry(updatedEntry: Entry): Promise<void> {
+    const { id } = updatedEntry
     const index = this.vault.findIndex((e) => e.id === id)
     if (index === -1) throw new EntryNotFoundError('Entry not found')
 
-    this.vault[index] = { ...this.vault[index], ...updates, id }
+    this.vault[index] = updatedEntry
 
     this.persistentStorageManager.__updateWasChangedSinceLastSave([
       'lockedRepresentation',
     ])
     await this.persistentStorageManager.save()
-
-    return this.getEntryMeta(id)
   }
 
   replaceVault(newVault: Vault) {
     this.vault = newVault
-  }
-
-  __getEntriesForExport() {
-    return this.vault
   }
 }
 

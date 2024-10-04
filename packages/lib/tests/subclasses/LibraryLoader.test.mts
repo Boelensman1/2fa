@@ -25,6 +25,7 @@ describe('LibraryLoader', () => {
       decryptSymmetric: vi.fn(),
       getRandomBytes: vi.fn(),
       createSyncKey: vi.fn(),
+      createSymmetricKey: vi.fn(),
     }
     libraryLoader = new LibraryLoader(cryptoLib)
   })

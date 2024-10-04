@@ -12,6 +12,9 @@ const AddDevice = () => {
       if (!twoFaLib) {
         throw new Error('twoFaLib not loaded')
       }
+      if (!twoFaLib.sync) {
+        throw new Error('sync not loaded / no server connection')
+      }
 
       const result = await twoFaLib.sync.initiateAddDeviceFlow(true)
       setQrCodeData(result)

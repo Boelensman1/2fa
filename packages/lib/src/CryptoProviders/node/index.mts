@@ -42,6 +42,11 @@ const generatePassphraseHash = (salt: Salt, passphrase: string) => {
 }
 
 class NodeCryptoLib implements CryptoLib {
+  async createSymmetricKey(): Promise<SymmetricKey> {
+    const key = await generateKey('aes', { length: 256 })
+    return key.export().toString('base64') as SymmetricKey
+  }
+
   async createKeys(passphrase: Passphrase) {
     // create random salt
     const salt = randomBytes(16).toString('base64') as Salt
@@ -65,16 +70,10 @@ class NodeCryptoLib implements CryptoLib {
         },
       })
 
-    // Generate symmetric key
-    const symmetricKey = await generateKey('aes', { length: 256 })
-    const exportedSymmetricKey = symmetricKey
-      .export()
-      .toString('base64') as SymmetricKey
-
-    // Encrypt symmetric key with public key
+    // Create and encrypt symmetric key with public key
     const encryptedSymmetricKey = await this.encrypt(
       publicKey as PublicKey,
-      exportedSymmetricKey,
+      await this.createSymmetricKey(),
     )
 
     return {

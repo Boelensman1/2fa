@@ -10,6 +10,9 @@ const ConnectToExistingVault = () => {
     if (!twoFaLib) {
       throw new Error('twoFaLib not loaded')
     }
+    if (!twoFaLib.sync) {
+      throw new Error('sync not loaded / no server connection')
+    }
 
     const items = event.clipboardData?.items
     if (!items) {

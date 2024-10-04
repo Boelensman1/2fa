@@ -1,3 +1,4 @@
+import { v4 as genUuidV4 } from 'uuid'
 import type CryptoLib from './interfaces/CryptoLib.mjs'
 import type {
   EncryptedPrivateKey,
@@ -6,14 +7,18 @@ import type {
   Salt,
 } from './interfaces/CryptoLib.mjs'
 
-import { SaveFunction } from './interfaces/SaveFunction.mjs'
+import type { SaveFunction } from './interfaces/SaveFunction.mjs'
+import type { SyncDevice, UserId } from './interfaces/SyncTypes.mjs'
+
+import { InitializationError } from './TwoFALibError.mjs'
 
 import SyncManager from './subclasses/SyncManager.mjs'
 import LibraryLoader from './subclasses/LibraryLoader.mjs'
-import VaultManager from './subclasses/VaultManager.mjs'
 import ExportImportManager from './subclasses/ExportImportManager.mjs'
 import PersistentStorageManager from './subclasses/PersistentStorageManager.mjs'
-import { InitializationError } from './TwoFALibError.mjs'
+import InternalVaultManager from './subclasses/InternalVaultManager.mjs'
+import ExternalVaultManager from './subclasses/ExternalVaultManager.mjs'
+import CommandManager from './subclasses/CommandManager.mjs'
 /**
  * Two-Factor Authentication Library
  * This library provides functionality for managing 2FA entries
@@ -21,11 +26,14 @@ import { InitializationError } from './TwoFALibError.mjs'
  */
 class TwoFaLib {
   public readonly deviceIdentifier
+  public readonly userId?: UserId
 
   private libraryLoader: LibraryLoader
   private exportImportManager: ExportImportManager
-  private vaultManager: VaultManager
+  private internalVaultManager: InternalVaultManager
+  private externalVaultManager: ExternalVaultManager
   private persistentStorageManager: PersistentStorageManager
+  private commandManager: CommandManager
   private syncManager?: SyncManager
 
   constructor(
@@ -46,18 +54,27 @@ class TwoFaLib {
     this.libraryLoader = new LibraryLoader(cryptoLib)
     this.persistentStorageManager = new PersistentStorageManager(
       this.libraryLoader,
+      this,
       saveFunction,
     )
-    this.vaultManager = new VaultManager(this.persistentStorageManager)
+    this.internalVaultManager = new InternalVaultManager(
+      this.persistentStorageManager,
+    )
+    this.commandManager = new CommandManager(this.internalVaultManager)
+    this.externalVaultManager = new ExternalVaultManager(
+      this.internalVaultManager,
+      this.commandManager,
+    )
     this.exportImportManager = new ExportImportManager(
       this.libraryLoader,
       this.persistentStorageManager,
-      this.vaultManager,
+      this.externalVaultManager,
+      this.internalVaultManager,
     )
   }
 
   get vault() {
-    return this.vaultManager
+    return this.externalVaultManager
   }
 
   get exportImport() {
@@ -86,10 +103,16 @@ class TwoFaLib {
     encryptedSymmetricKey: EncryptedSymmetricKey,
     salt: Salt,
     passphrase: Passphrase,
+    userId: UserId,
     serverUrl?: string,
+    syncDevices?: SyncDevice[],
   ): Promise<void> {
-    const { publicKey } = await this.persistentStorageManager.init(
-      this.vaultManager, // passed here to avoid circular dependency
+    // @ts-expect-error userId is readonly but we can't set it in the constructor
+    this.userId = userId
+
+    const { publicKey, privateKey } = await this.persistentStorageManager.init(
+      userId,
+      this.internalVaultManager, // passed here to avoid circular dependency
       encryptedPrivateKey,
       encryptedSymmetricKey,
       salt,
@@ -99,12 +122,17 @@ class TwoFaLib {
     if (serverUrl) {
       this.syncManager = new SyncManager(
         this.libraryLoader,
-        this.vaultManager,
+        this.commandManager,
         this.persistentStorageManager,
         this.deviceIdentifier,
         publicKey,
+        privateKey,
         serverUrl,
+        userId,
+        syncDevices,
       )
+      this.commandManager.setSyncManager(this.syncManager)
+      this.persistentStorageManager.setSyncManager(this.syncManager)
     }
   }
 }
@@ -119,12 +147,14 @@ export const createTwoFaLib = async (
   const { publicKey, encryptedPrivateKey, encryptedSymmetricKey, salt } =
     await cryptolib.createKeys(passphrase)
 
+  const userId = genUuidV4() as UserId
   const twoFaLib = new TwoFaLib(deviceIdentifier, cryptolib, saveFunction)
   await twoFaLib.init(
     encryptedPrivateKey,
     encryptedSymmetricKey,
     salt,
     passphrase,
+    userId,
     serverUrl,
   )
   await twoFaLib.persistentStorage.save()

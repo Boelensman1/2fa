@@ -16,14 +16,16 @@ import { EntryId } from '../interfaces/Entry.mjs'
 
 import type PersistentStorageManager from './PersistentStorageManager.mjs'
 import type LibraryLoader from './LibraryLoader.mjs'
-import type VaultManager from './VaultManager.mjs'
+import type ExternalVaultManager from './ExternalVaultManager.mjs'
+import type InternalVaultManager from './InternalVaultManager.mjs'
 import { ExportImportError } from '../TwoFALibError.mjs'
 
 class ExportImportManager {
   constructor(
     private libraryLoader: LibraryLoader,
     private persistentStorageManager: PersistentStorageManager,
-    private vaultManager: VaultManager,
+    private externalVaultManager: ExternalVaultManager,
+    private internalVaultManager: InternalVaultManager,
   ) {}
 
   /**
@@ -58,14 +60,14 @@ class ExportImportManager {
   }
 
   private generateTextExport(): string {
-    return generateTextExport(this.vaultManager.__getEntriesForExport())
+    return generateTextExport(this.internalVaultManager.getAllEntries())
   }
 
   private async generateHtmlExport(): Promise<string> {
     const qrGeneratorLib = await this.libraryLoader.getQrGeneratorLib()
     return generateHtmlExport(
       qrGeneratorLib,
-      this.vaultManager.__getEntriesForExport(),
+      this.internalVaultManager.getAllEntries(),
     )
   }
 
@@ -111,7 +113,7 @@ class ExportImportManager {
 
     const newEntry = parseOtpUri(UrlParser, otpUri.trim())
 
-    return this.vaultManager.addEntry(newEntry)
+    return this.externalVaultManager.addEntry(newEntry)
   }
 
   /**

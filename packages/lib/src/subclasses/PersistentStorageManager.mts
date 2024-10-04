@@ -11,15 +11,20 @@ import type {
 } from '../interfaces/CryptoLib.mjs'
 import { Vault } from '../interfaces/Vault.mjs'
 
+import type TwoFaLib from '../TwoFaLib.mjs'
 import type LibraryLoader from './LibraryLoader.mjs'
-import type VaultManager from './VaultManager.mjs'
+import type InternalVaultManager from './InternalVaultManager.mjs'
+import type SyncManager from './SyncManager.mjs'
 
-import { SaveFunction } from '../interfaces/SaveFunction.mjs'
-import { WasChangedSinceLastSave } from '../interfaces/WasChangedSinceLastSave.mjs'
+import type { SaveFunction } from '../interfaces/SaveFunction.mjs'
+import type { WasChangedSinceLastSave } from '../interfaces/WasChangedSinceLastSave.mjs'
+import type { UserId } from '../interfaces/SyncTypes.mjs'
 
 class PersistentStorageManager {
-  private vaultManager!: VaultManager
+  private internalVaultManager!: InternalVaultManager
+  private syncManager?: SyncManager
 
+  private userId?: UserId
   private privateKey?: PrivateKey
   private encryptedPrivateKey?: EncryptedPrivateKey
   private encryptedSymmetricKey?: EncryptedSymmetricKey
@@ -30,10 +35,13 @@ class PersistentStorageManager {
     encryptedPrivateKey: true,
     encryptedSymmetricKey: true,
     salt: true,
+    userId: true,
+    syncDevices: true,
   }
 
   constructor(
     private libraryLoader: LibraryLoader,
+    private twoFaLib: TwoFaLib,
     private saveFunction?: SaveFunction,
   ) {}
 
@@ -51,7 +59,8 @@ class PersistentStorageManager {
    * @throws {AuthenticationError} If the provided passphrase is incorrect.
    */
   async init(
-    vaultManager: VaultManager,
+    userId: UserId,
+    vaultManager: InternalVaultManager,
     encryptedPrivateKey: EncryptedPrivateKey,
     encryptedSymmetricKey: EncryptedSymmetricKey,
     salt: Salt,
@@ -61,7 +70,8 @@ class PersistentStorageManager {
     symmetricKey: SymmetricKey
     publicKey: PublicKey
   }> {
-    this.vaultManager = vaultManager
+    this.userId = userId
+    this.internalVaultManager = vaultManager
     const { privateKey, symmetricKey, publicKey } =
       await this.cryptoLib.decryptKeys(
         encryptedPrivateKey,
@@ -79,9 +89,15 @@ class PersistentStorageManager {
       encryptedPrivateKey: true,
       encryptedSymmetricKey: true,
       salt: true,
+      userId: true,
+      syncDevices: true,
     }
 
     return { privateKey, symmetricKey, publicKey }
+  }
+
+  setSyncManager(syncManager: SyncManager) {
+    this.syncManager = syncManager
   }
 
   /**
@@ -97,7 +113,7 @@ class PersistentStorageManager {
     }
     return await this.cryptoLib.encryptSymmetric(
       key ?? this.symmetricKey,
-      JSON.stringify(this.vaultManager.__getEntriesForExport()),
+      JSON.stringify(this.internalVaultManager.getAllEntries()),
     )
   }
 
@@ -122,7 +138,7 @@ class PersistentStorageManager {
         lockedRepresentation,
       ),
     ) as Vault
-    this.vaultManager.replaceVault(newVault)
+    this.internalVaultManager.replaceVault(newVault)
     this.wasChangedSinceLastSave.lockedRepresentation = true
   }
 
@@ -130,7 +146,8 @@ class PersistentStorageManager {
     if (
       !this.encryptedPrivateKey ||
       !this.encryptedSymmetricKey ||
-      !this.salt
+      !this.salt ||
+      !this.userId
     ) {
       throw new InitializationError('Initialisation not completed')
     }
@@ -142,6 +159,8 @@ class PersistentStorageManager {
         encryptedPrivateKey: false,
         encryptedSymmetricKey: false,
         salt: false,
+        userId: false,
+        syncDevices: false,
       }
       const lockedRepresentation = await this.getLockedRepresentation()
       return this.saveFunction(
@@ -150,8 +169,11 @@ class PersistentStorageManager {
           encryptedPrivateKey: this.encryptedPrivateKey,
           encryptedSymmetricKey: this.encryptedSymmetricKey,
           salt: this.salt,
+          userId: this.userId,
+          syncDevices: JSON.stringify(this.syncManager?.syncDevices ?? []),
         },
         wasChangedSinceLastSaveCache,
+        this.twoFaLib,
       )
     }
   }
@@ -197,6 +219,7 @@ class PersistentStorageManager {
     if (!this.symmetricKey)
       throw new InitializationError('SymmetricKey missing')
     if (!this.salt) throw new InitializationError('Salt missing')
+    if (!this.userId) throw new InitializationError('Salt missing')
 
     const isValid = await this.validatePassphrase(this.salt, oldPassphrase)
     if (!isValid) throw new AuthenticationError('Invalid old passphrase')
@@ -213,7 +236,8 @@ class PersistentStorageManager {
     this.wasChangedSinceLastSave.encryptedPrivateKey = true
     this.wasChangedSinceLastSave.lockedRepresentation = true
     await this.init(
-      this.vaultManager,
+      this.userId,
+      this.internalVaultManager,
       newEncryptedPrivateKey,
       newEncryptedSymmetricKey,
       this.salt,

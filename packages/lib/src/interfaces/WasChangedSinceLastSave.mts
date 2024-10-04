@@ -1,6 +1,3 @@
-export interface WasChangedSinceLastSave {
-  lockedRepresentation: boolean
-  encryptedPrivateKey: boolean
-  encryptedSymmetricKey: boolean
-  salt: boolean
-}
+import { SaveFunctionData } from './SaveFunction.mjs'
+
+export type WasChangedSinceLastSave = Record<keyof SaveFunctionData, boolean>

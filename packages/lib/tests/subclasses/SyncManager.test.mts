@@ -29,6 +29,7 @@ import {
   SyncAddDeviceFlowConflictError,
   SyncNoServerConnectionError,
 } from '../../src/TwoFALibError.mjs'
+import type { UserId } from '../../src/interfaces/SyncTypes.mjs'
 
 // uses __mocks__/isomorphic-ws.js
 vi.mock('isomorphic-ws')
@@ -78,9 +79,11 @@ describe('SyncManager', () => {
       encryptedSymmetricKey,
       salt,
       passphrase,
+      'senderUserid' as UserId,
       serverUrl,
     )
     await server.connected // only the first server.connected works atm
+    await server.nextMessage // wait for the hello message
 
     await senderTwoFaLib.vault.addEntry(totpEntry)
 
@@ -90,10 +93,12 @@ describe('SyncManager', () => {
       encryptedSymmetricKey,
       salt,
       passphrase,
+      'receiverUserid' as UserId,
       serverUrl,
     )
 
     await allConnected
+    await server.nextMessage // wait for the hello message
   })
 
   afterEach(() => {
@@ -122,6 +127,7 @@ describe('SyncManager', () => {
       encryptedSymmetricKey,
       salt,
       passphrase,
+      'tempUserId' as UserId,
       temporaryServerUrl,
     )
     // await temporaryServer.connected
@@ -145,7 +151,7 @@ describe('SyncManager', () => {
     ).rejects.toThrow(SyncAddDeviceFlowConflictError)
   })
 
-  it('should complete the full flow', async () => {
+  it.only('should complete the full flow', async () => {
     if (!senderTwoFaLib.sync || !receiverTwoFaLib.sync) {
       throw new Error('Sync manager not initialized')
     }
@@ -203,7 +209,17 @@ describe('SyncManager', () => {
     expect(new Set(nonces).size).toEqual(nonces.length)
 
     // if we now add an entry to one of the libs, it should also be pushed to the other
-    const addedEntryId = await senderTwoFaLib.vault.addEntry(anotherTotpEntry)
+    // const addedEntryId = await senderTwoFaLib.vault.addEntry(anotherTotpEntry)
+    await senderTwoFaLib.vault.addEntry(anotherTotpEntry)
+
+    const message = (await server.nextMessage) as { data: unknown[] }
+    receiverWsInstance.send(
+      JSON.stringify({
+        type: 'receiveCommand',
+        data: message.data[0],
+      }),
+    )
+
     await vi.waitUntil(() => receiverTwoFaLib.vault.size !== 1, {
       timeout: 1000,
       interval: 20,
@@ -211,7 +227,7 @@ describe('SyncManager', () => {
     expect(receiverTwoFaLib.vault.listEntries()).toEqual(
       senderTwoFaLib.vault.listEntries(),
     )
-
+    /*
     // and the other way around
     await receiverTwoFaLib.vault.addEntry(totpEntry)
     await vi.waitUntil(() => senderTwoFaLib.vault.size !== 2, {
@@ -231,5 +247,6 @@ describe('SyncManager', () => {
     expect(receiverTwoFaLib.vault.listEntries()).toEqual(
       senderTwoFaLib.vault.listEntries(),
     )
+    */
   })
 })

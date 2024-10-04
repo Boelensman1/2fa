@@ -8,13 +8,23 @@ import {
 import {
   ActiveAddDeviceFlow,
   InitiateAddDeviceFlowResult,
+  SyncDevice,
+  UserId,
 } from '../interfaces/SyncTypes.mjs'
 import { decodeInitiatorData, jsonToUint8Array } from '../utils/syncUtils.mjs'
-import type { EncryptedPublicKey, PublicKey } from '../interfaces/CryptoLib.mjs'
+import type {
+  EncryptedPublicKey,
+  EncryptedSymmetricKey,
+  PrivateKey,
+  PublicKey,
+  SymmetricKey,
+} from '../interfaces/CryptoLib.mjs'
+import type Command from '../Command/BaseCommand.mjs'
+import type { RemoteCommand } from '../Command/commandTypes.mjs'
 
 import type LibraryLoader from './LibraryLoader.mjs'
-import type VaultManager from './VaultManager.mjs'
 import type PersistentStorageManager from './PersistentStorageManager.mjs'
+import type CommandManager from './CommandManager.mjs'
 
 // Ensure Buffer is available globally for the browser environment
 import { Buffer } from 'buffer'
@@ -27,30 +37,39 @@ import {
 } from '../TwoFALibError.mjs'
 globalThis.Buffer = Buffer
 
-interface SyncDevice {
-  userIdString: string
-  deviceIdentifier: string
-  publicKey: PublicKey
+function generateRandomString() {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
+  const length = Math.floor(Math.random() * 64) + 1
+  return Array.from(
+    { length },
+    () => chars[Math.floor(Math.random() * chars.length)],
+  ).join('')
 }
 
 class SyncManager {
   private ws?: WebSocket
   private activeAddDeviceFlow?: ActiveAddDeviceFlow
-  syncDevices: SyncDevice[] = []
+  syncDevices: SyncDevice[]
+  userId: UserId
 
   constructor(
     private libraryLoader: LibraryLoader,
-    private readonly vaultManager: VaultManager,
+    private readonly commandManager: CommandManager,
     private readonly persistentStoragemanager: PersistentStorageManager,
     private readonly deviceIdentifier: string,
     private readonly publicKey: PublicKey,
+    private readonly privateKey: PrivateKey,
     serverUrl: string,
+    userId: UserId,
+    syncDevices = [] as SyncDevice[],
   ) {
     if (!serverUrl.startsWith('ws://') && !serverUrl.startsWith('wss://')) {
       throw new InitializationError(
         'Invalid server URL, protocol must be ws or wss',
       )
     }
+    this.userId = userId
+    this.syncDevices = syncDevices
     this.initServerConnection(serverUrl)
   }
 
@@ -63,6 +82,13 @@ class SyncManager {
   }
   get webSocketConnected(): boolean {
     return this.ws?.readyState === WebSocket.OPEN
+  }
+  get shouldSendCommands(): boolean {
+    return (
+      this.webSocketConnected &&
+      !this.inAddDeviceFlow &&
+      this.syncDevices.length > 0
+    )
   }
   private async getNonce() {
     return Buffer.from(await this.cryptoLib.getRandomBytes(16)).toString(
@@ -86,6 +112,17 @@ class SyncManager {
       } catch (error) {
         console.error('Failed to parse message:', error)
       }
+    })
+
+    ws.addEventListener('open', () => {
+      ws.send(
+        JSON.stringify({
+          type: 'hello',
+          data: {
+            userId: libInstance.userId,
+          },
+        }),
+      )
     })
 
     this.ws = ws
@@ -147,6 +184,14 @@ class SyncManager {
         )
         break
       }
+      case 'receiveCommand': {
+        const data = message.data as Record<string, unknown>
+        const encryptedSymmetricKey =
+          data.encryptedSymmetricKey as EncryptedSymmetricKey
+        const encryptedCommand = data.encryptedCommand as string
+        void this.receiveCommand(encryptedSymmetricKey, encryptedCommand)
+        break
+      }
     }
   }
 
@@ -173,12 +218,7 @@ class SyncManager {
     )
     const timestamp = Date.now()
 
-    const initiatorUserId = await this.cryptoLib.getRandomBytes(3)
-    // add a I (for initiator) to ensure no userId conflicts
-    const initiatorUserIdString =
-      'I' + Buffer.from(initiatorUserId).readUInt16BE(0).toString()
-
-    const jpak = new JPakeThreePass(initiatorUserIdString)
+    const jpak = new JPakeThreePass(this.userId)
     const pass1Result = jpak.pass1()
 
     const continuePromise = new Promise((resolve, reject) => {
@@ -186,8 +226,7 @@ class SyncManager {
         state: 'initiator:initiated',
         jpak,
         addDevicePassword,
-        initiatorUserId,
-        initiatorUserIdString,
+        initiatorUserIdString: this.userId,
         timestamp,
         resolveContinuePromise: resolve,
         rejectContinuePromise: reject,
@@ -200,7 +239,7 @@ class SyncManager {
         type: 'registerAddDeviceFlowRequest',
         data: {
           initiatorDeviceIdentifier: this.deviceIdentifier,
-          initiatorUserIdString,
+          initiatorUserIdString: this.userId,
           timestamp,
           nonce: await this.getNonce(),
         },
@@ -212,7 +251,7 @@ class SyncManager {
 
     const returnData: InitiateAddDeviceFlowResult = {
       addDevicePassword: Buffer.from(addDevicePassword).toString('base64'),
-      initiatorUserIdString,
+      initiatorUserIdString: this.userId,
       initiatorDeviceIdentifier: this.deviceIdentifier,
       timestamp,
       pass1Result: {
@@ -253,7 +292,7 @@ class SyncManager {
 
     const {
       addDevicePassword,
-      initiatorUserIdString: initiatorUserIdString,
+      initiatorUserIdString,
       timestamp,
       pass1Result,
       initiatorDeviceIdentifier,
@@ -276,12 +315,7 @@ class SyncManager {
     // Decode the base64 password
     const decodedPassword = Buffer.from(addDevicePassword, 'base64')
 
-    const responderUserId = await this.cryptoLib.getRandomBytes(3)
-    // add a R (for responder) to ensure no userId conflicts
-    const responderUserIdString =
-      'R' + Buffer.from(responderUserId).readUInt16BE(0).toString()
-
-    const jpak = new JPakeThreePass(responderUserIdString)
+    const jpak = new JPakeThreePass(this.userId)
 
     // Process the first pass from the initiator
     const initiatorPass1Result = {
@@ -306,7 +340,7 @@ class SyncManager {
       state: 'responder:initated',
       jpak,
       addDevicePassword: decodedPassword,
-      responderUserIdString,
+      responderUserIdString: this.userId,
       initiatorUserIdString,
       initiatorDeviceIdentifier,
       timestamp: Date.now(),
@@ -319,7 +353,7 @@ class SyncManager {
         data: {
           nonce: await this.getNonce(),
           pass2Result,
-          responderUserIdString,
+          responderUserIdString: this.userId,
           initiatorUserIdString,
           responderDeviceIdentifier: this.deviceIdentifier,
         },
@@ -461,10 +495,14 @@ class SyncManager {
     )
 
     this.syncDevices.push({
-      userIdString: this.activeAddDeviceFlow.responderUserIdString,
+      userId: this.activeAddDeviceFlow.responderUserIdString,
       deviceIdentifier: this.activeAddDeviceFlow.responderDeviceIdentifier,
       publicKey: decryptedPublicKey as PublicKey,
     })
+    this.persistentStoragemanager.__updateWasChangedSinceLastSave([
+      'syncDevices',
+    ])
+    await this.persistentStoragemanager.save()
 
     // all done
     this.activeAddDeviceFlow = undefined
@@ -494,13 +532,69 @@ class SyncManager {
 
     // Update the sync devices list with the initiator's information
     this.syncDevices.push({
-      userIdString: this.activeAddDeviceFlow.initiatorUserIdString,
+      userId: this.activeAddDeviceFlow.initiatorUserIdString,
       deviceIdentifier: this.activeAddDeviceFlow.initiatorDeviceIdentifier,
       publicKey: decryptedPublicKey as PublicKey,
     })
+    this.persistentStoragemanager.__updateWasChangedSinceLastSave([
+      'syncDevices',
+    ])
+    await this.persistentStoragemanager.save()
 
     // Reset the active add device flow
     this.activeAddDeviceFlow = undefined
+  }
+
+  async sendCommand(command: Command) {
+    if (!this.ws || !this.webSocketConnected) {
+      throw new SyncNoServerConnectionError()
+    }
+
+    const commandJson = command.toJSON()
+
+    const data = await Promise.all(
+      this.syncDevices.map(async (device) => {
+        const symmetricKey = await this.cryptoLib.createSymmetricKey()
+        const encryptedSymmetricKey = await this.cryptoLib.encrypt(
+          device.publicKey,
+          symmetricKey,
+        )
+        const encryptedCommand = await this.cryptoLib.encryptSymmetric(
+          symmetricKey,
+          JSON.stringify({
+            ...commandJson,
+            padding: generateRandomString(), // make it harder to guess the length
+          }),
+        )
+        return {
+          userId: device.userId,
+          encryptedSymmetricKey,
+          encryptedCommand,
+        }
+      }),
+    )
+
+    this.ws.send(
+      JSON.stringify({
+        type: 'sendCommand',
+        data,
+      }),
+    )
+  }
+
+  async receiveCommand(
+    encryptedSymmetricKey: EncryptedSymmetricKey,
+    encryptedData: string,
+  ) {
+    const symmetricKey = (await this.cryptoLib.decrypt(
+      this.privateKey,
+      encryptedSymmetricKey,
+    )) as SymmetricKey
+    const data = JSON.parse(
+      await this.cryptoLib.decryptSymmetric(symmetricKey, encryptedData),
+    ) as RemoteCommand
+    this.commandManager.receiveRemoteCommand(data)
+    await this.commandManager.processRemoteCommands()
   }
 }
 

@@ -1,13 +1,11 @@
 import { createSignal } from 'solid-js'
 import useStore from '../store/useStore'
-import useSyncStoreWithLib from '../utils/useSyncStoreWithLib'
 
 const Add = () => {
   const [name, setName] = createSignal('')
   const [secret, setSecret] = createSignal('')
   const [issuer, setIssuer] = createSignal('')
   const [digits, setDigits] = createSignal<6 | 8>(6)
-  const syncStoreWithLib = useSyncStoreWithLib()
 
   const add = async () => {
     if (!name() || !secret() || !issuer()) {
@@ -30,8 +28,6 @@ const Add = () => {
         period: 30,
       },
     })
-    syncStoreWithLib(twoFaLib)
-    // save to localStorage
     setName('')
     setSecret('')
     setIssuer('')

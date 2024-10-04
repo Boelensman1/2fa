@@ -4,6 +4,13 @@ const port = 8080
 const wss = new WebSocketServer({ port })
 console.log(`Server started on port ${port}`)
 
+interface HelloMessage {
+  type: 'hello'
+  data: {
+    userId: string
+  }
+}
+
 interface RegisterAddDeviceFlowRequestMessage {
   type: 'registerAddDeviceFlowRequest'
   data: {
@@ -63,20 +70,42 @@ interface SendInitialVaultData {
   }
 }
 
+interface SendCommandData {
+  type: 'sendCommand'
+  data: {
+    userId: string
+    encryptedSymmetricKey: string
+    encryptedCommand: string
+  }[]
+}
+
 type Message =
+  | HelloMessage
   | RegisterAddDeviceFlowRequestMessage
   | AddDevicePassPass2ResultMessage
   | AddDevicePassPass3ResultMessage
   | AddDeviceSendPublicKey
   | SendInitialVaultData
+  | SendCommandData
 
 const ongoingAddDeviceRequests: (RegisterAddDeviceFlowRequestMessage['data'] & {
   wsInitiator: WebSocket
   wsResponder?: WebSocket
 })[] = []
+const connectedDevices: { userId: string; ws: WebSocket }[] = []
 
 const handleMessage = (ws: WebSocket, message: Message) => {
+  console.log('message', message.type)
   switch (message.type) {
+    case 'hello': {
+      const { userId } = message.data
+      connectedDevices.push({ userId, ws })
+      console.log(
+        'Connected devices',
+        connectedDevices.map((c) => c.userId),
+      )
+      break
+    }
     case 'registerAddDeviceFlowRequest': {
       const result = { type: 'addDeviceFlowRequestRegistered' }
       ws.send(JSON.stringify(result))
@@ -164,6 +193,24 @@ const handleMessage = (ws: WebSocket, message: Message) => {
           data: message.data,
         }),
       )
+      return
+    }
+    case 'sendCommand': {
+      message.data.forEach((data) => {
+        const { userId, ...toSend } = data
+        // find matching connection
+        const device = connectedDevices.find((r) => r.userId === userId)
+        if (!device) {
+          console.error('Request not found')
+          return
+        }
+        device.ws.send(
+          JSON.stringify({
+            type: 'receiveCommand',
+            data: toSend,
+          }),
+        )
+      })
       return
     }
   }

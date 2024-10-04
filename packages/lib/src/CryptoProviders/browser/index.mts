@@ -47,7 +47,7 @@ class BrowserCryptoLib implements CryptoLib {
 
     const { encryptedPrivateKey, publicKey } =
       await this.createKeyPair(passphraseHash)
-    const symmetricKey = await this.generateSymmetricKey()
+    const symmetricKey = await this.createSymmetricKey()
     const encryptedSymmetricKey = await this.encrypt(publicKey, symmetricKey)
 
     return {
@@ -208,7 +208,7 @@ class BrowserCryptoLib implements CryptoLib {
     return Promise.resolve(Buffer.from(decrypted, 'binary').toString('utf8'))
   }
 
-  private async generateSymmetricKey(): Promise<SymmetricKey> {
+  async createSymmetricKey(): Promise<SymmetricKey> {
     const key = await window.crypto.subtle.generateKey(
       { name: 'AES-CBC', length: 256 },
       true,

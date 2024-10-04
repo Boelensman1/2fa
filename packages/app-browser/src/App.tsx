@@ -11,9 +11,11 @@ import Login from './components/Login'
 import ConnectToExistingVault from './components/ConnectToExistingVault'
 import CreateVault from './components/CreateVault'
 import saveFunction from './utils/saveFunction'
+import useSyncStoreWithLib from './utils/useSyncStoreWithLib'
 
 const App: Component = () => {
   const [state, dispatch] = useStore()
+  const syncStoreWithLib = useSyncStoreWithLib()
 
   // Async function to initialize the app
   const initializeApp = () => {
@@ -22,7 +24,8 @@ const App: Component = () => {
     const encryptedSymmetricKey = localStorage.getItem('encryptedSymmetricKey')
     const salt = localStorage.getItem('salt')
     const settings = localStorage.getItem('settings')
-    const isConnectingToExistingVault = localStorage.getItem('connecting')
+    const isConnectingToExistingVault =
+      localStorage.getItem('connecting') === 'true'
 
     if (
       !lockedRepresentation ||
@@ -40,7 +43,11 @@ const App: Component = () => {
     }
 
     const cryptoLib = new BrowserCryptoProvider()
-    const twoFaLib = new TwoFaLib('browser', cryptoLib, saveFunction)
+    const twoFaLib = new TwoFaLib(
+      'browser',
+      cryptoLib,
+      saveFunction(syncStoreWithLib),
+    )
     dispatch(actions.initialize(twoFaLib, Boolean(isConnectingToExistingVault)))
   }
 

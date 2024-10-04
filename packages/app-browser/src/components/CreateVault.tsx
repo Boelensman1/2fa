@@ -7,11 +7,13 @@ import { syncServerUrl } from '../parameters'
 import useStore from '../store/useStore'
 import actions from '../store/actions'
 import saveFunction from '../utils/saveFunction'
+import useSyncStoreWithLib from '../utils/useSyncStoreWithLib'
 
 const CreateVault: Component = () => {
   const [, dispatch] = useStore()
   const [password, setPassword] = createSignal('')
   const [mode, setMode] = createSignal<'create' | 'connect'>('create')
+  const syncStoreWithLib = useSyncStoreWithLib()
 
   const createVault = async () => {
     const cryptoLib = new BrowserCryptoProvider()
@@ -20,7 +22,7 @@ const CreateVault: Component = () => {
       'browser',
       cryptoLib,
       passphrase,
-      saveFunction,
+      saveFunction(syncStoreWithLib),
       syncServerUrl,
     )
 

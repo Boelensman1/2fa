@@ -16,7 +16,8 @@ import {
 } from '../testUtils.mjs'
 import _ from 'lodash'
 import { totpEntry } from '../testUtils.mjs'
-import { SaveFunctionData } from '../../src/interfaces/SaveFunction.mjs'
+import type { SaveFunctionData } from '../../src/interfaces/SaveFunction.mjs'
+import type { UserId } from '../../src/interfaces/SyncTypes.mjs'
 
 describe('PersistentStorageManager', () => {
   let twoFaLib: TwoFaLib
@@ -50,6 +51,7 @@ describe('PersistentStorageManager', () => {
       encryptedSymmetricKey,
       salt,
       passphrase,
+      'userid' as UserId,
     )
     await second2faLib.persistentStorage.loadFromLockedRepresentation(locked)
 
@@ -75,6 +77,7 @@ describe('PersistentStorageManager', () => {
         encryptedSymmetricKey,
         salt,
         'not-the-passphrase' as Passphrase,
+        'userid' as UserId,
       ),
     ).rejects.toThrow('Invalid passphrase')
   })
@@ -86,6 +89,7 @@ describe('PersistentStorageManager', () => {
         encryptedSymmetricKey,
         salt,
         'testpassword' as Passphrase,
+        'userid' as UserId,
       ),
     ).rejects.toThrow('Invalid private key')
   })
@@ -129,12 +133,14 @@ describe('PersistentStorageManager', () => {
         encryptedPrivateKey: expect.any(String) as string,
         encryptedSymmetricKey: expect.any(String) as string,
         salt: expect.any(String) as string,
+        userId: expect.any(String) as string,
       }),
       expect.objectContaining({
         lockedRepresentation: true,
         encryptedPrivateKey: true,
         encryptedSymmetricKey: true,
         salt: true,
+        userId: true,
       }),
     )
 
@@ -200,6 +206,7 @@ describe('PersistentStorageManager', () => {
       savedData.encryptedSymmetricKey,
       savedData.salt,
       newPassphrase,
+      'userid' as UserId,
     )
 
     // Verify that the new passphrase works

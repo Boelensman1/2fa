@@ -21,6 +21,8 @@ import type {
   Salt,
 } from './interfaces/CryptoLib.mjs'
 import { SaveFunction } from './interfaces/SaveFunction.mjs'
+import type { UserId } from './interfaces/SyncTypes.mjs'
+
 import {
   TwoFALibError,
   InitializationError,
@@ -55,4 +57,5 @@ export type {
   PublicKey,
   Passphrase,
   Salt,
+  UserId,
 }

@@ -45,6 +45,7 @@
     "qrcode": "^1.5.4",
     "totp-generator": "^1.0.0",
     "uuid": "^10.0.0",
+    "vitest-websocket-mock": "^0.4.0",
     "whatwg-url": "^14.0.0",
     "ws": "^8.18.0"
   }

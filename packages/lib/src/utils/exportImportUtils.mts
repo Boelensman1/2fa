@@ -88,10 +88,18 @@ export const parseOtpUri = (
   }
 }
 
+const generateOtpUrl = (entry: Entry) => {
+  const { name, issuer, payload } = entry
+  const { secret, algorithm, digits, period } = payload
+
+  return `otpauth://totp/${encodeURIComponent(issuer)}:${encodeURIComponent(name)}?secret=${secret}&issuer=${encodeURIComponent(issuer)}&algorithm=${algorithm}&digits=${digits}&period=${period}`
+}
+
 /**
  * Generates an HTML page with QR codes for the provided OTP entries.
  * @param qrGeneratorLib - The QR code generation library.
  * @param entries - An array of OTP entries.
+ * @param withIds - Optionally add the ids to the export, only really useful for sync
  * @returns A promise that resolves to the HTML string.
  */
 export const generateHtmlExport = async (
@@ -99,9 +107,8 @@ export const generateHtmlExport = async (
   entries: Entry[],
 ) => {
   const qrPromises = entries.map(async (entry) => {
-    const { name, issuer, payload } = entry
-    const { secret, algorithm, digits, period } = payload
-    const otpUrl = `otpauth://totp/${encodeURIComponent(issuer)}:${encodeURIComponent(name)}?secret=${secret}&issuer=${encodeURIComponent(issuer)}&algorithm=${algorithm}&digits=${digits}&period=${period}`
+    const { name, issuer } = entry
+    const otpUrl = generateOtpUrl(entry)
     const qrCode = await qrGeneratorLib.toDataURL(otpUrl)
     return `
             <div class="entry">
@@ -139,9 +146,7 @@ export const generateHtmlExport = async (
 export const generateTextExport = (entries: Entry[]) => {
   return entries
     .map((entry) => {
-      const { name, issuer, payload } = entry
-      const { secret, algorithm, digits, period } = payload
-      return `otpauth://totp/${encodeURIComponent(issuer)}:${encodeURIComponent(name)}?secret=${secret}&issuer=${encodeURIComponent(issuer)}&algorithm=${algorithm}&digits=${digits}&period=${period}`
+      return generateOtpUrl(entry)
     })
     .join('\n')
 }

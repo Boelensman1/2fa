@@ -14,7 +14,7 @@ import type { EncryptedPublicKey, PublicKey } from '../interfaces/CryptoLib.js'
 
 import type LibraryLoader from './LibraryLoader.mjs'
 import type VaultManager from './VaultManager.mjs'
-import type ExportImportManager from './ExportImportManager.mjs'
+import type PersistentStorageManager from './PersistentStorageManager.mjs'
 
 // Ensure Buffer is available globally for the browser environment
 import { Buffer } from 'buffer'
@@ -41,7 +41,7 @@ class SyncManager {
   constructor(
     private libraryLoader: LibraryLoader,
     private readonly vaultManager: VaultManager,
-    private readonly exportImportManager: ExportImportManager,
+    private readonly persistentStoragemanager: PersistentStorageManager,
     private readonly deviceIdentifier: string,
     private readonly publicKey: PublicKey,
     serverUrl: string,
@@ -440,10 +440,8 @@ class SyncManager {
     )
 
     // get the vault data (encrypted with the sync key)
-    const encryptedVaultData = await this.exportImportManager.exportEntries(
-      'text',
-      Buffer.from(syncKey, 'base64').toString('utf8'),
-    )
+    const encryptedVaultData =
+      await this.persistentStoragemanager.getLockedRepresentation(syncKey)
     const initiatorEncryptedPublicKey = await this.cryptoLib.encryptSymmetric(
       syncKey,
       this.publicKey,
@@ -489,9 +487,9 @@ class SyncManager {
     )
 
     // Import the encrypted vault data using the ExportImportManager
-    await this.exportImportManager.importFromTextFile(
+    await this.persistentStoragemanager.loadFromLockedRepresentation(
       encryptedVaultData,
-      Buffer.from(syncKey, 'base64').toString('utf8'),
+      syncKey,
     )
 
     // Update the sync devices list with the initiator's information

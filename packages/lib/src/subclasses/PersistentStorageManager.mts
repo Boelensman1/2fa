@@ -87,14 +87,16 @@ class PersistentStorageManager {
   /**
    * Get a locked representation of the library's current state.
    * This can be used for secure storage or transmission of the library's data.
+   * @param key - The key to encrypt the locked representation with. If not provided,
+   *              the library's current symmetric key will be used.
    * @returns A promise that resolves with a string representation of the locked state.
    */
-  async getLockedRepresentation(): Promise<string> {
+  async getLockedRepresentation(key?: SymmetricKey): Promise<string> {
     if (!this.symmetricKey) {
       throw new InitializationError('PublicKey missing')
     }
     return await this.cryptoLib.encryptSymmetric(
-      this.symmetricKey,
+      key ?? this.symmetricKey,
       JSON.stringify(this.vaultManager.__getEntriesForExport()),
     )
   }
@@ -102,18 +104,21 @@ class PersistentStorageManager {
   /**
    * Load the library state from a previously locked representation.
    * @param lockedRepresentation - The string representation of the locked state.
+   * @param key - The key to decrypt the locked representation with. If not provided,
+   *              the library's current symmetric key will be used.
    * @returns A promise that resolves when loading is complete.
    * @throws {InitializationError} If loading fails due to invalid or corrupted data.
    */
   async loadFromLockedRepresentation(
     lockedRepresentation: string,
+    key?: SymmetricKey,
   ): Promise<void> {
     if (!this.symmetricKey) {
       throw new InitializationError('PrivateKey missing')
     }
     const newVault = JSON.parse(
       await this.cryptoLib.decryptSymmetric(
-        this.symmetricKey,
+        key ?? this.symmetricKey,
         lockedRepresentation,
       ),
     ) as Vault

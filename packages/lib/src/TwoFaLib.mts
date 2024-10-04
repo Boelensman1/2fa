@@ -72,13 +72,6 @@ class TwoFaLib {
     return this.persistentStorageManager
   }
 
-  get inAddDeviceFlow(): boolean {
-    return this.syncManager?.inAddDeviceFlow ?? false
-  }
-  get webSocketConnected(): boolean {
-    return this.syncManager?.webSocketConnected ?? false
-  }
-
   /**
    * Initialize the library with an encrypted private key and passphrase.
    * @param encryptedPrivateKey - The encrypted private key used for secure operations.
@@ -107,7 +100,7 @@ class TwoFaLib {
       this.syncManager = new SyncManager(
         this.libraryLoader,
         this.vaultManager,
-        this.exportImportManager,
+        this.persistentStorageManager,
         this.deviceIdentifier,
         publicKey,
         serverUrl,

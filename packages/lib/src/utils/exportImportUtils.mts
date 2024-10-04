@@ -1,7 +1,7 @@
-import type { NewEntry } from '../interfaces/Entry.js'
-import type Entry from '../interfaces/Entry.js'
+import type { NewEntry } from '../interfaces/Entry.mjs'
+import type Entry from '../interfaces/Entry.mjs'
 import type { SupportedAlgorithmsType } from './constants.mjs'
-import type { EntryId } from '../interfaces/Entry.js'
+import type { EntryId } from '../interfaces/Entry.mjs'
 import { ExportImportError } from '../TwoFALibError.mjs'
 
 /**

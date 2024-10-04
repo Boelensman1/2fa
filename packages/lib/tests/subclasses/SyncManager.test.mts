@@ -23,7 +23,7 @@ import {
   createTwoFaLibForTests,
   passphrase,
   totpEntry,
-} from '../testUtils.js'
+} from '../testUtils.mjs'
 import { Client as WsClient } from 'mock-socket'
 import {
   SyncAddDeviceFlowConflictError,

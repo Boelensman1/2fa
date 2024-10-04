@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import LibraryLoader from '../../src/subclasses/LibraryLoader.mjs'
-import CryptoLib from '../../src/interfaces/CryptoLib.js'
+import CryptoLib from '../../src/interfaces/CryptoLib.mjs'
 import { InitializationError, TwoFALibError } from '../../src/TwoFALibError.mjs'
 
 // Mock the external libraries

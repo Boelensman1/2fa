@@ -12,7 +12,7 @@ import {
   getImageDataBrowser,
   getImageDataNode,
 } from '../utils/getImageData.mjs'
-import { EntryId } from '../interfaces/Entry.js'
+import { EntryId } from '../interfaces/Entry.mjs'
 
 import type PersistentStorageManager from './PersistentStorageManager.mjs'
 import type LibraryLoader from './LibraryLoader.mjs'

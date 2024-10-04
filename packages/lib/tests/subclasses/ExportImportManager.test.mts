@@ -10,7 +10,7 @@ import {
   totpEntry,
   clearEntries,
   createTwoFaLibForTests,
-} from '../testUtils.js'
+} from '../testUtils.mjs'
 
 describe('ExportImportManager', () => {
   let twoFaLib: TwoFaLib

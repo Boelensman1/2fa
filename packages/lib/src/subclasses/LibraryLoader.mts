@@ -1,4 +1,4 @@
-import type CryptoLib from '../interfaces/CryptoLib.js'
+import type CryptoLib from '../interfaces/CryptoLib.mjs'
 import { InitializationError, TwoFALibError } from '../TwoFALibError.mjs'
 
 class LibraryLoader {

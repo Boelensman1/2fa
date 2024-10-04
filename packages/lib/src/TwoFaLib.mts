@@ -1,12 +1,12 @@
-import type CryptoLib from './interfaces/CryptoLib.js'
+import type CryptoLib from './interfaces/CryptoLib.mjs'
 import type {
   EncryptedPrivateKey,
   EncryptedSymmetricKey,
   Passphrase,
   Salt,
-} from './interfaces/CryptoLib.js'
+} from './interfaces/CryptoLib.mjs'
 
-import { SaveFunction } from './interfaces/SaveFunction.js'
+import { SaveFunction } from './interfaces/SaveFunction.mjs'
 
 import SyncManager from './subclasses/SyncManager.mjs'
 import LibraryLoader from './subclasses/LibraryLoader.mjs'

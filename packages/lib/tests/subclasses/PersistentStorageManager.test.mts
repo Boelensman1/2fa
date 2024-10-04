@@ -13,10 +13,10 @@ import {
   createTwoFaLibForTests,
   deviceIdentifier,
   passphrase,
-} from '../testUtils.js'
+} from '../testUtils.mjs'
 import _ from 'lodash'
-import { totpEntry } from '../testUtils.js'
-import { SaveFunctionData } from '../../src/interfaces/SaveFunction.js'
+import { totpEntry } from '../testUtils.mjs'
+import { SaveFunctionData } from '../../src/interfaces/SaveFunction.mjs'
 
 describe('PersistentStorageManager', () => {
   let twoFaLib: TwoFaLib

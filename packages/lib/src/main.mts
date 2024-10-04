@@ -2,15 +2,15 @@ import TwoFaLib, { createTwoFaLib } from './TwoFaLib.mjs'
 // import NodeCryptoProvider from './CryptoProviders/node/index.mjs'
 // import BrowserCryptoProvider from './CryptoProviders/browser/index.mjs'
 
-import type Entry from './interfaces/Entry.js'
+import type Entry from './interfaces/Entry.mjs'
 import type {
   EntryId,
   NewEntry,
   EntryMeta,
   EntryType,
   TotpPayload,
-} from './interfaces/Entry.js'
-import type CryptoLib from './interfaces/CryptoLib.js'
+} from './interfaces/Entry.mjs'
+import type CryptoLib from './interfaces/CryptoLib.mjs'
 import type {
   EncryptedPrivateKey,
   EncryptedSymmetricKey,
@@ -19,8 +19,8 @@ import type {
   PublicKey,
   Passphrase,
   Salt,
-} from './interfaces/CryptoLib.js'
-import { SaveFunction } from './interfaces/SaveFunction.js'
+} from './interfaces/CryptoLib.mjs'
+import { SaveFunction } from './interfaces/SaveFunction.mjs'
 import {
   TwoFALibError,
   InitializationError,

@@ -1,8 +1,8 @@
 import { TOTP } from 'totp-generator'
 import { v4 as genUuidV4 } from 'uuid'
 
-import type Entry from '../interfaces/Entry.js'
-import type { EntryId, EntryMeta, NewEntry } from '../interfaces/Entry.js'
+import type Entry from '../interfaces/Entry.mjs'
+import type { EntryId, EntryMeta, NewEntry } from '../interfaces/Entry.mjs'
 
 import { EntryNotFoundError, TokenGenerationError } from '../TwoFALibError.mjs'
 
@@ -12,7 +12,7 @@ import {
 } from '../utils/constants.mjs'
 
 import type PersistentStorageManager from './PersistentStorageManager.mjs'
-import { Vault } from '../interfaces/Vault.js'
+import { Vault } from '../interfaces/Vault.mjs'
 
 const getMetaForEntry = (entry: Entry) => ({
   id: entry.id,

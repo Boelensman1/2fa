@@ -13,7 +13,7 @@ import {
   totpEntry,
   clearEntries,
   createTwoFaLibForTests,
-} from '../testUtils.js'
+} from '../testUtils.mjs'
 
 describe('VaultManager', () => {
   let twoFaLib: TwoFaLib

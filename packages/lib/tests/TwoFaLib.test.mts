@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, beforeAll } from 'vitest'
 
 import { CryptoLib, TwoFaLib } from '../src/main.mjs'
 
-import { clearEntries, createTwoFaLibForTests } from './testUtils.js'
+import { clearEntries, createTwoFaLibForTests } from './testUtils.mjs'
 
 describe('2falib', () => {
   let cryptoLib: CryptoLib

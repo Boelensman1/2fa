@@ -1,5 +1,5 @@
 import type { JPakeThreePass, Round1Result } from 'jpake'
-import { SyncKey } from './CryptoLib.js'
+import { SyncKey } from './CryptoLib.mjs'
 
 export interface BaseAddDeviceFlow {
   jpak: JPakeThreePass

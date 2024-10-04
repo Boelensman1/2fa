@@ -2,7 +2,7 @@ import type {
   EncryptedPrivateKey,
   EncryptedSymmetricKey,
   Salt,
-} from '../interfaces/CryptoLib.js'
+} from '../interfaces/CryptoLib.mjs'
 
 export interface SaveFunctionData {
   lockedRepresentation: string

@@ -1,7 +1,7 @@
 import type { ImageData } from 'canvas'
 
 import { getImageDataBrowser, getImageDataNode } from './getImageData.mjs'
-import { InitiateAddDeviceFlowResult } from '../interfaces/SyncTypes.js'
+import { InitiateAddDeviceFlowResult } from '../interfaces/SyncTypes.mjs'
 import { SyncError } from '../TwoFALibError.mjs'
 
 export const decodeInitiatorData = async (

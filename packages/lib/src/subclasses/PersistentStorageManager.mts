@@ -8,14 +8,14 @@ import type {
   PublicKey,
   Salt,
   SymmetricKey,
-} from '../interfaces/CryptoLib.js'
-import { Vault } from '../interfaces/Vault.js'
+} from '../interfaces/CryptoLib.mjs'
+import { Vault } from '../interfaces/Vault.mjs'
 
 import type LibraryLoader from './LibraryLoader.mjs'
 import type VaultManager from './VaultManager.mjs'
 
-import { SaveFunction } from '../interfaces/SaveFunction.js'
-import { WasChangedSinceLastSave } from '../interfaces/WasChangedSinceLastSave.js'
+import { SaveFunction } from '../interfaces/SaveFunction.mjs'
+import { WasChangedSinceLastSave } from '../interfaces/WasChangedSinceLastSave.mjs'
 
 class PersistentStorageManager {
   private vaultManager!: VaultManager

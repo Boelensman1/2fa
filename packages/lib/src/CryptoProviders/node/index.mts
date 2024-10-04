@@ -14,7 +14,7 @@ import {
 import { argon2id } from 'hash-wasm'
 
 import { CryptoError } from '../../TwoFALibError.mjs'
-import type CryptoLib from '../../interfaces/CryptoLib.js'
+import type CryptoLib from '../../interfaces/CryptoLib.mjs'
 import type {
   EncryptedPrivateKey,
   EncryptedSymmetricKey,
@@ -24,7 +24,7 @@ import type {
   Salt,
   SymmetricKey,
   SyncKey,
-} from '../../interfaces/CryptoLib.js'
+} from '../../interfaces/CryptoLib.mjs'
 
 const generateKeyPair = promisify(generateKeyPairCb)
 const generateKey = promisify(generateKeyCb)

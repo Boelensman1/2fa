@@ -8,9 +8,9 @@ import {
 import {
   ActiveAddDeviceFlow,
   InitiateAddDeviceFlowResult,
-} from '../interfaces/SyncTypes.js'
+} from '../interfaces/SyncTypes.mjs'
 import { decodeInitiatorData, jsonToUint8Array } from '../utils/syncUtils.mjs'
-import type { EncryptedPublicKey, PublicKey } from '../interfaces/CryptoLib.js'
+import type { EncryptedPublicKey, PublicKey } from '../interfaces/CryptoLib.mjs'
 
 import type LibraryLoader from './LibraryLoader.mjs'
 import type VaultManager from './VaultManager.mjs'

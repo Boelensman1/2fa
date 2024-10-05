@@ -7,7 +7,7 @@ build: $(INSTALL_DEPS) $(SRC_FILES)
 
 node_modules: package.json ../../package-lock.json
 	$(MAKE) -C ../.. node_modules
-	@touch node_modules
+	@if [ -e node_modules ]; then touch node_modules; fi
 
 ../lib/build:
 	$(MAKE) -C ../lib build

@@ -12,7 +12,7 @@ dev: $(INSTALL_DEPS)
 
 node_modules: package.json ../../package-lock.json
 	$(MAKE) -C ../.. node_modules
-	@touch node_modules
+	@if [ -e node_modules ]; then touch node_modules; fi
 
 clean:
 	rm -rf node_modules

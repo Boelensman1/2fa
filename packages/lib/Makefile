@@ -4,7 +4,7 @@ SRC_FILES:=$(shell find src/)
 build: $(INSTALL_DEPS) $(SRC_FILES) tsconfig.json tsconfig.build.json
 	$(MAKE) lint
 	npx tsc --project ./tsconfig.build.json
-	@touch build
+	@if [ -e node_modules ]; then touch node_modules; fi
 
 ../jpake/build:
 	$(MAKE) -C ../jpake build

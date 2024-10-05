@@ -1,10 +1,12 @@
 // @ts-check
+import path from 'path'
+import { fileURLToPath } from 'url'
 import globals from 'globals'
+
 import eslint from '@eslint/js'
 import tseslint from 'typescript-eslint'
 import solidPlugin from 'eslint-plugin-solid'
-import path from 'path'
-import { fileURLToPath } from 'url'
+import jsdoc from 'eslint-plugin-jsdoc'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -13,6 +15,7 @@ const baseConfig = tseslint.config(
   eslint.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked,
   ...tseslint.configs.stylisticTypeChecked,
+  jsdoc.configs['flat/recommended-typescript-error'],
 )
 
 export default [

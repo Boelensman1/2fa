@@ -93,7 +93,11 @@ class TwoFaLib {
    * Initialize the library with an encrypted private key and passphrase.
    * @param encryptedPrivateKey - The encrypted private key used for secure operations.
    * @param encryptedSymmetricKey - The encrypted symmetric key used for secure operations.
+   * @param salt - The salt used for key derivation.
    * @param passphrase - The passphrase to decrypt the private key.
+   * @param userId - The user ID used for identification.
+   * @param serverUrl - The server URL for syncing.
+   * @param syncDevices - The devices to sync with.
    * @returns A promise that resolves when initialization is complete.
    * @throws {InitializationError} If initialization fails due to technical issues.
    * @throws {AuthenticationError} If the provided passphrase is incorrect.

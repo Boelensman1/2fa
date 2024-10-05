@@ -23,6 +23,7 @@ class JPakeThreePass {
 
   /**
    * Performs the first pass of the J-PAKE protocol. Ran on the initiator.
+   * @returns The result of the first pass.
    */
   public pass1(): Pass1Result {
     const round1Result = this.jpake.round1()
@@ -34,6 +35,7 @@ class JPakeThreePass {
    * @param peerRound1Result - The result from the peer's first round.
    * @param s - The shared secret.
    * @param peerUserId - The identifier for the peer user.
+   * @returns The result of the second pass.
    */
   public pass2(
     peerRound1Result: Round1Result,
@@ -50,6 +52,7 @@ class JPakeThreePass {
    * @param pass2Result - The result from the second pass.
    * @param s - The shared secret.
    * @param peerUserId - The identifier for the peer user.
+   * @returns The result of the third pass.
    */
   public pass3(
     pass2Result: Pass2Result,
@@ -78,6 +81,7 @@ class JPakeThreePass {
   /**
    * Derives the shared key after completing the J-PAKE protocol. Ran on both
    * the initiator and the responder.
+   * @returns The derived shared key.
    */
   public deriveSharedKey() {
     return this.jpake.deriveSharedKey()

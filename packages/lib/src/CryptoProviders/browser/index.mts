@@ -16,7 +16,7 @@ import type {
   SyncKey,
 } from '../../interfaces/CryptoLib.mjs'
 
-function normalizeLineEndings(str: string): string {
+const normalizeLineEndings = (str: string): string => {
   return str.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
 }
 

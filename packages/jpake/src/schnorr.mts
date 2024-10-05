@@ -14,6 +14,7 @@ import { n } from './constants.mjs'
  * @param userId - The user ID.
  * @param gx - The public key point.
  * @param gr - The random point.
+ * @param otherInfo - Additional information to include in the challenge.
  * @returns The challenge.
  * @throws {Error} if userId is too long (more than 255 bytes).
  */
@@ -76,6 +77,7 @@ export const generateSchnorrChallenge = (
  * @param  x - The private key.
  * @param  gx - The public key point.
  * @param  g - The generator point.
+ * @param  otherInfo - Additional information to include in the challenge.
  * @returns The proof.
  * @throws {Error} If the generated proof is invalid.
  */
@@ -122,6 +124,7 @@ export const generateSchnorrProof = (
  * @param gx - The public key point.
  * @param proof - The proof to verify.
  * @param g - The generator point.
+ * @param otherInfo - Additional information to include in the challenge.
  * @returns True if the proof is valid, false otherwise.
  */
 export const verifySchnorrProof = (

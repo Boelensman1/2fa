@@ -99,7 +99,6 @@ const generateOtpUrl = (entry: Entry) => {
  * Generates an HTML page with QR codes for the provided OTP entries.
  * @param qrGeneratorLib - The QR code generation library.
  * @param entries - An array of OTP entries.
- * @param withIds - Optionally add the ids to the export, only really useful for sync
  * @returns A promise that resolves to the HTML string.
  */
 export const generateHtmlExport = async (

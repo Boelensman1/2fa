@@ -51,8 +51,11 @@ class PersistentStorageManager {
 
   /**
    * Initialize the library with an encrypted private key and passphrase.
+   * @param userId - The user ID used for identification.
+   * @param vaultManager - The vault manager used for secure operations.
    * @param encryptedPrivateKey - The encrypted private key used for secure operations.
    * @param encryptedSymmetricKey - The encrypted symmetric key used for secure operations.
+   * @param salt - The salt used for key derivation.
    * @param passphrase - The passphrase to decrypt the private key.
    * @returns A promise that resolves with the private key, symmetric key and public key.
    * @throws {InitializationError} If initialization fails due to technical issues.
@@ -180,6 +183,7 @@ class PersistentStorageManager {
 
   /**
    * Validate the provided passphrase against the current library passphrase.
+   * @param salt - The salt used for key derivation.
    * @param passphrase - The passphrase to validate.
    * @returns A promise that resolves with a boolean indicating whether the passphrase is valid.
    */

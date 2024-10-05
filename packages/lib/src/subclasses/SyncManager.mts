@@ -39,7 +39,7 @@ import {
 } from '../TwoFALibError.mjs'
 globalThis.Buffer = Buffer
 
-function generateRandomString() {
+const generateNonCryptographicRandomString = () => {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
   const length = Math.floor(Math.random() * 64) + 1
   return Array.from(
@@ -564,7 +564,7 @@ class SyncManager {
           symmetricKey,
           JSON.stringify({
             ...commandJson,
-            padding: generateRandomString(), // make it harder to guess the length
+            padding: generateNonCryptographicRandomString(), // make it harder to guess the length
           }),
         )
         return {

@@ -7,7 +7,7 @@ build: $(INSTALL_DEPS) $(SRC_FILES) tsconfig.json tsconfig.build.json
 	@touch build
 
 dev: $(INSTALL_DEPS)
-	npx --no-install tsx --watch ./src/main.mts
+	npx --no-install tsx --watch ./src/server.mts
 
 
 node_modules: package.json ../../package-lock.json

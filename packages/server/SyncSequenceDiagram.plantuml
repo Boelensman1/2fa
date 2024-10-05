@@ -1,0 +1,68 @@
+@startuml
+actor ExistingDevice
+actor NewDevice
+participant Server
+
+== Connection Management ==
+
+ExistingDevice -> Server: connect(userId)
+activate Server
+note right of Server: Register ExistingDevice as connected and\n send pending commands to connected devices
+Server -> ExistingDevice: pendingCommands(pendingCommands)
+deactivate Server
+
+NewDevice -> Server: connect(userId)
+activate Server
+note right of Server: Register NewDevice as connected
+Server -> NewDevice: pendingCommands(pendingCommands)
+deactivate Server
+
+== Registering a New Device ==
+
+ExistingDevice -> Server: addSyncDeviceInitialiseData(initialiseData)
+activate Server
+note right of Server: Process device addition request
+Server --> ExistingDevice: confirmAddSyncDeviceInitialiseData()
+deactivate Server
+
+note right of ExistingDevice: Generate J-PAKE Pass1 Data (usually shared via QR)
+
+
+ExistingDevice -> NewDevice: JPAKEPass1(jpakePass1Data)
+activate NewDevice
+NewDevice -> Server: JPAKEPass2(jpakePass2Data)
+deactivate NewDevice
+activate Server
+note right of Server: Forward J-PAKE Pass2 data to ExistingDevice
+Server -> ExistingDevice: JPAKEPass2(jpakePass2Data)
+deactivate Server
+
+ExistingDevice -> Server: JPAKEPass3(jpakePass3Confirmation)
+activate Server
+note right of Server: Forward J-PAKE Pass3 confirmation to NewDevice
+Server -> NewDevice: JPAKEPass3(jpakePass3Confirmation)
+deactivate Server
+
+NewDevice -> Server: publicKey(publicKey)
+activate Server
+note right of Server: Share public key with ExistingDevice
+Server -> ExistingDevice: publicKey(publicKey)
+deactivate Server
+
+ExistingDevice -> Server: vault(vaultData)
+activate Server
+note right of Server: Share initial vault data with NewDevice
+Server -> NewDevice: vault(vaultData)
+deactivate Server
+
+== Synchronizing Online Devices ==
+
+ExistingDevice -> Server: syncCommand(userId, commandData)
+activate Server
+note right of Server: Forward to NewDevice or store command as pending
+Server --> ExistingDevice: confirmSyncCommand()
+Server -> NewDevice: syncCommand(commandData)
+NewDevice --> Server: confirmSyncCommand()
+deactivate Server
+
+@enduml

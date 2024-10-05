@@ -134,6 +134,7 @@ describe('PersistentStorageManager', () => {
         encryptedSymmetricKey: expect.any(String) as string,
         salt: expect.any(String) as string,
         userId: expect.any(String) as string,
+        syncDevices: expect.any(String) as string,
       }),
       expect.objectContaining({
         lockedRepresentation: true,
@@ -141,7 +142,9 @@ describe('PersistentStorageManager', () => {
         encryptedSymmetricKey: true,
         salt: true,
         userId: true,
+        syncDevices: true,
       }),
+      expect.any(TwoFaLib),
     )
 
     // Reset mock
@@ -159,13 +162,18 @@ describe('PersistentStorageManager', () => {
         encryptedPrivateKey: expect.any(String) as string,
         encryptedSymmetricKey: expect.any(String) as string,
         salt: expect.any(String) as string,
+        userId: expect.any(String) as string,
+        syncDevices: expect.any(String) as string,
       }),
       expect.objectContaining({
         lockedRepresentation: true,
         encryptedPrivateKey: false,
         encryptedSymmetricKey: false,
         salt: false,
+        userId: false,
+        syncDevices: false,
       }),
+      expect.any(TwoFaLib),
     )
   }, 15000) // long running test
 

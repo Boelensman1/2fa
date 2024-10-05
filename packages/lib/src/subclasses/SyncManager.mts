@@ -5,6 +5,8 @@ import {
   Pass2Result,
   Pass3Result,
 } from 'jpake'
+import type ServerMessage from '2faserver/ServerMessage'
+import type ClientMessage from '2faserver/ClientMessage'
 import {
   ActiveAddDeviceFlow,
   InitiateAddDeviceFlowResult,
@@ -20,7 +22,7 @@ import type {
   SymmetricKey,
 } from '../interfaces/CryptoLib.mjs'
 import type Command from '../Command/BaseCommand.mjs'
-import type { RemoteCommand } from '../Command/commandTypes.mjs'
+import type { SyncCommand } from '../Command/commandTypes.mjs'
 
 import type LibraryLoader from './LibraryLoader.mjs'
 import type PersistentStorageManager from './PersistentStorageManager.mjs'
@@ -96,6 +98,16 @@ class SyncManager {
     )
   }
 
+  private sendToServer<T extends ClientMessage['type']>(
+    type: T,
+    data: Extract<ClientMessage, { type: T }>['data'],
+  ) {
+    if (!this.ws || !this.webSocketConnected) {
+      throw new SyncNoServerConnectionError()
+    }
+    this.ws.send(JSON.stringify({ type, data }))
+  }
+
   initServerConnection(serverUrl: string) {
     const ws = new WebSocket(serverUrl)
 
@@ -106,7 +118,7 @@ class SyncManager {
     ws.addEventListener('message', function message(message: MessageEvent) {
       try {
         const jsonString = String(message.data)
-        const parsedMessage = JSON.parse(jsonString) as Record<string, unknown>
+        const parsedMessage = JSON.parse(jsonString) as ServerMessage
 
         libInstance.handleServerMessage(parsedMessage)
       } catch (error) {
@@ -115,35 +127,25 @@ class SyncManager {
     })
 
     ws.addEventListener('open', () => {
-      ws.send(
-        JSON.stringify({
-          type: 'hello',
-          data: {
-            userId: libInstance.userId,
-          },
-        }),
-      )
+      this.sendToServer('connect', { userId: libInstance.userId })
     })
 
     this.ws = ws
   }
 
-  private handleServerMessage(message: Record<string, unknown>) {
+  private handleServerMessage(message: ServerMessage) {
     switch (message.type) {
-      case 'addDeviceFlowRequestRegistered': {
+      case 'confirmAddSyncDeviceInitialiseData': {
         if (this.activeAddDeviceFlow?.state !== 'initiator:initiated') {
           throw new SyncInWrongStateError()
         }
         this.activeAddDeviceFlow.resolveContinuePromise(message)
         break
       }
-      case 'addDevicePassPass2Result': {
-        const data = message.data as Record<string, unknown>
+      case 'JPAKEPass2': {
+        const { data } = message
 
-        const unconvertedPass2Result = data.pass2Result as Record<
-          string,
-          Record<string, Record<string, number>>
-        >
+        const unconvertedPass2Result = data.pass2Result
         const pass2Result = {
           round1Result: jsonToUint8Array(unconvertedPass2Result.round1Result),
           round2Result: jsonToUint8Array(unconvertedPass2Result.round2Result),
@@ -151,45 +153,44 @@ class SyncManager {
 
         void this.finishAddDeviceFlowKeyExchangeInitiator(
           pass2Result,
-          data.responderUserIdString as string,
-          data.responderDeviceIdentifier as string,
+          data.responderUserIdString,
+          data.responderDeviceIdentifier,
         )
         break
       }
-      case 'addDevicePassPass3Result': {
-        const data = message.data as Record<string, unknown>
+      case 'JPAKEPass3': {
+        const { data } = message
 
         const pass3Result = jsonToUint8Array(
-          (data as Record<string, Record<string, Record<string, number>>>)
-            .pass3Result,
+          data.pass3Result,
         ) as unknown as Pass3Result
 
         void this.finishAddDeviceFlowKeyExchangeResponder(pass3Result)
         break
       }
-      case 'receivePublicKey': {
-        const data = message.data as Record<string, unknown>
+      case 'publicKey': {
+        const { data } = message
         const { responderEncryptedPublicKey } = data
         void this.sendInitialVaultData(
           responderEncryptedPublicKey as EncryptedPublicKey,
         )
         break
       }
-      case 'receiveInitialVaultData': {
-        const data = message.data as Record<string, unknown>
+      case 'vault': {
+        const { data } = message
         const { encryptedVaultData, initiatorEncryptedPublicKey } = data
         void this.importInitialVaultData(
-          encryptedVaultData as string,
+          encryptedVaultData,
           initiatorEncryptedPublicKey as EncryptedPublicKey,
         )
         break
       }
-      case 'receiveCommand': {
-        const data = message.data as Record<string, unknown>
+      case 'syncCommand': {
+        const { data } = message
         const encryptedSymmetricKey =
           data.encryptedSymmetricKey as EncryptedSymmetricKey
-        const encryptedCommand = data.encryptedCommand as string
-        void this.receiveCommand(encryptedSymmetricKey, encryptedCommand)
+        const encryptedCommands = data.encryptedCommands
+        void this.receiveCommands(encryptedSymmetricKey, encryptedCommands)
         break
       }
     }
@@ -559,7 +560,7 @@ class SyncManager {
           device.publicKey,
           symmetricKey,
         )
-        const encryptedCommand = await this.cryptoLib.encryptSymmetric(
+        const encryptedCommands = await this.cryptoLib.encryptSymmetric(
           symmetricKey,
           JSON.stringify({
             ...commandJson,
@@ -569,20 +570,15 @@ class SyncManager {
         return {
           userId: device.userId,
           encryptedSymmetricKey,
-          encryptedCommand,
+          encryptedCommands,
         }
       }),
     )
 
-    this.ws.send(
-      JSON.stringify({
-        type: 'sendCommand',
-        data,
-      }),
-    )
+    this.sendToServer('syncCommand', data)
   }
 
-  async receiveCommand(
+  async receiveCommands(
     encryptedSymmetricKey: EncryptedSymmetricKey,
     encryptedData: string,
   ) {
@@ -592,7 +588,7 @@ class SyncManager {
     )) as SymmetricKey
     const data = JSON.parse(
       await this.cryptoLib.decryptSymmetric(symmetricKey, encryptedData),
-    ) as RemoteCommand
+    ) as SyncCommand
     this.commandManager.receiveRemoteCommand(data)
     await this.commandManager.processRemoteCommands()
   }

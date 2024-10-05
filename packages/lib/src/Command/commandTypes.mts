@@ -14,7 +14,7 @@ export const commandConstructors = {
   UpdateEntry: UpdateEntryCommand,
 }
 
-export type RemoteCommand =
+export type SyncCommand =
   | { type: 'AddEntry'; data: AddEntryData }
   | { type: 'DeleteEntry'; data: DeleteEntryData }
   | { type: 'UpdateEntry'; data: UpdateEntryData }

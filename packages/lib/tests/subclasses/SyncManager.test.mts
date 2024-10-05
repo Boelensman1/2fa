@@ -10,6 +10,7 @@ import {
 import WS from 'vitest-websocket-mock'
 export { WebSocket as default } from 'mock-socket'
 
+import type ServerMessage from '2faserver/ServerMessage'
 import {
   CryptoLib,
   EncryptedPrivateKey,
@@ -36,6 +37,14 @@ vi.mock('isomorphic-ws')
 
 const serverPort = 9770
 const serverBaseUrl = 'ws://localhost'
+
+const send = <T extends ServerMessage['type']>(
+  ws: WsClient,
+  type: T,
+  data: unknown = {},
+) => {
+  ws.send(JSON.stringify({ type, data }))
+}
 
 describe('SyncManager', () => {
   let serverUrl: string
@@ -141,9 +150,7 @@ describe('SyncManager', () => {
   it('should throw an error when initiating add device flow while another flow is active', async () => {
     const initiatePromise = senderTwoFaLib.sync?.initiateAddDeviceFlow(false)
     await server.nextMessage
-    senderWsInstance.send(
-      JSON.stringify({ type: 'addDeviceFlowRequestRegistered' }),
-    )
+    send(senderWsInstance, 'confirmAddSyncDeviceInitialiseData')
 
     await initiatePromise
     await expect(
@@ -151,7 +158,7 @@ describe('SyncManager', () => {
     ).rejects.toThrow(SyncAddDeviceFlowConflictError)
   })
 
-  it.only('should complete the full flow', async () => {
+  it('should complete the full flow', async () => {
     if (!senderTwoFaLib.sync || !receiverTwoFaLib.sync) {
       throw new Error('Sync manager not initialized')
     }
@@ -162,34 +169,25 @@ describe('SyncManager', () => {
 
     // wait for message to be received and send response
     await server.nextMessage
-    senderWsInstance.send(
-      JSON.stringify({
-        type: 'addDeviceFlowRequestRegistered',
-      }),
-    )
+    send(senderWsInstance, 'confirmAddSyncDeviceInitialiseData')
 
     // get the initiateResult and pass it to the receiver (this part is usually done via QR)
     const initiateResult = await initiateResultPromise
     await receiverTwoFaLib.sync.respondToAddDeviceFlow(initiateResult)
 
     // complete the rest of the flow
-    const messages = [
-      { type: 'addDevicePassPass2Result', sender: senderWsInstance },
-      { type: 'addDevicePassPass3Result', sender: receiverWsInstance },
-      { type: 'receivePublicKey', sender: senderWsInstance },
-      { type: 'receiveInitialVaultData', sender: receiverWsInstance },
+    const messages: { type: ServerMessage['type']; sender: WsClient }[] = [
+      { type: 'JPAKEPass2', sender: senderWsInstance },
+      { type: 'JPAKEPass3', sender: receiverWsInstance },
+      { type: 'publicKey', sender: senderWsInstance },
+      { type: 'vault', sender: receiverWsInstance },
     ]
     const messageDatas = []
     for (const { type, sender } of messages) {
       const message = (await server.nextMessage) as { data: unknown }
       const data = message.data
       messageDatas.push(data)
-      sender.send(
-        JSON.stringify({
-          type,
-          data,
-        }),
-      )
+      send(sender, type, data)
     }
 
     // wait for the import to finish
@@ -213,12 +211,7 @@ describe('SyncManager', () => {
     await senderTwoFaLib.vault.addEntry(anotherTotpEntry)
 
     const message = (await server.nextMessage) as { data: unknown[] }
-    receiverWsInstance.send(
-      JSON.stringify({
-        type: 'receiveCommand',
-        data: message.data[0],
-      }),
-    )
+    send(receiverWsInstance, 'syncCommand', message.data[0])
 
     await vi.waitUntil(() => receiverTwoFaLib.vault.size !== 1, {
       timeout: 1000,

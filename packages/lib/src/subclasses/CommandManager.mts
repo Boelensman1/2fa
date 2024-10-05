@@ -5,7 +5,7 @@ import type Command from '../Command/BaseCommand.mjs'
 import CommandQueue from '../Command/CommandQueue.mjs'
 import {
   commandConstructors,
-  type RemoteCommand,
+  type SyncCommand,
 } from '../Command/commandTypes.mjs'
 
 interface CommandConstructor {
@@ -75,7 +75,7 @@ class CommandManager {
     }
   }
 
-  receiveRemoteCommand(remoteCommand: RemoteCommand): void {
+  receiveRemoteCommand(remoteCommand: SyncCommand): void {
     if (remoteCommand && typeof remoteCommand.type === 'string') {
       const CommandClass = commandConstructors[
         remoteCommand.type

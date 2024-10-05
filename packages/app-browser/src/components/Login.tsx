@@ -2,12 +2,13 @@ import { type Component, createSignal } from 'solid-js'
 import useStore from '../store/useStore'
 import actions from '../store/actions'
 import useSyncStoreWithLib from '../utils/useSyncStoreWithLib'
-import {
+import type {
   EncryptedPrivateKey,
   EncryptedSymmetricKey,
   Passphrase,
   Salt,
   UserId,
+  SyncDevice,
 } from '2falib'
 import { syncServerUrl } from '../parameters'
 
@@ -47,7 +48,7 @@ const Login: Component = () => {
       password() as Passphrase,
       userId as UserId,
       syncServerUrl,
-      syncDevices ? JSON.parse(syncDevices) : undefined,
+      syncDevices ? (JSON.parse(syncDevices) as SyncDevice[]) : undefined,
     )
     await twoFaLib.persistentStorage.loadFromLockedRepresentation(
       lockedRepresentation,

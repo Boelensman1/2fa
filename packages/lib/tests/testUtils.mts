@@ -40,3 +40,6 @@ export const clearEntries = async (twoFaLib: TwoFaLib) => {
     await twoFaLib.vault.deleteEntry(entryId)
   }
 }
+
+export const omit = (obj: Record<string, unknown>, ...keys: string[]) =>
+  Object.fromEntries(Object.entries(obj).filter(([k]) => !keys.includes(k)))

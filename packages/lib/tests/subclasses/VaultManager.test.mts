@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeEach, beforeAll } from 'vitest'
-import _ from 'lodash'
 
 import {
   EntryNotFoundError,
@@ -13,6 +12,7 @@ import {
   totpEntry,
   clearEntries,
   createTwoFaLibForTests,
+  omit,
 } from '../testUtils.mjs'
 
 describe('VaultManager', () => {
@@ -31,7 +31,7 @@ describe('VaultManager', () => {
     const retrieved = twoFaLib.vault.getEntryMeta(entryId)
 
     expect(retrieved).toEqual(
-      _.omit(
+      omit(
         {
           ...totpEntry,
           id: entryId,

@@ -12,9 +12,9 @@ import {
   clearEntries,
   createTwoFaLibForTests,
   deviceIdentifier,
+  omit,
   passphrase,
 } from '../testUtils.mjs'
-import _ from 'lodash'
 import { totpEntry } from '../testUtils.mjs'
 import type { SaveFunctionData } from '../../src/interfaces/SaveFunction.mjs'
 import type { UserId } from '../../src/interfaces/SyncTypes.mjs'
@@ -57,7 +57,7 @@ describe('PersistentStorageManager', () => {
 
     const retrieved = second2faLib.vault.getEntryMeta(entryId)
     expect(retrieved).toEqual(
-      _.omit(
+      omit(
         {
           ...totpEntry,
           id: entryId,

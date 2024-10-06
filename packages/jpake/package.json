@@ -36,7 +36,6 @@
   },
   "dependencies": {
     "@noble/curves": "^1.6.0",
-    "buffer": "^6.0.3",
     "canvas": "^2.11.2",
     "hash-wasm": "^4.11.0",
     "jsqr": "^1.4.0",

@@ -122,16 +122,23 @@ class ExportImportManager {
    * @returns A promise that resolves to the newly added EntryId.
    * @throws {InvalidInputExportImportError} If the QR code is invalid or doesn't contain a valid OTP URI.
    */
-  async importFromQRCode(imageInput: string | File | Buffer): Promise<EntryId> {
+  async importFromQRCode(
+    imageInput: string | File | Uint8Array,
+  ): Promise<EntryId> {
     const jsQr = await this.libraryLoader.getJsQrLib()
     let imageData: ImageData
     if (typeof window !== 'undefined') {
       // Browser environment
       imageData = await getImageDataBrowser(imageInput as string | File)
     } else {
+      if (imageInput instanceof File) {
+        throw new ExportImportError(
+          'Imports of type "File" are not supported in the node environment',
+        )
+      }
       // Node.js environment
       const canvasLib = await this.libraryLoader.getCanvasLib()
-      imageData = await getImageDataNode(canvasLib, imageInput as Buffer)
+      imageData = await getImageDataNode(canvasLib, imageInput)
     }
     const qrCodeResult = jsQr(imageData.data, imageData.width, imageData.height)
     if (!qrCodeResult) {

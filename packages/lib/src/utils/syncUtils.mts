@@ -5,20 +5,20 @@ import { InitiateAddDeviceFlowResult } from '../interfaces/SyncTypes.mjs'
 import { SyncError } from '../TwoFALibError.mjs'
 
 export const decodeInitiatorData = async (
-  initiatorData: InitiateAddDeviceFlowResult | string | Buffer | File,
+  initiatorData: InitiateAddDeviceFlowResult | string | Uint8Array | File,
   jsQr: typeof import('jsqr').default,
   getCanvasLib: () => Promise<typeof import('canvas')>,
 ): Promise<InitiateAddDeviceFlowResult> => {
   if (
     typeof initiatorData === 'string' ||
-    initiatorData instanceof Buffer ||
+    initiatorData instanceof Uint8Array ||
     initiatorData instanceof File
   ) {
     try {
       let imageData: ImageData
 
       if (typeof window !== 'undefined') {
-        if (initiatorData instanceof Buffer) {
+        if (initiatorData instanceof Uint8Array) {
           throw new SyncError(
             'Invalid initiator data type, should be a string or File in browser environment',
           )
@@ -26,9 +26,9 @@ export const decodeInitiatorData = async (
         // Browser environment
         imageData = await getImageDataBrowser(initiatorData)
       } else {
-        if (!(initiatorData instanceof Buffer)) {
+        if (!(initiatorData instanceof Uint8Array)) {
           throw new SyncError(
-            'Invalid initiator data type, should be a Buffer in Node.js environment',
+            'Invalid initiator data type, should be a Uint8Array in Node.js environment',
           )
         }
         // Node.js environment

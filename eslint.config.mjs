@@ -31,6 +31,10 @@ export default [
           name: 'Error',
           message: 'Use custom error instead.',
         },
+        {
+          name: 'Buffer',
+          message: 'Use Uint8Array instead.',
+        },
       ],
     },
   },

@@ -88,7 +88,7 @@ interface CryptoLib {
    * Encrypts a plain text message using a public key
    * @param publicKey - The public key to use for encryption
    * @param plainText - The text to encrypt
-   * @returns A promise that resolves to the encrypted text
+   * @returns A promise that resolves to the encrypted text (base64 encoded)
    */
   encrypt: (publicKey: PublicKey, plainText: string) => Promise<string>
 
@@ -115,7 +115,7 @@ interface CryptoLib {
    * Encrypts a plain text message using a symmetric key
    * @param symmetricKey - The symmetric key to use for encryption
    * @param plainText - The text to encrypt
-   * @returns A promise that resolves to the encrypted text
+   * @returns A promise that resolves to the encrypted text (base64 encoded)
    */
   encryptSymmetric: (
     symmetricKey: SymmetricKey,

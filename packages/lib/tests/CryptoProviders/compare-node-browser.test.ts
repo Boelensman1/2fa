@@ -14,10 +14,6 @@ import {
 import NodeCryptoProvider from '../../src/CryptoProviders/node/index.mjs'
 import BrowserCryptoProvider from '../../src/CryptoProviders/browser/index.mjs'
 
-// Ensure Buffer is available globally for the browser environment
-import { Buffer } from 'buffer'
-globalThis.Buffer = Buffer
-
 // @ts-expect-error node crypto and webcrypto don't have the exact same types
 globalThis.window = { crypto: crypto.webcrypto }
 

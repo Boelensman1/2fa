@@ -1,3 +1,4 @@
+/* eslint no-restricted-globals: ["error", "Error"] */
 import { promisify } from 'node:util'
 import {
   generateKeyPair as generateKeyPairCb,
@@ -12,6 +13,7 @@ import {
   createDecipheriv,
 } from 'node:crypto'
 import { argon2id } from 'hash-wasm'
+import { toUint8Array } from 'uint8array-extras'
 
 import { CryptoError } from '../../TwoFALibError.mjs'
 import type CryptoLib from '../../interfaces/CryptoLib.mjs'
@@ -205,7 +207,7 @@ class NodeCryptoLib implements CryptoLib {
   }
 
   async getRandomBytes(count: number) {
-    return Promise.resolve(randomBytes(count))
+    return Promise.resolve(toUint8Array(randomBytes(count)))
   }
 
   async createSyncKey(sharedKey: Uint8Array, salt: string): Promise<SyncKey> {

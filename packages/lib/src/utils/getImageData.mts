@@ -1,4 +1,6 @@
 import type { ImageData } from 'canvas'
+import { isUint8Array } from 'uint8array-extras'
+
 import { TwoFALibError } from '../TwoFALibError.mjs'
 
 export const getImageDataBrowser = (
@@ -37,10 +39,13 @@ export const getImageDataBrowser = (
 
 export const getImageDataNode = async (
   canvasLib: typeof import('canvas'),
-  buffer: Buffer,
+  inputImage: Uint8Array | string,
 ): Promise<ImageData> => {
   const { createCanvas, loadImage } = canvasLib
-  const image = await loadImage(buffer)
+
+  // eslint-disable-next-line no-restricted-globals
+  const input = isUint8Array(inputImage) ? Buffer.from(inputImage) : inputImage
+  const image = await loadImage(input) // canvaslib expects a buffer
   const canvas = createCanvas(image.width, image.height)
   const ctx = canvas.getContext('2d')
   ctx.drawImage(image, 0, 0)

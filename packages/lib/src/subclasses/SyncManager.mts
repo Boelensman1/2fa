@@ -1,5 +1,11 @@
 import WebSocket, { MessageEvent } from 'isomorphic-ws'
 import {
+  base64ToUint8Array,
+  hexToUint8Array,
+  uint8ArrayToBase64,
+  uint8ArrayToHex,
+} from 'uint8array-extras'
+import {
   deriveSFromPassword,
   JPakeThreePass,
   Pass2Result,
@@ -28,8 +34,6 @@ import type LibraryLoader from './LibraryLoader.mjs'
 import type PersistentStorageManager from './PersistentStorageManager.mjs'
 import type CommandManager from './CommandManager.mjs'
 
-// Ensure Buffer is available globally for the browser environment
-import { Buffer } from 'buffer'
 import {
   InitializationError,
   SyncAddDeviceFlowConflictError,
@@ -37,7 +41,6 @@ import {
   SyncInWrongStateError,
   SyncNoServerConnectionError,
 } from '../TwoFALibError.mjs'
-globalThis.Buffer = Buffer
 
 const generateNonCryptographicRandomString = () => {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
@@ -93,9 +96,7 @@ class SyncManager {
     )
   }
   private async getNonce() {
-    return Buffer.from(await this.cryptoLib.getRandomBytes(16)).toString(
-      'base64',
-    )
+    return uint8ArrayToBase64(await this.cryptoLib.getRandomBytes(16))
   }
 
   private sendToServer<T extends ClientMessage['type']>(
@@ -215,7 +216,7 @@ class SyncManager {
     }
 
     const addDevicePassword = deriveSFromPassword(
-      Buffer.from(await this.cryptoLib.getRandomBytes(60)).toString('base64'),
+      uint8ArrayToBase64(await this.cryptoLib.getRandomBytes(60)),
     )
     const timestamp = Date.now()
 
@@ -251,15 +252,15 @@ class SyncManager {
     await continuePromise
 
     const returnData: InitiateAddDeviceFlowResult = {
-      addDevicePassword: Buffer.from(addDevicePassword).toString('base64'),
+      addDevicePassword: uint8ArrayToBase64(addDevicePassword),
       initiatorUserIdString: this.userId,
       initiatorDeviceIdentifier: this.deviceIdentifier,
       timestamp,
       pass1Result: {
-        G1: Buffer.from(pass1Result.G1).toString('hex'),
-        G2: Buffer.from(pass1Result.G2).toString('hex'),
-        ZKPx1: Buffer.from(pass1Result.ZKPx1).toString('hex'),
-        ZKPx2: Buffer.from(pass1Result.ZKPx2).toString('hex'),
+        G1: uint8ArrayToHex(pass1Result.G1),
+        G2: uint8ArrayToHex(pass1Result.G2),
+        ZKPx1: uint8ArrayToHex(pass1Result.ZKPx1),
+        ZKPx2: uint8ArrayToHex(pass1Result.ZKPx2),
       },
     }
 
@@ -282,7 +283,7 @@ class SyncManager {
    * @throws {Error} If the initiator data is invalid or if there's an error in the JPAKE process.
    */
   async respondToAddDeviceFlow(
-    initiatorData: InitiateAddDeviceFlowResult | string | Buffer | File,
+    initiatorData: InitiateAddDeviceFlowResult | string | Uint8Array | File,
   ) {
     if (!this.ws || !this.webSocketConnected) {
       throw new SyncNoServerConnectionError()
@@ -314,16 +315,16 @@ class SyncManager {
     }
 
     // Decode the base64 password
-    const decodedPassword = Buffer.from(addDevicePassword, 'base64')
+    const decodedPassword = base64ToUint8Array(addDevicePassword)
 
     const jpak = new JPakeThreePass(this.userId)
 
     // Process the first pass from the initiator
     const initiatorPass1Result = {
-      G1: Buffer.from(pass1Result.G1, 'hex'),
-      G2: Buffer.from(pass1Result.G2, 'hex'),
-      ZKPx1: Buffer.from(pass1Result.ZKPx1, 'hex'),
-      ZKPx2: Buffer.from(pass1Result.ZKPx2, 'hex'),
+      G1: hexToUint8Array(pass1Result.G1),
+      G2: hexToUint8Array(pass1Result.G2),
+      ZKPx1: hexToUint8Array(pass1Result.ZKPx1),
+      ZKPx2: hexToUint8Array(pass1Result.ZKPx2),
     }
 
     let pass2Result: Pass2Result

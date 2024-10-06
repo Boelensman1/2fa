@@ -123,8 +123,8 @@ describe('ExportImportManager', () => {
     expect(token.otp).toHaveLength(totpEntry.payload.digits)
   })
 
-  it('should throw an error when importing an invalid QR code', async () => {
-    const invalidQrData = Buffer.from('invalid data')
+  it('should throw an error when importing an invalid QR code (Uint8Array)', async () => {
+    const invalidQrData = new Uint8Array([1, 2, 3])
 
     await expect(
       twoFaLib.exportImport.importFromQRCode(invalidQrData),

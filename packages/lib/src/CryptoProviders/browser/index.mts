@@ -1,5 +1,10 @@
 import forge from 'node-forge'
-import { Buffer } from 'buffer'
+import {
+  base64ToUint8Array,
+  stringToUint8Array,
+  uint8ArrayToBase64,
+  uint8ArrayToString,
+} from 'uint8array-extras'
 import { argon2id } from 'hash-wasm'
 
 import { CryptoError } from '../../TwoFALibError.mjs'
@@ -38,9 +43,9 @@ const generatePassphraseHash = (
 class BrowserCryptoLib implements CryptoLib {
   async createKeys(passphrase: Passphrase) {
     // create random salt
-    const salt = Buffer.from(
+    const salt = uint8ArrayToBase64(
       window.crypto.getRandomValues(new Uint8Array(16)),
-    ).toString('base64') as Salt
+    ) as Salt
 
     // create passwordHash
     const passphraseHash = await generatePassphraseHash(salt, passphrase)
@@ -188,25 +193,17 @@ class BrowserCryptoLib implements CryptoLib {
 
   async encrypt(publicKey: PublicKey, plainText: string): Promise<string> {
     const publicKeyObj = forge.pki.publicKeyFromPem(publicKey as string)
-    const buffer = Buffer.from(plainText, 'utf8')
-    const encrypted = publicKeyObj.encrypt(
-      buffer.toString('binary'),
-      'RSA-OAEP',
-    )
-    return Promise.resolve(Buffer.from(encrypted, 'binary').toString('base64'))
+    const encrypted = publicKeyObj.encrypt(plainText, 'RSA-OAEP')
+    return Promise.resolve(btoa(encrypted))
   }
 
   async decrypt(
     privateKey: PrivateKey,
-    encryptedText: string,
+    encryptedTextB64: string,
   ): Promise<string> {
     const privateKeyObj = forge.pki.privateKeyFromPem(privateKey as string)
-    const buffer = Buffer.from(encryptedText, 'base64')
-    const decrypted = privateKeyObj.decrypt(
-      buffer.toString('binary'),
-      'RSA-OAEP',
-    )
-    return Promise.resolve(Buffer.from(decrypted, 'binary').toString('utf8'))
+    const decrypted = privateKeyObj.decrypt(atob(encryptedTextB64), 'RSA-OAEP')
+    return Promise.resolve(decrypted)
   }
 
   async createSymmetricKey(): Promise<SymmetricKey> {
@@ -216,7 +213,7 @@ class BrowserCryptoLib implements CryptoLib {
       ['encrypt', 'decrypt'],
     )
     const exportedKey = await window.crypto.subtle.exportKey('raw', key)
-    return Buffer.from(exportedKey).toString('base64') as SymmetricKey
+    return uint8ArrayToBase64(new Uint8Array(exportedKey)) as SymmetricKey
   }
 
   async encryptSymmetric(
@@ -225,21 +222,20 @@ class BrowserCryptoLib implements CryptoLib {
   ): Promise<string> {
     const key = await window.crypto.subtle.importKey(
       'raw',
-      Buffer.from(symmetricKey, 'base64'),
+      base64ToUint8Array(symmetricKey),
       { name: 'AES-CBC', length: 256 },
       false,
       ['encrypt'],
     )
     const iv = window.crypto.getRandomValues(new Uint8Array(16))
-    const encryptedBuffer = await window.crypto.subtle.encrypt(
+    const encrypted = await window.crypto.subtle.encrypt(
       { name: 'AES-CBC', iv },
       key,
-      Buffer.from(plainText, 'utf8'),
+      stringToUint8Array(plainText),
     )
-    const encryptedArray = new Uint8Array(encryptedBuffer)
     const result = [
-      Buffer.from(iv).toString('base64'),
-      Buffer.from(encryptedArray).toString('base64'),
+      uint8ArrayToBase64(iv),
+      uint8ArrayToBase64(new Uint8Array(encrypted)),
     ]
     return result.join(':')
   }
@@ -249,25 +245,25 @@ class BrowserCryptoLib implements CryptoLib {
     encryptedText: string,
   ): Promise<string> {
     const [ivString, encryptedData] = encryptedText.split(':')
-    const iv = Buffer.from(ivString, 'base64')
-    const keyBuffer = Buffer.from(symmetricKey, 'base64')
+    const iv = base64ToUint8Array(ivString)
+    const keyUint8Array = base64ToUint8Array(symmetricKey)
 
     const key = await window.crypto.subtle.importKey(
       'raw',
-      keyBuffer,
+      keyUint8Array,
       { name: 'AES-CBC', length: 256 },
       false,
       ['decrypt'],
     )
 
-    const encryptedBuffer = Buffer.from(encryptedData, 'base64')
-    const decryptedBuffer = await window.crypto.subtle.decrypt(
+    const encrypted = base64ToUint8Array(encryptedData)
+    const decrypted = await window.crypto.subtle.decrypt(
       { name: 'AES-CBC', iv },
       key,
-      encryptedBuffer,
+      encrypted,
     )
 
-    return Buffer.from(decryptedBuffer).toString('utf8')
+    return uint8ArrayToString(decrypted)
   }
 
   async getRandomBytes(count: number) {
@@ -275,7 +271,7 @@ class BrowserCryptoLib implements CryptoLib {
   }
 
   async createSyncKey(sharedKey: Uint8Array, salt: string): Promise<SyncKey> {
-    const keyBuffer = await argon2id({
+    const key = await argon2id({
       password: sharedKey,
       salt,
       parallelism: 1,
@@ -284,7 +280,7 @@ class BrowserCryptoLib implements CryptoLib {
       hashLength: 32,
       outputType: 'binary',
     })
-    return Buffer.from(keyBuffer).toString('base64') as SyncKey
+    return uint8ArrayToBase64(key) as SyncKey
   }
 }
 

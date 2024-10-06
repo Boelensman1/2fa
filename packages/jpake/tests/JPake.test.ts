@@ -57,7 +57,9 @@ describe('JPake', () => {
 
   it('should throw error when trying to derive key before completing exchange', () => {
     // Attempt to derive the key without completing the exchange
-    expect(() => alice.deriveSharedKey()).toThrow()
+    expect(() => alice.deriveSharedKey()).toThrowError(
+      'Shared key can only be derived after receiving Round 2 results',
+    )
   })
 
   it("should throw error when trying to share a key with equal userId's", () => {
@@ -124,7 +126,7 @@ describe('JPake', () => {
     const eveRound1 = eve.round1()
 
     // Eve tries to intercept and replace Bob's round 1 data
-    expect(() => alice.round2(eveRound1, s, bob.userId)).toThrow(
+    expect(() => alice.round2(eveRound1, s, bob.userId)).toThrowError(
       'ZKP verification failed',
     )
   })
@@ -146,18 +148,20 @@ describe('JPake', () => {
     alice.setRound2ResultFromBob(eveRound2)
 
     // Attempt to derive the key after the MITM attack:
-    expect(() => alice.deriveSharedKey()).toThrow('ZKP verification failed')
+    expect(() => alice.deriveSharedKey()).toThrowError(
+      'ZKP verification failed',
+    )
   })
 
   it('should throw error when trying to create JPake instance with empty userId', () => {
-    expect(() => new JPake('')).toThrow('UserId cannot be empty')
+    expect(() => new JPake('')).toThrowError('UserId cannot be empty')
   })
 
   it('should throw error when trying to perform round2 with empty userId', () => {
     alice.round1()
     const bobRound1 = bob.round1()
 
-    expect(() => alice.round2(bobRound1, s, '')).toThrow(
+    expect(() => alice.round2(bobRound1, s, '')).toThrowError(
       'Missing required arguments for round 2',
     )
   })
@@ -206,7 +210,7 @@ describe('JPake', () => {
     // Expect an error when Bob tries to process Alice's round1 result with a different timestamp
     expect(() =>
       bobWOtherInfo.round2(aliceRound1, s, aliceWOtherInfo.userId),
-    ).toThrow('ZKP verification failed')
+    ).toThrowError('ZKP verification failed')
   })
 
   it('should successfully complete a key exchange when s > n', () => {
@@ -246,11 +250,11 @@ describe('JPake', () => {
     // Test when s = 0
     expect(() =>
       alice.round2(bobRound1, numberToBytesBE(0n, 32), bob.userId),
-    ).toThrow('Invalid s: s MUST not be equal to 0 mod n')
+    ).toThrowError('Invalid s: s MUST not be equal to 0 mod n')
 
     // Test when s mod n = 0
     const largeS = numberToBytesBE(n * 2n, 64) // s is a multiple of n
-    expect(() => alice.round2(bobRound1, largeS, bob.userId)).toThrow(
+    expect(() => alice.round2(bobRound1, largeS, bob.userId)).toThrowError(
       'Invalid s: s MUST not be equal to 0 mod n',
     )
   })
@@ -272,7 +276,7 @@ describe('JPake', () => {
         numberToBytesBE(BigInt(123), 32),
         'Bob',
       ),
-    ).toThrow(
+    ).toThrowError(
       'Invalid points received: G1 or G2 is not a valid ProjectivePoint',
     )
   })

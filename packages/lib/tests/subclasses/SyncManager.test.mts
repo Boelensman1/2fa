@@ -160,6 +160,7 @@ describe('SyncManager', () => {
 
   it('should complete the full flow', async () => {
     if (!senderTwoFaLib.sync || !receiverTwoFaLib.sync) {
+      // eslint-disable-next-line no-restricted-globals
       throw new Error('Sync manager not initialized')
     }
 

@@ -5,6 +5,12 @@ import { bytesToNumberBE, numberToBytesBE } from '@noble/curves/abstract/utils'
 import { generateSchnorrProof, verifySchnorrProof } from './schnorr.mjs'
 import { mod } from '@noble/curves/abstract/modular'
 
+import {
+  InvalidArgumentError,
+  InvalidStateError,
+  VerificationError,
+  JPakeError,
+} from './JPakeErrors.mjs'
 import { n, G } from './constants.mjs'
 
 export interface Round1Result {
@@ -52,14 +58,14 @@ class JPake {
    * Creates a new instance of the JPake protocol.
    * @param userId - The unique identifier for the current user.
    * @param otherInfo - Optional additional information to be included in the protocol.
-   * @throws {Error} If userId is empty.
+   * @throws {InvalidArgumentError} If userId is empty.
    */
   constructor(
     userId: string,
     private readonly otherInfo?: string[],
   ) {
     if (!userId) {
-      throw new Error('UserId cannot be empty')
+      throw new InvalidArgumentError('UserId cannot be empty')
     }
     this.userId = userId
     this.state = JPakeState.INITIAL
@@ -72,7 +78,7 @@ class JPake {
    * @param proof - The Schnorr proof to verify.
    * @param g - The base point for the proof.
    * @returns True if the proof is valid, false otherwise.
-   * @throws {Error} If the peerUserId is invalid or matches the current user's ID.
+   * @throws {VerificationError} If the peerUserId is invalid or matches the current user's ID.
    */
   private verifyPeerProof(
     peerUserId: string,
@@ -81,10 +87,12 @@ class JPake {
     g: ProjPointType<bigint>,
   ): boolean {
     if (this.userId === peerUserId) {
-      throw new Error('Proof verification failed, userIds are equal.')
+      throw new VerificationError(
+        'Proof verification failed, userIds are equal.',
+      )
     }
     if (!peerUserId) {
-      throw new Error('PeerUserId is empty.')
+      throw new InvalidArgumentError('PeerUserId is empty.')
     }
 
     return verifySchnorrProof(peerUserId, gx, proof, g, this.otherInfo)
@@ -97,12 +105,12 @@ class JPake {
    * random from [0, q-1] and another ephemeral private key x2 uniformly
    * at random from [1, q-1]. G1 = G x [x1], G2 = G x [x2] and ZKPs for x1 and x2
    * @returns The public values and proofs for Round 1.
-   * @throws {Error} If called in an invalid state or if generation fails.
+   * @throws {InvalidStateError} If called in an invalid state or if generation fails.
    */
   public round1(): Round1Result {
     if (this.state !== JPakeState.INITIAL) {
-      throw new Error(
-        'Invalid state: Round 1 can only be executed in INITIAL state',
+      throw new InvalidStateError(
+        'Round 1 can only be executed in INITIAL state',
       )
     }
 
@@ -135,7 +143,7 @@ class JPake {
     )
 
     if (!this.G1 || !this.G2 || !ZKPx1 || !ZKPx2) {
-      throw new Error('Failed to generate round 1 results')
+      throw new JPakeError('Failed to generate round 1 results')
     }
 
     this.state = JPakeState.ROUND1FINISHED
@@ -154,7 +162,7 @@ class JPake {
    * @param s - The shared secret (password) converted to a bigint.
    * @param bobUserId - Bob's unique identifier.
    * @returns The public values and proofs for Round 2.
-   * @throws {Error} If called in an invalid state, if arguments are invalid, or if verification fails.
+   * @throws {InvalidStateError} If called in an invalid state, if arguments are invalid, or if verification fails.
    */
   public round2(
     round1ResultBob: Round1Result,
@@ -162,9 +170,7 @@ class JPake {
     bobUserId: string,
   ): Round2Result {
     if (this.state !== JPakeState.ROUND1FINISHED) {
-      throw new Error(
-        'Invalid state: Round 2 can only be executed after Round 1',
-      )
+      throw new InvalidStateError('Round 2 can only be executed after Round 1')
     }
 
     if (
@@ -175,11 +181,11 @@ class JPake {
       !s ||
       !bobUserId
     ) {
-      throw new Error('Missing required arguments for round 2')
+      throw new InvalidArgumentError('Missing required arguments for round 2')
     }
 
     if (!this.x2 || !this.G1) {
-      throw new Error('Missing required data for round 2')
+      throw new JPakeError('Missing required data for round 2')
     }
 
     let round1ResultBobG1, round1ResultBobG2
@@ -187,7 +193,7 @@ class JPake {
       round1ResultBobG1 = secp256k1.ProjectivePoint.fromHex(round1ResultBob.G1)
       round1ResultBobG2 = secp256k1.ProjectivePoint.fromHex(round1ResultBob.G2)
     } catch {
-      throw new Error(
+      throw new InvalidArgumentError(
         'Invalid points received: G1 or G2 is not a valid ProjectivePoint',
       )
     }
@@ -196,7 +202,9 @@ class JPake {
 
     // from RFC: s MUST not be equal to 0 mod n
     if (mod(sBigInt, n) === 0n) {
-      throw new Error('Invalid s: s MUST not be equal to 0 mod n')
+      throw new InvalidArgumentError(
+        'Invalid s: s MUST not be equal to 0 mod n',
+      )
     }
 
     this.bobUserId = bobUserId
@@ -209,7 +217,7 @@ class JPake {
       G,
     )
     if (!isValidZKP) {
-      throw new Error('ZKP verification failed')
+      throw new VerificationError('ZKP verification failed')
     }
 
     this.G3 = round1ResultBobG1 // Bob's G1
@@ -236,13 +244,13 @@ class JPake {
 
     // from RFC: Alice shall check that these new generators are not points at infinity.
     if (generator.equals(secp256k1.ProjectivePoint.ZERO)) {
-      throw new Error(
+      throw new VerificationError(
         'Invalid point: The new generator is the point at infinity',
       )
     }
 
     if (!A || !ZKPx2s) {
-      throw new Error('Failed to generate round 2 results')
+      throw new JPakeError('Failed to generate round 2 results')
     }
 
     this.state = JPakeState.ROUND2FINISHED
@@ -252,17 +260,19 @@ class JPake {
   /**
    * Sets the Round 2 results received from Bob.
    * @param round2ResultBob - The Round 2 results received from Bob.
-   * @throws {Error} If called in an invalid state or if the received results are incomplete.
+   * @throws {InvalidStateError} If called in an invalid state or if the received results are incomplete.
    */
   public setRound2ResultFromBob(round2ResultBob: Round2Result) {
     if (this.state !== JPakeState.ROUND2FINISHED) {
-      throw new Error(
-        'Invalid state: Round 2 results can only be set after Round 2 is finished',
+      throw new InvalidStateError(
+        'Round 2 results can only be set after Round 2 is finished',
       )
     }
 
     if (!round2ResultBob.A || !round2ResultBob.ZKPx2s) {
-      throw new Error('Missing required arguments for setRound2ResultFromBob')
+      throw new InvalidArgumentError(
+        'Missing required arguments for setRound2ResultFromBob',
+      )
     }
 
     this.B = secp256k1.ProjectivePoint.fromHex(round2ResultBob.A)
@@ -279,12 +289,12 @@ class JPake {
    * the two parties compute the common key material as follows:
    * o  Alice computes Ka = (B - (G4 x [x2*s])) x [x2]
    * @returns The derived shared key.
-   * @throws {Error} If called in an invalid state, if required data is missing, or if verification fails.
+   * @throws {InvalidStateError} If called in an invalid state, if required data is missing, or if verification fails.
    */
   public deriveSharedKey(): Uint8Array {
     if (this.state !== JPakeState.ROUND2RESULTSRECEIVED) {
-      throw new Error(
-        'Invalid state: Shared key can only be derived after receiving Round 2 results',
+      throw new InvalidStateError(
+        'Shared key can only be derived after receiving Round 2 results',
       )
     }
     if (
@@ -298,7 +308,7 @@ class JPake {
       !this.ZKPx2sBob ||
       !this.bobUserId
     ) {
-      throw new Error('Missing required data for key derivation')
+      throw new JPakeError('Missing required data for key derivation')
     }
 
     // Verify the received ZKP from Bob
@@ -310,12 +320,12 @@ class JPake {
       generator,
     )
     if (!isValidZKP) {
-      throw new Error('ZKP verification failed')
+      throw new VerificationError('ZKP verification failed')
     }
 
     // Check that B is not a point at infinity
     if (this.B.equals(secp256k1.ProjectivePoint.ZERO)) {
-      throw new Error('Invalid point: B is the point at infinity')
+      throw new VerificationError('Invalid point: B is the point at infinity')
     }
 
     // Ka = (B - (G4 x [x2*s])) x [x2]
@@ -327,7 +337,7 @@ class JPake {
     const sharedSecret = Ka.toRawBytes(true)
 
     if (!sharedSecret) {
-      throw new Error('Failed to derive shared key')
+      throw new JPakeError('Failed to derive shared key')
     }
 
     this.state = JPakeState.KEYDERIVED

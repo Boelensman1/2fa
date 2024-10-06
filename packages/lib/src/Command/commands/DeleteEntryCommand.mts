@@ -1,3 +1,4 @@
+import { InvalidCommandError } from '../../TwoFALibError.mjs'
 import Command from '../BaseCommand.mjs'
 import type InternalVaultManager from '../../subclasses/InternalVaultManager.mjs'
 import type { EntryId } from '../../interfaces/Entry.mjs'
@@ -24,18 +25,22 @@ class DeleteEntryCommand extends Command<DeleteEntryData> {
 
   async execute(vault: InternalVaultManager) {
     if (!this.validate()) {
-      throw new Error('Invalid DeleteEntry command')
+      throw new InvalidCommandError('Invalid DeleteEntry command')
     }
     this.deletedEntry = vault.getFullEntry(this.data.entryId)
     if (this.deletedEntry === undefined) {
-      throw new Error(`Entry with id ${this.data.entryId} does not exist`)
+      throw new InvalidCommandError(
+        `Entry with id ${this.data.entryId} does not exist`,
+      )
     }
     await vault.deleteEntry(this.data.entryId)
   }
 
   createUndoCommand(): Command {
     if (this.deletedEntry === undefined) {
-      throw new Error('Cannot create undo command, content not available')
+      throw new InvalidCommandError(
+        'Cannot create undo command, content not available',
+      )
     }
     return AddEntryCommand.create(this.deletedEntry)
   }

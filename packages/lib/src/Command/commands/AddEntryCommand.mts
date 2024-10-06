@@ -1,3 +1,4 @@
+import { InvalidCommandError } from '../../TwoFALibError.mjs'
 import type InternalVaultManager from '../../subclasses/InternalVaultManager.mjs'
 import Command from '../BaseCommand.mjs'
 import type Entry from '../../interfaces/Entry.mjs'
@@ -18,7 +19,7 @@ class AddEntryCommand extends Command<AddEntryData> {
 
   async execute(vault: InternalVaultManager) {
     if (!this.validate()) {
-      throw new Error('Invalid AddEntry command')
+      throw new InvalidCommandError('Invalid AddEntry command')
     }
     await vault.addEntry(this.data)
   }

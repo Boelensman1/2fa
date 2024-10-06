@@ -9,6 +9,7 @@ import type CommandManager from './CommandManager.mjs'
 import AddEntryCommand from '../Command/commands/AddEntryCommand.mjs'
 import DeleteEntryCommand from '../Command/commands/DeleteEntryCommand.mjs'
 import UpdateEntryCommand from '../Command/commands/UpdateEntryCommand.mjs'
+import { EntryNotFoundError } from '../TwoFALibError.mjs'
 
 const getMetaForEntry = (entry: Entry) => ({
   id: entry.id,
@@ -110,7 +111,7 @@ class VaultManager {
    * Add a new entry to the library.
    * @param entry - The entry data to add (without an ID, as it will be generated).
    * @returns A promise that resolves to the newly generated EntryId.
-   * @throws {InvalidInputError} If the provided entry data is invalid or incomplete.
+   * @throws {InvalidCommandError} If the provided entry data is invalid or incomplete.
    */
   async addEntry(entry: NewEntry): Promise<EntryId> {
     const newId = genUuidV4() as EntryId
@@ -143,14 +144,14 @@ class VaultManager {
    * @param updates - An object containing the fields to update and their new values.
    * @returns A promise that resolves to the updated entry's metadata.
    * @throws {EntryNotFoundError} If no entry exists with the given ID.
-   * @throws {InvalidInputError} If the update data is invalid or would result in an invalid entry.
+   * @throws {InvalidCommandError} If the update data is invalid or would result in an invalid entry.
    */
   async updateEntry(
     entryId: EntryId,
     updates: Partial<Omit<Entry, 'id'>>,
   ): Promise<EntryMeta> {
     if (Object.keys(updates).includes('id')) {
-      throw new Error("Can't update id")
+      throw new EntryNotFoundError("Can't update id")
     }
     const oldEntry = this.internalVaultManager.getFullEntry(entryId)
 

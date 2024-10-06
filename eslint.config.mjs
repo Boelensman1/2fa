@@ -24,6 +24,17 @@ export default [
   },
   ...baseConfig,
   {
+    rules: {
+      'no-restricted-globals': [
+        'error',
+        {
+          name: 'Error',
+          message: 'Use custom error instead.',
+        },
+      ],
+    },
+  },
+  {
     languageOptions: {
       parserOptions: {
         tsconfigRootDir: __dirname,
@@ -38,6 +49,7 @@ export default [
     },
     rules: {
       ...solidPlugin.configs.recommended.rules,
+      'no-restricted-globals': ['off'],
     },
     languageOptions: {
       globals: {

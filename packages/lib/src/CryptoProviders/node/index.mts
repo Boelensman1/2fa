@@ -107,6 +107,7 @@ class NodeCryptoLib implements CryptoLib {
         format: 'pem',
       }) as PrivateKey
     } catch (err) {
+      // eslint-disable-next-line no-restricted-globals
       if (err instanceof Error && 'code' in err) {
         if (err.code === 'ERR_OSSL_BAD_DECRYPT') {
           throw new CryptoError('Invalid passphrase')

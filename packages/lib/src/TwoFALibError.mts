@@ -1,3 +1,4 @@
+// eslint-disable-next-line no-restricted-globals
 export class TwoFALibError extends Error {
   constructor(message: string) {
     super(message)
@@ -33,3 +34,5 @@ export class SyncNoServerConnectionError extends SyncError {
     this.name = 'TwoFALibError'
   }
 }
+
+export class InvalidCommandError extends TwoFALibError {}

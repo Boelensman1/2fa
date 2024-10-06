@@ -69,7 +69,9 @@ describe('Schnorr Signature Scheme', () => {
     const longUserId = 'a'.repeat(256)
     const gr = G.multiply(bytesToNumberBE(secp256k1.utils.randomPrivateKey()))
 
-    expect(() => generateSchnorrChallenge(longUserId, publicKey, gr)).toThrow(
+    expect(() =>
+      generateSchnorrChallenge(longUserId, publicKey, gr),
+    ).toThrowError(
       'userId is too long. It must be 255 bytes or less when UTF-8 encoded.',
     )
   })
@@ -80,7 +82,7 @@ describe('Schnorr Signature Scheme', () => {
 
     expect(() =>
       generateSchnorrChallenge(userId, publicKey, gr, longOtherInfo),
-    ).toThrow(
+    ).toThrowError(
       'Each otherInfo string must be 255 bytes or less when UTF-8 encoded.',
     )
   })
@@ -93,25 +95,25 @@ describe('Schnorr Signature Scheme', () => {
     incorrectVLength[0] = 32 // Change VLength to an incorrect value
     expect(() =>
       verifySchnorrProof(userId, publicKey, incorrectVLength, G),
-    ).toThrow('Invalid proof, V must be 33 bytes and r must be 32 bytes')
+    ).toThrowError('Invalid proof, V must be 33 bytes and r must be 32 bytes')
 
     // Test incorrect rLength
     const incorrectRLength = new Uint8Array(validProof)
     incorrectRLength[34] = 31 // Change rLength to an incorrect value
     expect(() =>
       verifySchnorrProof(userId, publicKey, incorrectRLength, G),
-    ).toThrow('Invalid proof, V must be 33 bytes and r must be 32 bytes')
+    ).toThrowError('Invalid proof, V must be 33 bytes and r must be 32 bytes')
 
     // Test incorrect total number of bytes
     const incorrectTotalBytes = new Uint8Array(validProof.slice(0, -1)) // Remove last byte
     expect(() =>
       verifySchnorrProof(userId, publicKey, incorrectTotalBytes, G),
-    ).toThrow('Invalid proof, must be 33 + 32 + 2 bytes long')
+    ).toThrowError('Invalid proof, must be 33 + 32 + 2 bytes long')
 
     // Test only VLength
     const onlyVLength = new Uint8Array([33])
-    expect(() => verifySchnorrProof(userId, publicKey, onlyVLength, G)).toThrow(
-      'Invalid proof, must be 33 + 32 + 2 bytes long',
-    )
+    expect(() =>
+      verifySchnorrProof(userId, publicKey, onlyVLength, G),
+    ).toThrowError('Invalid proof, must be 33 + 32 + 2 bytes long')
   })
 })

@@ -5,6 +5,11 @@ import { concatBytes } from '@noble/hashes/utils'
 import { bytesToNumberBE, numberToBytesBE } from '@noble/curves/abstract/utils'
 import { mod } from '@noble/curves/abstract/modular'
 
+import {
+  InvalidArgumentError,
+  JPakeError,
+  VerificationError,
+} from './JPakeErrors.mjs'
 import { n } from './constants.mjs'
 
 // Implementation of Schnorr ZKP using https://www.rfc-editor.org/rfc/rfc8235
@@ -29,15 +34,19 @@ export const generateSchnorrChallenge = (
   const grBytes = gr.toRawBytes(true)
 
   if (userIdBytes.length > 255) {
-    throw new Error(
+    throw new InvalidArgumentError(
       'userId is too long. It must be 255 bytes or less when UTF-8 encoded.',
     )
   }
   if (gxBytes.length > 255) {
-    throw new Error('gxBytes is too long. It must be 255 bytes or less.')
+    throw new InvalidArgumentError(
+      'gxBytes is too long. It must be 255 bytes or less.',
+    )
   }
   if (grBytes.length > 255) {
-    throw new Error('grBytes is too long. It must be 255 bytes or less.')
+    throw new InvalidArgumentError(
+      'grBytes is too long. It must be 255 bytes or less.',
+    )
   }
 
   const challenge = mod(
@@ -56,7 +65,7 @@ export const generateSchnorrChallenge = (
           ...otherInfo.map((info) => {
             const infoBytes = new TextEncoder().encode(info)
             if (infoBytes.length > 255) {
-              throw new Error(
+              throw new InvalidArgumentError(
                 'Each otherInfo string must be 255 bytes or less when UTF-8 encoded.',
               )
             }
@@ -98,7 +107,7 @@ export const generateSchnorrProof = (
 
   const Vbytes = V.toRawBytes(true)
   if (Vbytes.length !== 33 || r.length !== 32) {
-    throw new Error(
+    throw new JPakeError(
       'Generated proof is invalid, V and r must be 33 and 32 bytes respectively',
     )
   }
@@ -112,7 +121,7 @@ export const generateSchnorrProof = (
   // Verify the proof before returning it
   const isValidProof = verifySchnorrProof(userId, gx, proof, g, otherInfo)
   if (!isValidProof) {
-    throw new Error('Generated Schnorr proof is invalid')
+    throw new JPakeError('Generated Schnorr proof is invalid')
   }
 
   return proof
@@ -135,13 +144,15 @@ export const verifySchnorrProof = (
   otherInfo: string[] = [],
 ): boolean => {
   if (proof.length !== 33 + 32 + 2) {
-    throw new Error('Invalid proof, must be 33 + 32 + 2 bytes long')
+    throw new VerificationError('Invalid proof, must be 33 + 32 + 2 bytes long')
   }
   // get and verify lengths
   const VLength = proof[0]
   const rLength = proof[1 + VLength]
   if (VLength !== 33 || rLength !== 32) {
-    throw new Error('Invalid proof, V must be 33 bytes and r must be 32 bytes')
+    throw new VerificationError(
+      'Invalid proof, V must be 33 bytes and r must be 32 bytes',
+    )
   }
 
   // Extract V and r from the proof

@@ -46,9 +46,11 @@ export const decodeInitiatorData = async (
       }
       return JSON.parse(qrCodeResult.data) as InitiateAddDeviceFlowResult
     } catch (error) {
-      throw new SyncError(
-        'Failed to decode QR code: ' + (error as Error).message,
-      )
+      // eslint-disable-next-line no-restricted-globals
+      if (error instanceof Error) {
+        throw new SyncError('Failed to decode QR code: ' + error.message)
+      }
+      throw new SyncError('Failed to decode QR code: unknown error.')
     }
   }
 

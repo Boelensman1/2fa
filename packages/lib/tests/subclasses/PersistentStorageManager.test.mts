@@ -204,6 +204,7 @@ describe('PersistentStorageManager', () => {
     expect(mockSaveFunction).toHaveBeenCalled()
 
     if (!savedData!) {
+      // eslint-disable-next-line no-restricted-globals
       throw new Error('No saved data')
     }
 

@@ -2,6 +2,7 @@ import { sha3_256 } from '@noble/hashes/sha3'
 import { bytesToNumberBE, numberToBytesBE } from '@noble/curves/abstract/utils'
 import { mod } from '@noble/curves/abstract/modular'
 import { n } from './constants.mjs'
+import { InvalidArgumentError } from './JPakeErrors.mjs'
 
 /**
  * Derives s from a password using sha3_256. You might want to repeatedly hash the password or apply a key derivation function (e.g., PBKDF2, Argon2, or scrypt) to strengthen it and ensure more uniform distribution over the scalar field. This is particularly important if the password space is weak.
@@ -10,7 +11,7 @@ import { n } from './constants.mjs'
  */
 const deriveSFromPassword = (password: string): Uint8Array => {
   if (!password) {
-    throw new Error('Missing password')
+    throw new InvalidArgumentError('Missing password')
   }
 
   let passwordHash = sha3_256(new TextEncoder().encode(password))

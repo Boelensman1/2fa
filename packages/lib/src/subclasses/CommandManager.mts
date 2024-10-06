@@ -1,3 +1,4 @@
+import { InvalidCommandError } from '../TwoFALibError.mjs'
 import type InternalVaultManager from './InternalVaultManager.mjs'
 import type SyncManager from './SyncManager.mjs'
 
@@ -53,16 +54,8 @@ class CommandManager {
   async redo(): Promise<void> {
     const command = this.undoneCommands.pop()
     if (command) {
-      try {
-        await command.execute(this.internalVaultManager)
-        this.executedCommands.push(command)
-      } catch (error) {
-        console.error(
-          `Error redoing command: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        )
-      }
+      await command.execute(this.internalVaultManager)
+      this.executedCommands.push(command)
     }
   }
 
@@ -84,10 +77,12 @@ class CommandManager {
         const command = CommandClass.fromJSON(remoteCommand)
         this.remoteCommandQueue.enqueue(command)
       } else {
-        throw new Error(`Unknown command type: ${remoteCommand.type}`)
+        throw new InvalidCommandError(
+          `Unknown command type: ${remoteCommand.type}`,
+        )
       }
     } else {
-      throw new Error('Invalid command data received')
+      throw new InvalidCommandError('Invalid command data received')
     }
   }
 

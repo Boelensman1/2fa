@@ -1,3 +1,4 @@
+import { InvalidCommandError } from '../../TwoFALibError.mjs'
 import type InternalVaultManager from '../../subclasses/InternalVaultManager.mjs'
 import Command from '../BaseCommand.mjs'
 import type Entry from '../../interfaces/Entry.mjs'
@@ -24,14 +25,14 @@ class UpdateEntryCommand extends Command<UpdateEntryData> {
 
   async execute(vault: InternalVaultManager) {
     if (!this.validate()) {
-      throw new Error('Invalid UpdateEntry command')
+      throw new InvalidCommandError('Invalid UpdateEntry command')
     }
     await vault.updateEntry(this.data.updatedEntry)
   }
 
   createUndoCommand(): Command {
     if (!this.originalEntry) {
-      throw new Error(
+      throw new InvalidCommandError(
         'Cannot create undo command, original entry not available',
       )
     }

@@ -49,6 +49,8 @@ describe('JPakeThreePass', () => {
 
   it('should throw error when trying to derive key before completing exchange', () => {
     // Attempt to derive the key without completing the exchange
-    expect(() => alice.deriveSharedKey()).toThrow()
+    expect(() => alice.deriveSharedKey()).toThrowError(
+      'Shared key can only be derived after receiving Round 2 results',
+    )
   })
 })

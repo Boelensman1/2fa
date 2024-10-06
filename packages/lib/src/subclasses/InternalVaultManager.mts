@@ -76,7 +76,6 @@ class VaultManager {
    * Add a new entry to the library.
    * @param entry - The entry data to add (without an ID, as it will be generated).
    * @returns A promise that resolves to the newly generated EntryId.
-   * @throws {InvalidInputError} If the provided entry data is invalid or incomplete.
    */
   async addEntry(entry: Entry): Promise<void> {
     this.vault.push(entry)
@@ -109,7 +108,6 @@ class VaultManager {
    * @param updatedEntry - An object containing the updated entry
    * @returns A promise that resolves when done.
    * @throws {EntryNotFoundError} If no entry exists with the given ID.
-   * @throws {InvalidInputError} If the update data is invalid or would result in an invalid entry.
    */
   async updateEntry(updatedEntry: Entry): Promise<void> {
     const { id } = updatedEntry

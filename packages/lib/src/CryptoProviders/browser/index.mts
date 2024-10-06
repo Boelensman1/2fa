@@ -148,6 +148,7 @@ class BrowserCryptoLib implements CryptoLib {
         publicKey: normalizeLineEndings(publicKey) as PublicKey,
       })
     } catch (err) {
+      // eslint-disable-next-line no-restricted-globals
       if (err instanceof Error) {
         if (err.message === 'Invalid passphrase') {
           throw new CryptoError('Invalid passphrase')

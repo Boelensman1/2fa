@@ -1,4 +1,5 @@
 import { v4 as genUuidV4 } from 'uuid'
+import { TypedEventTarget } from 'typescript-event-target'
 import type CryptoLib from './interfaces/CryptoLib.mjs'
 import type {
   EncryptedPrivateKey,
@@ -7,8 +8,11 @@ import type {
   Salt,
 } from './interfaces/CryptoLib.mjs'
 
-import type { SaveFunction } from './interfaces/SaveFunction.mjs'
 import type { SyncDevice, UserId } from './interfaces/SyncTypes.mjs'
+import type {
+  TwoFaLibEventMap,
+  TwoFaLibEventMapEvents,
+} from './interfaces/Events.mjs'
 
 import { InitializationError } from './TwoFALibError.mjs'
 
@@ -19,28 +23,21 @@ import PersistentStorageManager from './subclasses/PersistentStorageManager.mjs'
 import InternalVaultManager from './subclasses/InternalVaultManager.mjs'
 import ExternalVaultManager from './subclasses/ExternalVaultManager.mjs'
 import CommandManager from './subclasses/CommandManager.mjs'
+import TwoFaLibMediator from './TwoFaLibMediator.mjs'
+
 /**
  * Two-Factor Authentication Library
  * This library provides functionality for managing 2FA entries
  * and handling encrypted data.
  */
-class TwoFaLib {
+class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
   public readonly deviceIdentifier
   public readonly userId?: UserId
 
-  private libraryLoader: LibraryLoader
-  private exportImportManager: ExportImportManager
-  private internalVaultManager: InternalVaultManager
-  private externalVaultManager: ExternalVaultManager
-  private persistentStorageManager: PersistentStorageManager
-  private commandManager: CommandManager
-  private syncManager?: SyncManager
+  private mediator: TwoFaLibMediator
 
-  constructor(
-    deviceIdentifier: string,
-    cryptoLib: CryptoLib,
-    saveFunction?: SaveFunction,
-  ) {
+  constructor(deviceIdentifier: string, cryptoLib: CryptoLib) {
+    super()
     if (!deviceIdentifier) {
       throw new InitializationError('Device identifier is required')
     }
@@ -51,42 +48,42 @@ class TwoFaLib {
     }
     this.deviceIdentifier = deviceIdentifier
 
-    this.libraryLoader = new LibraryLoader(cryptoLib)
-    this.persistentStorageManager = new PersistentStorageManager(
-      this.libraryLoader,
-      this,
-      saveFunction,
-    )
-    this.internalVaultManager = new InternalVaultManager(
-      this.persistentStorageManager,
-    )
-    this.commandManager = new CommandManager(this.internalVaultManager)
-    this.externalVaultManager = new ExternalVaultManager(
-      this.internalVaultManager,
-      this.commandManager,
-    )
-    this.exportImportManager = new ExportImportManager(
-      this.libraryLoader,
-      this.persistentStorageManager,
-      this.externalVaultManager,
-      this.internalVaultManager,
-    )
+    this.mediator = new TwoFaLibMediator()
+    this.mediator.registerComponents([
+      ['libraryLoader', new LibraryLoader(cryptoLib)],
+      ['persistentStorageManager', new PersistentStorageManager(this.mediator)],
+      ['internalVaultManager', new InternalVaultManager(this.mediator)],
+      ['commandManager', new CommandManager(this.mediator)],
+      ['externalVaultManager', new ExternalVaultManager(this.mediator)],
+      ['exportImportManager', new ExportImportManager(this.mediator)],
+      ['dispatchLibEvent', this.dispatchLibEvent.bind(this)],
+    ])
   }
 
   get vault() {
-    return this.externalVaultManager
+    return this.mediator.getExternalVaultManager()
   }
 
   get exportImport() {
-    return this.exportImportManager
+    return this.mediator.getExportImportManager()
   }
 
   get sync() {
-    return this.syncManager
+    return this.mediator.getSyncManager()
   }
 
   get persistentStorage() {
-    return this.persistentStorageManager
+    return this.mediator.getPersistentStorageManager()
+  }
+
+  private dispatchLibEvent<K extends keyof TwoFaLibEventMap>(
+    eventName: K,
+    data?: TwoFaLibEventMap[K],
+  ) {
+    this.dispatchTypedEvent(
+      eventName,
+      new CustomEvent(eventName, { detail: data }) as TwoFaLibEventMapEvents[K],
+    )
   }
 
   /**
@@ -114,9 +111,10 @@ class TwoFaLib {
     // @ts-expect-error userId is readonly but we can't set it in the constructor
     this.userId = userId
 
-    const { publicKey, privateKey } = await this.persistentStorageManager.init(
+    const getPersistentStorageManager =
+      this.mediator.getPersistentStorageManager()
+    const { publicKey, privateKey } = await getPersistentStorageManager.init(
       userId,
-      this.internalVaultManager, // passed here to avoid circular dependency
       encryptedPrivateKey,
       encryptedSymmetricKey,
       salt,
@@ -124,35 +122,33 @@ class TwoFaLib {
     )
 
     if (serverUrl) {
-      this.syncManager = new SyncManager(
-        this.libraryLoader,
-        this.commandManager,
-        this.persistentStorageManager,
-        this.deviceIdentifier,
-        publicKey,
-        privateKey,
-        serverUrl,
-        userId,
-        syncDevices,
+      this.mediator.registerComponent(
+        'syncManager',
+        new SyncManager(
+          this.mediator,
+          this.deviceIdentifier,
+          publicKey,
+          privateKey,
+          serverUrl,
+          userId,
+          syncDevices,
+        ),
       )
-      this.commandManager.setSyncManager(this.syncManager)
-      this.persistentStorageManager.setSyncManager(this.syncManager)
     }
   }
 }
 
-export const createTwoFaLib = async (
+export const createNewTwoFaLibVault = async (
   deviceIdentifier: string,
   cryptolib: CryptoLib,
   passphrase: Passphrase,
-  saveFunction?: SaveFunction,
   serverUrl?: string,
 ) => {
   const { publicKey, encryptedPrivateKey, encryptedSymmetricKey, salt } =
     await cryptolib.createKeys(passphrase)
 
   const userId = genUuidV4() as UserId
-  const twoFaLib = new TwoFaLib(deviceIdentifier, cryptolib, saveFunction)
+  const twoFaLib = new TwoFaLib(deviceIdentifier, cryptolib)
   await twoFaLib.init(
     encryptedPrivateKey,
     encryptedSymmetricKey,
@@ -161,7 +157,6 @@ export const createTwoFaLib = async (
     userId,
     serverUrl,
   )
-  await twoFaLib.persistentStorage.save()
 
   return {
     twoFaLib,

@@ -1,4 +1,4 @@
-import TwoFaLib, { createTwoFaLib } from './TwoFaLib.mjs'
+import TwoFaLib, { createNewTwoFaLibVault } from './TwoFaLib.mjs'
 // import NodeCryptoProvider from './CryptoProviders/node/index.mjs'
 // import BrowserCryptoProvider from './CryptoProviders/browser/index.mjs'
 
@@ -30,15 +30,17 @@ import {
   EntryNotFoundError,
   TokenGenerationError,
 } from './TwoFALibError.mjs'
+import { TwoFaLibEvent } from './TwoFaLibEvent.mjs'
 
 export {
   TwoFaLib,
-  createTwoFaLib,
+  createNewTwoFaLibVault as createTwoFaLib,
   TwoFALibError,
   InitializationError,
   AuthenticationError,
   EntryNotFoundError,
   TokenGenerationError,
+  TwoFaLibEvent,
 }
 
 export type {

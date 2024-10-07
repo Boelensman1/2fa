@@ -11,19 +11,13 @@ import type {
 } from '../interfaces/CryptoLib.mjs'
 import { Vault } from '../interfaces/Vault.mjs'
 
-import type TwoFaLib from '../TwoFaLib.mjs'
-import type LibraryLoader from './LibraryLoader.mjs'
-import type InternalVaultManager from './InternalVaultManager.mjs'
-import type SyncManager from './SyncManager.mjs'
-
-import type { SaveFunction } from '../interfaces/SaveFunction.mjs'
+import type TwoFaLibMediator from '../TwoFaLibMediator.mjs'
 import type { WasChangedSinceLastSave } from '../interfaces/WasChangedSinceLastSave.mjs'
 import type { UserId } from '../interfaces/SyncTypes.mjs'
 
-class PersistentStorageManager {
-  private internalVaultManager!: InternalVaultManager
-  private syncManager?: SyncManager
+import { TwoFaLibEvent } from '../TwoFaLibEvent.mjs'
 
+class PersistentStorageManager {
   private userId?: UserId
   private privateKey?: PrivateKey
   private encryptedPrivateKey?: EncryptedPrivateKey
@@ -39,20 +33,24 @@ class PersistentStorageManager {
     syncDevices: true,
   }
 
-  constructor(
-    private libraryLoader: LibraryLoader,
-    private twoFaLib: TwoFaLib,
-    private saveFunction?: SaveFunction,
-  ) {}
+  constructor(private mediator: TwoFaLibMediator) {}
 
   private get cryptoLib() {
-    return this.libraryLoader.getCryptoLib()
+    return this.mediator.getLibraryLoader().getCryptoLib()
+  }
+  private get internalVaultManager() {
+    return this.mediator.getInternalVaultManager()
+  }
+  private get syncManager() {
+    return this.mediator.getSyncManager()
+  }
+  private get dispatchLibEvent() {
+    return this.mediator.getDispatchLibEvent()
   }
 
   /**
    * Initialize the library with an encrypted private key and passphrase.
    * @param userId - The user ID used for identification.
-   * @param vaultManager - The vault manager used for secure operations.
    * @param encryptedPrivateKey - The encrypted private key used for secure operations.
    * @param encryptedSymmetricKey - The encrypted symmetric key used for secure operations.
    * @param salt - The salt used for key derivation.
@@ -63,7 +61,6 @@ class PersistentStorageManager {
    */
   async init(
     userId: UserId,
-    vaultManager: InternalVaultManager,
     encryptedPrivateKey: EncryptedPrivateKey,
     encryptedSymmetricKey: EncryptedSymmetricKey,
     salt: Salt,
@@ -74,7 +71,6 @@ class PersistentStorageManager {
     publicKey: PublicKey
   }> {
     this.userId = userId
-    this.internalVaultManager = vaultManager
     const { privateKey, symmetricKey, publicKey } =
       await this.cryptoLib.decryptKeys(
         encryptedPrivateKey,
@@ -97,10 +93,6 @@ class PersistentStorageManager {
     }
 
     return { privateKey, symmetricKey, publicKey }
-  }
-
-  setSyncManager(syncManager: SyncManager) {
-    this.syncManager = syncManager
   }
 
   /**
@@ -142,7 +134,7 @@ class PersistentStorageManager {
       ),
     ) as Vault
     this.internalVaultManager.replaceVault(newVault)
-    this.wasChangedSinceLastSave.lockedRepresentation = true
+    this.dispatchLibEvent(TwoFaLibEvent.LoadedFromLockedRepresentation)
   }
 
   async save() {
@@ -155,30 +147,27 @@ class PersistentStorageManager {
       throw new InitializationError('Initialisation not completed')
     }
 
-    if (this.saveFunction) {
-      const wasChangedSinceLastSaveCache = this.wasChangedSinceLastSave
-      this.wasChangedSinceLastSave = {
-        lockedRepresentation: false,
-        encryptedPrivateKey: false,
-        encryptedSymmetricKey: false,
-        salt: false,
-        userId: false,
-        syncDevices: false,
-      }
-      const lockedRepresentation = await this.getLockedRepresentation()
-      return this.saveFunction(
-        {
-          lockedRepresentation,
-          encryptedPrivateKey: this.encryptedPrivateKey,
-          encryptedSymmetricKey: this.encryptedSymmetricKey,
-          salt: this.salt,
-          userId: this.userId,
-          syncDevices: JSON.stringify(this.syncManager?.syncDevices ?? []),
-        },
-        wasChangedSinceLastSaveCache,
-        this.twoFaLib,
-      )
+    const wasChangedSinceLastSaveCache = this.wasChangedSinceLastSave
+    this.wasChangedSinceLastSave = {
+      lockedRepresentation: false,
+      encryptedPrivateKey: false,
+      encryptedSymmetricKey: false,
+      salt: false,
+      userId: false,
+      syncDevices: false,
     }
+    const lockedRepresentation = await this.getLockedRepresentation()
+    this.dispatchLibEvent(TwoFaLibEvent.Changed, {
+      changed: wasChangedSinceLastSaveCache,
+      data: {
+        lockedRepresentation,
+        encryptedPrivateKey: this.encryptedPrivateKey,
+        encryptedSymmetricKey: this.encryptedSymmetricKey,
+        salt: this.salt,
+        userId: this.userId,
+        syncDevices: JSON.stringify(this.syncManager?.syncDevices ?? []),
+      },
+    })
   }
 
   /**
@@ -241,7 +230,6 @@ class PersistentStorageManager {
     this.wasChangedSinceLastSave.lockedRepresentation = true
     await this.init(
       this.userId,
-      this.internalVaultManager,
       newEncryptedPrivateKey,
       newEncryptedSymmetricKey,
       this.salt,

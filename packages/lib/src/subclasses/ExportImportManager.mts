@@ -14,19 +14,24 @@ import {
 } from '../utils/getImageData.mjs'
 import { EntryId } from '../interfaces/Entry.mjs'
 
-import type PersistentStorageManager from './PersistentStorageManager.mjs'
-import type LibraryLoader from './LibraryLoader.mjs'
-import type ExternalVaultManager from './ExternalVaultManager.mjs'
-import type InternalVaultManager from './InternalVaultManager.mjs'
+import type TwoFaLibMediator from '../TwoFaLibMediator.mjs'
 import { ExportImportError } from '../TwoFALibError.mjs'
 
 class ExportImportManager {
-  constructor(
-    private libraryLoader: LibraryLoader,
-    private persistentStorageManager: PersistentStorageManager,
-    private externalVaultManager: ExternalVaultManager,
-    private internalVaultManager: InternalVaultManager,
-  ) {}
+  constructor(private readonly mediator: TwoFaLibMediator) {}
+
+  get libraryLoader() {
+    return this.mediator.getLibraryLoader()
+  }
+  get internalVaultManager() {
+    return this.mediator.getInternalVaultManager()
+  }
+  get externalVaultManager() {
+    return this.mediator.getExternalVaultManager()
+  }
+  get persistentStorageManager() {
+    return this.mediator.getPersistentStorageManager()
+  }
 
   /**
    * Export entries in the specified format, optionally encrypted with a password.

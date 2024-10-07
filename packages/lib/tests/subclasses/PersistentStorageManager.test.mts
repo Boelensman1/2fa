@@ -1,4 +1,12 @@
-import { describe, it, expect, beforeEach, vi, beforeAll } from 'vitest'
+import {
+  describe,
+  it,
+  expect,
+  beforeEach,
+  vi,
+  beforeAll,
+  type Mock,
+} from 'vitest'
 import {
   createTwoFaLib,
   CryptoLib,
@@ -18,6 +26,18 @@ import {
 import { totpEntry } from '../testUtils.mjs'
 import type { SaveFunctionData } from '../../src/interfaces/SaveFunction.mjs'
 import type { UserId } from '../../src/interfaces/SyncTypes.mjs'
+import { TwoFaLibEvent } from '../../src/TwoFaLibEvent.mjs'
+
+const getNthCallTypeAndDetail = (mockFn: Mock, n: number) => {
+  const call = mockFn.mock.calls[n][0] as {
+    type: unknown
+    detail: unknown
+  }
+  return {
+    type: call.type as TwoFaLibEvent,
+    detail: call.detail,
+  }
+}
 
 describe('PersistentStorageManager', () => {
   let twoFaLib: TwoFaLib
@@ -111,14 +131,16 @@ describe('PersistentStorageManager', () => {
   })
 
   it('should call save function when changes are made', async () => {
-    const mockSaveFunction = vi.fn()
     const result = await createTwoFaLib(
       deviceIdentifier,
       cryptoLib,
       'testpassword' as Passphrase,
-      mockSaveFunction,
     )
     const twoFaLib = result.twoFaLib
+
+    const mockSaveFunction = vi.fn()
+    twoFaLib.addEventListener(TwoFaLibEvent.Changed, mockSaveFunction)
+    await twoFaLib.persistentStorage.save()
     // Check if save function was called
     expect(mockSaveFunction).toHaveBeenCalledTimes(1)
 
@@ -127,25 +149,28 @@ describe('PersistentStorageManager', () => {
 
     // Check if save function was called again
     expect(mockSaveFunction).toHaveBeenCalledTimes(2)
-    expect(mockSaveFunction).toHaveBeenCalledWith(
-      expect.objectContaining({
+
+    // Check if the save function was called with the correct arguments
+    const firstCall = getNthCallTypeAndDetail(mockSaveFunction, 0)
+    expect(firstCall.type).toEqual('changed')
+    expect(firstCall.detail).toEqual({
+      data: expect.objectContaining({
         lockedRepresentation: expect.any(String) as string,
         encryptedPrivateKey: expect.any(String) as string,
         encryptedSymmetricKey: expect.any(String) as string,
         salt: expect.any(String) as string,
         userId: expect.any(String) as string,
         syncDevices: expect.any(String) as string,
-      }),
-      expect.objectContaining({
+      }) as unknown,
+      changed: expect.objectContaining({
         lockedRepresentation: true,
         encryptedPrivateKey: true,
         encryptedSymmetricKey: true,
         salt: true,
         userId: true,
         syncDevices: true,
-      }),
-      expect.any(TwoFaLib),
-    )
+      }) as unknown,
+    })
 
     // Reset mock
     mockSaveFunction.mockClear()
@@ -156,25 +181,25 @@ describe('PersistentStorageManager', () => {
 
     // Check if save function was called
     expect(mockSaveFunction).toHaveBeenCalledTimes(1)
-    expect(mockSaveFunction).toHaveBeenCalledWith(
-      expect.objectContaining({
+
+    expect(getNthCallTypeAndDetail(mockSaveFunction, 0).detail).toEqual({
+      data: expect.objectContaining({
         lockedRepresentation: expect.any(String) as string,
         encryptedPrivateKey: expect.any(String) as string,
         encryptedSymmetricKey: expect.any(String) as string,
         salt: expect.any(String) as string,
         userId: expect.any(String) as string,
         syncDevices: expect.any(String) as string,
-      }),
-      expect.objectContaining({
+      }) as unknown,
+      changed: expect.objectContaining({
         lockedRepresentation: true,
         encryptedPrivateKey: false,
         encryptedSymmetricKey: false,
         salt: false,
         userId: false,
         syncDevices: false,
-      }),
-      expect.any(TwoFaLib),
-    )
+      }) as unknown,
+    })
   }, 15000) // long running test
 
   it('should change passphrase', async () => {
@@ -184,16 +209,17 @@ describe('PersistentStorageManager', () => {
 
     const mockSaveFunction = vi.fn((data: SaveFunctionData) => {
       savedData = data
-      return Promise.resolve()
     })
 
     const result = await createTwoFaLib(
       deviceIdentifier,
       cryptoLib,
       oldPassphrase,
-      mockSaveFunction,
     )
     const originalTwoFaLib = result.twoFaLib
+    originalTwoFaLib.addEventListener(TwoFaLibEvent.Changed, (evt) => {
+      mockSaveFunction(evt.detail.data)
+    })
 
     await originalTwoFaLib.persistentStorage.changePassphrase(
       oldPassphrase,

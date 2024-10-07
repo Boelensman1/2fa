@@ -1,3 +1,4 @@
+import type { EmptyObject } from 'type-fest'
 import type {
   JPAKEPass2Message as JPAKEPass2ServerMessage,
   JPAKEPass3Message as JPAKEPass3ServerMessage,
@@ -7,7 +8,7 @@ import type {
 
 export interface ConfirmAddSyncDeviceInitialiseData {
   type: 'confirmAddSyncDeviceInitialiseData'
-  data: Record<string, never> // empty object
+  data: EmptyObject
 }
 
 export type JPAKEPass2Message = JPAKEPass2ServerMessage

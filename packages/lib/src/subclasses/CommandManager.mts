@@ -1,6 +1,5 @@
 import { InvalidCommandError } from '../TwoFALibError.mjs'
-import type InternalVaultManager from './InternalVaultManager.mjs'
-import type SyncManager from './SyncManager.mjs'
+import type TwoFaLibMediator from '../TwoFaLibMediator.mjs'
 
 import type Command from '../Command/BaseCommand.mjs'
 import CommandQueue from '../Command/CommandQueue.mjs'
@@ -14,17 +13,18 @@ interface CommandConstructor {
 }
 
 class CommandManager {
-  private syncManager?: SyncManager
-
   private executedCommands: Command[] = []
   private undoneCommands: Command[] = []
   private remoteCommandQueue = new CommandQueue()
   private processedCommandIds = new Set<string>()
 
-  constructor(private readonly internalVaultManager: InternalVaultManager) {}
+  constructor(private readonly mediator: TwoFaLibMediator) {}
 
-  setSyncManager(syncManager: SyncManager) {
-    this.syncManager = syncManager
+  get internalVaultManager() {
+    return this.mediator.getInternalVaultManager()
+  }
+  get syncManager() {
+    return this.mediator.getSyncManager()
   }
 
   async execute(command: Command): Promise<void> {

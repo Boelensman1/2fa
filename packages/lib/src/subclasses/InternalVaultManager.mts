@@ -3,6 +3,7 @@ import { TOTP } from 'totp-generator'
 import type Entry from '../interfaces/Entry.mjs'
 import type { EntryId } from '../interfaces/Entry.mjs'
 
+import type TwoFaLibMediator from '../TwoFaLibMediator.mjs'
 import { EntryNotFoundError, TokenGenerationError } from '../TwoFALibError.mjs'
 
 import {
@@ -10,13 +11,16 @@ import {
   SupportedAlgorithmsType,
 } from '../utils/constants.mjs'
 
-import type PersistentStorageManager from './PersistentStorageManager.mjs'
 import { Vault } from '../interfaces/Vault.mjs'
 
 class VaultManager {
   private vault: Vault = []
 
-  constructor(private persistentStorageManager: PersistentStorageManager) {}
+  constructor(private readonly mediator: TwoFaLibMediator) {}
+
+  get persistentStorageManager() {
+    return this.mediator.getPersistentStorageManager()
+  }
 
   get size() {
     return this.vault.length

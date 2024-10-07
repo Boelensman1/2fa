@@ -3,8 +3,7 @@ import { v4 as genUuidV4 } from 'uuid'
 import type Entry from '../interfaces/Entry.mjs'
 import type { EntryId, EntryMeta, NewEntry } from '../interfaces/Entry.mjs'
 
-import type InternalVaultManager from './InternalVaultManager.mjs'
-import type CommandManager from './CommandManager.mjs'
+import type TwoFaLibMediator from '../TwoFaLibMediator.mjs'
 
 import AddEntryCommand from '../Command/commands/AddEntryCommand.mjs'
 import DeleteEntryCommand from '../Command/commands/DeleteEntryCommand.mjs'
@@ -22,10 +21,14 @@ const getMetaForEntry = (entry: Entry) => ({
 })
 
 class VaultManager {
-  constructor(
-    private internalVaultManager: InternalVaultManager,
-    private commandManager: CommandManager,
-  ) {}
+  constructor(private readonly mediator: TwoFaLibMediator) {}
+
+  get internalVaultManager() {
+    return this.mediator.getInternalVaultManager()
+  }
+  get commandManager() {
+    return this.mediator.getCommandManager()
+  }
 
   get size() {
     return this.internalVaultManager.size

@@ -3,7 +3,7 @@ import { Show } from 'solid-js'
 import useStore from './store/useStore'
 import actions from './store/actions'
 import type State from './store/types/State'
-import { TwoFaLib } from '2falib'
+import { TwoFaLib, TwoFaLibEvent } from '2falib'
 import BrowserCryptoProvider from '2falib/cryptoProviders/browser'
 
 import AppAuthenticated from './components/AppAuthenticated'
@@ -24,8 +24,6 @@ const App: Component = () => {
     const encryptedSymmetricKey = localStorage.getItem('encryptedSymmetricKey')
     const salt = localStorage.getItem('salt')
     const settings = localStorage.getItem('settings')
-    const isConnectingToExistingVault =
-      localStorage.getItem('connecting') === 'true'
 
     if (
       !lockedRepresentation ||
@@ -43,12 +41,12 @@ const App: Component = () => {
     }
 
     const cryptoLib = new BrowserCryptoProvider()
-    const twoFaLib = new TwoFaLib(
-      'browser',
-      cryptoLib,
-      saveFunction(syncStoreWithLib),
-    )
-    dispatch(actions.initialize(twoFaLib, Boolean(isConnectingToExistingVault)))
+    const twoFaLib = new TwoFaLib('browser', cryptoLib)
+    twoFaLib.addEventListener(TwoFaLibEvent.Changed, (event) => {
+      saveFunction(event.detail.changed, event.detail.data)
+      syncStoreWithLib(twoFaLib)
+    })
+    dispatch(actions.initialize(twoFaLib, false))
   }
 
   // Run initializeApp when the component mounts

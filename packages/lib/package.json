@@ -41,6 +41,7 @@
     "openpgp": "^5.11.2",
     "qrcode": "^1.5.4",
     "totp-generator": "^1.0.0",
+    "typescript-event-target": "^1.1.1",
     "uint8array-extras": "^1.4.0",
     "uuid": "^10.0.0",
     "vitest-websocket-mock": "^0.4.0",

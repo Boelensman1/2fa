@@ -1,5 +1,5 @@
 import { type Component, createSignal } from 'solid-js'
-import { createTwoFaLib, Passphrase } from '2falib'
+import { createTwoFaLib, Passphrase, TwoFaLibEvent } from '2falib'
 import BrowserCryptoProvider from '2falib/cryptoProviders/browser'
 
 import { syncServerUrl } from '../parameters'
@@ -22,12 +22,15 @@ const CreateVault: Component = () => {
       'browser',
       cryptoLib,
       passphrase,
-      saveFunction(syncStoreWithLib),
       syncServerUrl,
     )
 
+    twoFaLib.addEventListener(TwoFaLibEvent.Changed, (event) => {
+      saveFunction(event.detail.changed, event.detail.data)
+      syncStoreWithLib(twoFaLib)
+    })
+
     const isConnecting = mode() === 'connect'
-    localStorage.setItem('connecting', String(isConnecting))
 
     dispatch(actions.setAuthenticated(true))
     dispatch(actions.initialize(twoFaLib, isConnecting))

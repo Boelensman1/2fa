@@ -30,9 +30,7 @@ import type {
 import type Command from '../Command/BaseCommand.mjs'
 import type { SyncCommand } from '../Command/commandTypes.mjs'
 
-import type LibraryLoader from './LibraryLoader.mjs'
-import type PersistentStorageManager from './PersistentStorageManager.mjs'
-import type CommandManager from './CommandManager.mjs'
+import type TwoFaLibMediator from '../TwoFaLibMediator.mjs'
 
 import {
   InitializationError,
@@ -58,9 +56,7 @@ class SyncManager {
   userId: UserId
 
   constructor(
-    private libraryLoader: LibraryLoader,
-    private readonly commandManager: CommandManager,
-    private readonly persistentStoragemanager: PersistentStorageManager,
+    private readonly mediator: TwoFaLibMediator,
     private readonly deviceIdentifier: string,
     private readonly publicKey: PublicKey,
     private readonly privateKey: PrivateKey,
@@ -78,8 +74,17 @@ class SyncManager {
     this.initServerConnection(serverUrl)
   }
 
+  private get libraryLoader() {
+    return this.mediator.getLibraryLoader()
+  }
   private get cryptoLib() {
     return this.libraryLoader.getCryptoLib()
+  }
+  get persistentStorageManager() {
+    return this.mediator.getPersistentStorageManager()
+  }
+  get commandManager() {
+    return this.mediator.getCommandManager()
   }
 
   get inAddDeviceFlow(): boolean {
@@ -477,7 +482,7 @@ class SyncManager {
 
     // get the vault data (encrypted with the sync key)
     const encryptedVaultData =
-      await this.persistentStoragemanager.getLockedRepresentation(syncKey)
+      await this.persistentStorageManager.getLockedRepresentation(syncKey)
     const initiatorEncryptedPublicKey = await this.cryptoLib.encryptSymmetric(
       syncKey,
       this.publicKey,
@@ -501,10 +506,10 @@ class SyncManager {
       deviceIdentifier: this.activeAddDeviceFlow.responderDeviceIdentifier,
       publicKey: decryptedPublicKey as PublicKey,
     })
-    this.persistentStoragemanager.__updateWasChangedSinceLastSave([
+    this.persistentStorageManager.__updateWasChangedSinceLastSave([
       'syncDevices',
     ])
-    await this.persistentStoragemanager.save()
+    await this.persistentStorageManager.save()
 
     // all done
     this.activeAddDeviceFlow = undefined
@@ -527,7 +532,7 @@ class SyncManager {
     )
 
     // Import the encrypted vault data using the ExportImportManager
-    await this.persistentStoragemanager.loadFromLockedRepresentation(
+    await this.persistentStorageManager.loadFromLockedRepresentation(
       encryptedVaultData,
       syncKey,
     )
@@ -538,10 +543,10 @@ class SyncManager {
       deviceIdentifier: this.activeAddDeviceFlow.initiatorDeviceIdentifier,
       publicKey: decryptedPublicKey as PublicKey,
     })
-    this.persistentStoragemanager.__updateWasChangedSinceLastSave([
+    this.persistentStorageManager.__updateWasChangedSinceLastSave([
       'syncDevices',
     ])
-    await this.persistentStoragemanager.save()
+    await this.persistentStorageManager.save()
 
     // Reset the active add device flow
     this.activeAddDeviceFlow = undefined

@@ -35,7 +35,10 @@ const AppAuthenticated: Component = () => {
           {showSettings() ? 'Hide Settings' : 'Show Settings'}
         </button>
         <button
-          onClick={() => setShowAddDevice(!showAddDevice())}
+          onClick={() => {
+            setShowAddDevice(!showAddDevice())
+            // TODO: if now !showAddDevice, cancel the ongoing add device flow
+          }}
           class="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded transition duration-200"
         >
           {showAddDevice() ? 'Hide Add Device' : 'Show Add Device'}

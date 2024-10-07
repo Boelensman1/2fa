@@ -12,7 +12,7 @@ interface SetAuthenticatedAction {
 }
 
 interface SetConnectingToExistingVault {
-  type: typeof types.SET_AUTHENTICATED
+  type: typeof types.SET_CONNECTING_TO_EXISTING_VAULT
   payload: boolean
 }
 
@@ -20,7 +20,6 @@ interface InitializeAction {
   type: typeof types.INITIALIZE
   payload: null | {
     twoFaLib: TwoFaLib
-    isConnecting: boolean
   }
 }
 

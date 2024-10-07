@@ -29,6 +29,7 @@ export interface TwoFaLibEventMap {
     data: SaveFunctionData
   }
   [TwoFaLibEvent.LoadedFromLockedRepresentation]: EmptyObject
+  [TwoFaLibEvent.ConnectToExistingVaultFinished]: EmptyObject
 }
 
 export type TwoFaLibEventMapEvents = {

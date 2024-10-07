@@ -13,6 +13,8 @@ import {
 } from 'jpake'
 import type ServerMessage from '2faserver/ServerMessage'
 import type ClientMessage from '2faserver/ClientMessage'
+
+import { TwoFaLibEvent } from '../TwoFaLibEvent.mjs'
 import {
   ActiveAddDeviceFlow,
   InitiateAddDeviceFlowResult,
@@ -38,6 +40,7 @@ import {
   SyncError,
   SyncInWrongStateError,
   SyncNoServerConnectionError,
+  TwoFALibError,
 } from '../TwoFALibError.mjs'
 
 const generateNonCryptographicRandomString = () => {
@@ -85,6 +88,9 @@ class SyncManager {
   }
   get commandManager() {
     return this.mediator.getCommandManager()
+  }
+  private get dispatchLibEvent() {
+    return this.mediator.getDispatchLibEvent()
   }
 
   get inAddDeviceFlow(): boolean {
@@ -228,7 +234,9 @@ class SyncManager {
     const jpak = new JPakeThreePass(this.userId)
     const pass1Result = jpak.pass1()
 
-    const continuePromise = new Promise((resolve, reject) => {
+    let reject: (error: TwoFALibError) => void
+    const continuePromise = new Promise((resolve, r) => {
+      reject = r
       this.activeAddDeviceFlow = {
         state: 'initiator:initiated',
         jpak,
@@ -236,22 +244,28 @@ class SyncManager {
         initiatorUserIdString: this.userId,
         timestamp,
         resolveContinuePromise: resolve,
-        rejectContinuePromise: reject,
       }
     })
 
     // register this add device request at the server
-    this.ws.send(
-      JSON.stringify({
-        type: 'registerAddDeviceFlowRequest',
-        data: {
-          initiatorDeviceIdentifier: this.deviceIdentifier,
-          initiatorUserIdString: this.userId,
-          timestamp,
-          nonce: await this.getNonce(),
-        },
-      }),
-    )
+    this.sendToServer('addSyncDeviceInitialiseData', {
+      initiatorDeviceIdentifier: this.deviceIdentifier,
+      initiatorUserIdString: this.userId,
+      timestamp,
+      nonce: await this.getNonce(),
+    })
+
+    // Set a timeout for if we get no response from the server
+    setTimeout(() => {
+      if (this.activeAddDeviceFlow?.state === 'initiator:initiated') {
+        reject(
+          new TwoFALibError(
+            'Timeout of registerAddDeviceFlowRequest, no response',
+          ),
+        )
+        this.activeAddDeviceFlow = undefined
+      }
+    }, 10000)
 
     // wait for the server to confirm it has registered the add device request
     await continuePromise
@@ -354,18 +368,14 @@ class SyncManager {
     }
 
     // respond to this add device request at the server
-    this.ws.send(
-      JSON.stringify({
-        type: 'addDevicePassPass2Result',
-        data: {
-          nonce: await this.getNonce(),
-          pass2Result,
-          responderUserIdString: this.userId,
-          initiatorUserIdString,
-          responderDeviceIdentifier: this.deviceIdentifier,
-        },
-      }),
-    )
+    this.sendToServer('JPAKEPass2', {
+      nonce: await this.getNonce(),
+      // @ts-expect-error we get a type mismatch because we input Uint8Array instead of JsonifiedUint8Array, but it will get jsonified later
+      pass2Result,
+      responderUserIdString: this.userId,
+      initiatorUserIdString,
+      responderDeviceIdentifier: this.deviceIdentifier,
+    })
   }
 
   private async finishAddDeviceFlowKeyExchangeInitiator(
@@ -387,16 +397,12 @@ class SyncManager {
       responderUserIdString,
     )
 
-    this.ws.send(
-      JSON.stringify({
-        type: 'addDevicePassPass3Result',
-        data: {
-          nonce: await this.getNonce(),
-          initiatorUserIdString: this.activeAddDeviceFlow.initiatorUserIdString,
-          pass3Result,
-        },
-      }),
-    )
+    this.sendToServer('JPAKEPass3', {
+      nonce: await this.getNonce(),
+      initiatorUserIdString: this.activeAddDeviceFlow.initiatorUserIdString,
+      // @ts-expect-error we get a type mismatch because we input Uint8Array instead of JsonifiedUint8Array, but it will get jsonified later
+      pass3Result,
+    })
 
     const sharedKey = this.activeAddDeviceFlow.jpak.deriveSharedKey()
     const syncKey = await this.cryptoLib.createSyncKey(
@@ -445,16 +451,11 @@ class SyncManager {
       this.publicKey,
     )
     // send our public key
-    this.ws.send(
-      JSON.stringify({
-        type: 'addDeviceFlowSendPublicKey',
-        data: {
-          nonce: await this.getNonce(),
-          responderEncryptedPublicKey,
-          initiatorUserIdString: this.activeAddDeviceFlow.initiatorUserIdString,
-        },
-      }),
-    )
+    this.sendToServer('publicKey', {
+      nonce: await this.getNonce(),
+      responderEncryptedPublicKey,
+      initiatorUserIdString: this.activeAddDeviceFlow.initiatorUserIdString,
+    })
   }
 
   private async sendInitialVaultData(
@@ -489,17 +490,12 @@ class SyncManager {
     )
 
     // Send the encrypted vault data to the server
-    this.ws.send(
-      JSON.stringify({
-        type: 'sendInitialVaultData',
-        data: {
-          nonce: await this.getNonce(),
-          encryptedVaultData,
-          initiatorUserIdString: this.activeAddDeviceFlow.initiatorUserIdString,
-          initiatorEncryptedPublicKey,
-        },
-      }),
-    )
+    this.sendToServer('vault', {
+      nonce: await this.getNonce(),
+      encryptedVaultData,
+      initiatorUserIdString: this.activeAddDeviceFlow.initiatorUserIdString,
+      initiatorEncryptedPublicKey,
+    })
 
     this.syncDevices.push({
       userId: this.activeAddDeviceFlow.responderUserIdString,
@@ -550,6 +546,7 @@ class SyncManager {
 
     // Reset the active add device flow
     this.activeAddDeviceFlow = undefined
+    this.dispatchLibEvent(TwoFaLibEvent.ConnectToExistingVaultFinished)
   }
 
   async sendCommand(command: Command) {

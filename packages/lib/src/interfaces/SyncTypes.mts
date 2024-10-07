@@ -1,7 +1,6 @@
 import { Tagged } from 'type-fest'
 import type { JPakeThreePass, Round1Result } from 'jpake'
 import { PublicKey, SyncKey } from './CryptoLib.mjs'
-import type { TwoFALibError } from '../TwoFALibError.mjs'
 
 export type UserId = Tagged<string, 'UserId'>
 
@@ -21,14 +20,13 @@ export interface BaseAddDeviceFlow {
 export interface AddDeviceFlowInitiator_Initiated extends BaseAddDeviceFlow {
   state: 'initiator:initiated'
   resolveContinuePromise: (value: unknown) => void
-  rejectContinuePromise: (error: TwoFALibError) => void
   initiatorUserIdString: string
 }
 
 export interface AddDeviceFlowInitiator_SyncKeyCreated
   extends Omit<
     AddDeviceFlowInitiator_Initiated,
-    'state' | 'resolveContinuePromise' | 'rejectContinuePromise'
+    'state' | 'resolveContinuePromise'
   > {
   state: 'initiator:syncKeyCreated'
   responderUserIdString: string

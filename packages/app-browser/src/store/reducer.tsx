@@ -12,10 +12,13 @@ const reducer = (action: Action, draft: State) => {
     case types.INITIALIZE: {
       if (action.payload) {
         draft.twoFaLib = action.payload.twoFaLib
-        draft.isConnectingToExistingVault = action.payload.isConnecting
       } else {
         draft.twoFaLib = null
       }
+      break
+    }
+    case types.SET_CONNECTING_TO_EXISTING_VAULT: {
+      draft.isConnectingToExistingVault = action.payload
       break
     }
     case types.SET_AUTHENTICATED: {

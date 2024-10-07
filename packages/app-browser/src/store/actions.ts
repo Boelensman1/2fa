@@ -9,6 +9,7 @@ export const types = {
   SET_AUTHENTICATED: 'SET_AUTHENTICATED' as const,
   INITIALIZE: 'INITIALIZE' as const,
   SET_SETTINGS: 'SET_SETTINGS' as const,
+  SET_CONNECTING_TO_EXISTING_VAULT: 'SET_CONNECTING_TO_EXISTING_VAULT' as const,
 }
 
 const actions = {
@@ -19,6 +20,10 @@ const actions = {
   setAuthenticated: (authenticated: boolean): Action => ({
     type: types.SET_AUTHENTICATED,
     payload: authenticated,
+  }),
+  setConnectingToExistingVault: (connecting: boolean): Action => ({
+    type: types.SET_CONNECTING_TO_EXISTING_VAULT,
+    payload: connecting,
   }),
   initialize: (twoFaLib: TwoFaLib | null, isConnecting?: boolean): Action => ({
     type: types.INITIALIZE,

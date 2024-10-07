@@ -29,11 +29,16 @@ const CreateVault: Component = () => {
       saveFunction(event.detail.changed, event.detail.data)
       syncStoreWithLib(twoFaLib)
     })
-
-    const isConnecting = mode() === 'connect'
+    twoFaLib.addEventListener(
+      TwoFaLibEvent.ConnectToExistingVaultFinished,
+      () => {
+        dispatch(actions.setConnectingToExistingVault(false))
+      },
+    )
 
     dispatch(actions.setAuthenticated(true))
-    dispatch(actions.initialize(twoFaLib, isConnecting))
+    dispatch(actions.setConnectingToExistingVault(mode() === 'connect'))
+    dispatch(actions.initialize(twoFaLib))
   }
 
   const onSubmit = (e: Event) => {

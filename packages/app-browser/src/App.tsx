@@ -46,7 +46,8 @@ const App: Component = () => {
       saveFunction(event.detail.changed, event.detail.data)
       syncStoreWithLib(twoFaLib)
     })
-    dispatch(actions.initialize(twoFaLib, false))
+
+    dispatch(actions.initialize(twoFaLib))
   }
 
   // Run initializeApp when the component mounts

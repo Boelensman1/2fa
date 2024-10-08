@@ -96,7 +96,7 @@ const EntryComponent = (props: {
         />
       </div>
       {copyStatus() && (
-        <div class="absolute inset-0 flex items-center justify-center">
+        <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
           <div class="bg-green-500 text-white px-3 py-1 rounded text-sm shadow-md">
             {copyStatus()}
           </div>

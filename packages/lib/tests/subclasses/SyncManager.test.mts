@@ -17,6 +17,7 @@ import {
   EncryptedSymmetricKey,
   Salt,
   TwoFaLib,
+  DeviceType,
 } from '../../src/main.mjs'
 
 import {
@@ -30,7 +31,7 @@ import {
   SyncAddDeviceFlowConflictError,
   SyncNoServerConnectionError,
 } from '../../src/TwoFALibError.mjs'
-import type { UserId } from '../../src/interfaces/SyncTypes.mjs'
+import type { DeviceId } from '../../src/interfaces/SyncTypes.mjs'
 
 // uses __mocks__/isomorphic-ws.js
 vi.mock('isomorphic-ws')
@@ -82,13 +83,13 @@ describe('SyncManager', () => {
       })
     })
 
-    senderTwoFaLib = new TwoFaLib('sender', cryptoLib)
+    senderTwoFaLib = new TwoFaLib('sender' as DeviceType, cryptoLib)
     await senderTwoFaLib.init(
       encryptedPrivateKey,
       encryptedSymmetricKey,
       salt,
       passphrase,
-      'senderUserid' as UserId,
+      'senderDeviceId' as DeviceId,
       serverUrl,
     )
     await server.connected // only the first server.connected works atm
@@ -96,13 +97,13 @@ describe('SyncManager', () => {
 
     await senderTwoFaLib.vault.addEntry(totpEntry)
 
-    receiverTwoFaLib = new TwoFaLib('receiver', cryptoLib)
+    receiverTwoFaLib = new TwoFaLib('receiver' as DeviceType, cryptoLib)
     await receiverTwoFaLib.init(
       encryptedPrivateKey,
       encryptedSymmetricKey,
       salt,
       passphrase,
-      'receiverUserid' as UserId,
+      'receiverDeviceId' as DeviceId,
       serverUrl,
     )
 
@@ -130,13 +131,16 @@ describe('SyncManager', () => {
   it('should throw an error when initiating add device flow without server connection', async () => {
     const temporaryServerUrl = `${serverBaseUrl}:${serverPort + 1}`
     const temporaryServer = new WS(temporaryServerUrl)
-    const disconnectedTwoFaLib = new TwoFaLib('disconnected', cryptoLib)
+    const disconnectedTwoFaLib = new TwoFaLib(
+      'disconnected' as DeviceType,
+      cryptoLib,
+    )
     await disconnectedTwoFaLib.init(
       encryptedPrivateKey,
       encryptedSymmetricKey,
       salt,
       passphrase,
-      'tempUserId' as UserId,
+      'tempDeviceId' as DeviceId,
       temporaryServerUrl,
     )
     // await temporaryServer.connected

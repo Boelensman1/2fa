@@ -1,8 +1,12 @@
 import { describe, it, expect, beforeEach, beforeAll } from 'vitest'
 
-import { CryptoLib, TwoFaLib } from '../src/main.mjs'
+import { CryptoLib, DeviceType, TwoFaLib } from '../src/main.mjs'
 
-import { clearEntries, createTwoFaLibForTests } from './testUtils.mjs'
+import {
+  clearEntries,
+  createTwoFaLibForTests,
+  deviceType,
+} from './testUtils.mjs'
 
 describe('2falib', () => {
   let cryptoLib: CryptoLib
@@ -20,30 +24,29 @@ describe('2falib', () => {
 
   describe('TwoFaLib constructor', () => {
     it('should throw an error if device identifier is not provided', () => {
-      expect(() => new TwoFaLib('', cryptoLib)).toThrow(
+      expect(() => new TwoFaLib('' as DeviceType, cryptoLib)).toThrow(
         'Device identifier is required',
       )
     })
 
     it('should throw an error if device identifier is too long', () => {
       const longDeviceIdentifier = 'a'.repeat(257)
-      expect(() => new TwoFaLib(longDeviceIdentifier, cryptoLib)).toThrow(
-        'Device identifier is too long, max 256 characters',
-      )
+      expect(
+        () => new TwoFaLib(longDeviceIdentifier as DeviceType, cryptoLib),
+      ).toThrow('Device identifier is too long, max 256 characters')
     })
 
     it('should throw an error if CryptoLib is not provided', () => {
       // @ts-expect-error null is not a valid argument for TwoFaLib
-      expect(() => new TwoFaLib('valid-device', null)).toThrow(
+      expect(() => new TwoFaLib(deviceType, null)).toThrow(
         'CryptoLib is required',
       )
     })
 
     it('should create a TwoFaLib instance with valid parameters', () => {
-      const validDeviceIdentifier = 'valid-device'
-      const twoFaLib = new TwoFaLib(validDeviceIdentifier, cryptoLib)
+      const twoFaLib = new TwoFaLib(deviceType, cryptoLib)
       expect(twoFaLib).toBeInstanceOf(TwoFaLib)
-      expect(twoFaLib.deviceIdentifier).toBe(validDeviceIdentifier)
+      expect(twoFaLib.deviceType).toBe(deviceType)
     })
   })
 })

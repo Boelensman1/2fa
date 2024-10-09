@@ -1,8 +1,12 @@
 import { v4 as uuidv4 } from 'uuid'
-import type InternalVaultManager from '../subclasses/InternalVaultManager.mjs'
+import type InternalVaultManager from '../subclasses/VaultDataManager.mjs'
 
 import { CommandData } from './commandTypes.mjs'
 
+/**
+ * Abstract base class for commands that interact with the vault.
+ * @template T - The type of command data, extending CommandData.
+ */
 abstract class BaseCommand<T extends CommandData = CommandData> {
   readonly id: string
   readonly type: string
@@ -11,6 +15,15 @@ abstract class BaseCommand<T extends CommandData = CommandData> {
   readonly data: T
   readonly fromRemote: boolean
 
+  /**
+   * Creates a new BaseCommand instance.
+   * @param type - The type of the command.
+   * @param data - The data associated with the command.
+   * @param id - The unique identifier for the command. If not provided, a new UUID will be generated.
+   * @param timestamp - The timestamp of when the command was created. If not provided, the current timestamp will be used.
+   * @param version - The version of the command. Defaults to '1.0'.
+   * @param fromRemote - Indicates if the command originated from a remote source. Defaults to false.
+   */
   constructor(
     type: string,
     data: T,
@@ -27,11 +40,27 @@ abstract class BaseCommand<T extends CommandData = CommandData> {
     this.fromRemote = fromRemote
   }
 
+  /**
+   * Executes the command using the provided InternalVaultManager.
+   * @param internalVaultManager - The InternalVaultManager instance to use for execution.
+   * @returns A Promise that resolves when the execution is complete.
+   */
   abstract execute(internalVaultManager: InternalVaultManager): Promise<void>
+
+  /**
+   * Creates an undo command that, when executed, reverses the effects of this command.
+   * @param internalVaultManager - The InternalVaultManager instance to use for creating the undo command.
+   * @returns A BaseCommand instance that undoes this command.
+   */
   abstract createUndoCommand(
     internalVaultManager: InternalVaultManager,
   ): BaseCommand
 
+  /**
+   * Creates a new instance of the command with the provided data.
+   * @param data - The data to use for creating the new command instance.
+   * @returns A new instance of the command.
+   */
   static create<T extends CommandData, C extends BaseCommand<T>>(
     this: new (
       data: T,
@@ -45,6 +74,11 @@ abstract class BaseCommand<T extends CommandData = CommandData> {
     return new this(data)
   }
 
+  /**
+   * Creates a new instance of the command from JSON data.
+   * @param input - The JSON input containing the command data.
+   * @returns A new instance of the command created from the JSON data.
+   */
   static fromJSON<T extends CommandData, C extends BaseCommand<T>>(
     this: new (
       data: T,
@@ -63,6 +97,10 @@ abstract class BaseCommand<T extends CommandData = CommandData> {
     return new this(input.data, input.id, input.timestamp, input.version, true)
   }
 
+  /**
+   * Converts the command instance to a JSON-serializable object.
+   * @returns An object representation of the command.
+   */
   toJSON() {
     return {
       id: this.id,

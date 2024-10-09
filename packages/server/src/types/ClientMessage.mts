@@ -1,17 +1,25 @@
+import type {
+  DeviceId,
+  DeviceType,
+  Encrypted,
+  EncryptedPublicKey,
+  EncryptedSymmetricKey,
+  EncryptedVaultData,
+} from '2falib'
 import type JsonifiedUint8Array from './JsonifiedUint8Array.mjs'
 
 export interface ConnectMessage {
   type: 'connect'
   data: {
-    userId: string
+    deviceId: DeviceId
   }
 }
 
 export interface AddSyncDeviceInitialiseDataMessage {
   type: 'addSyncDeviceInitialiseData'
   data: {
-    initiatorDeviceIdentifier: string
-    initiatorUserIdString: string
+    initiatorDeviceType: DeviceType
+    initiatorDeviceId: DeviceId
     timestamp: number
     nonce: string
   }
@@ -33,9 +41,9 @@ export interface JPAKEPass2Message {
         ZKPx2s: JsonifiedUint8Array
       }
     }
-    responderUserIdString: string
-    responderDeviceIdentifier: string
-    initiatorUserIdString: string
+    responderDeviceId: DeviceId
+    responderDeviceType: DeviceType
+    initiatorDeviceId: DeviceId
   }
 }
 
@@ -43,7 +51,7 @@ export interface JPAKEPass3Message {
   type: 'JPAKEPass3'
   data: {
     nonce: string
-    initiatorUserIdString: string
+    initiatorDeviceId: DeviceId
     pass3Result: { A: JsonifiedUint8Array; ZKPx2s: JsonifiedUint8Array }
   }
 }
@@ -51,9 +59,9 @@ export interface JPAKEPass3Message {
 export interface PublicKeyMessage {
   type: 'publicKey'
   data: {
-    initiatorUserIdString: string
+    initiatorDeviceId: DeviceId
     nonce: string
-    responderEncryptedPublicKey: string
+    responderEncryptedPublicKey: EncryptedPublicKey
   }
 }
 
@@ -61,26 +69,26 @@ export interface VaultMessage {
   type: 'vault'
   data: {
     nonce: string
-    initiatorUserIdString: string
-    initiatorEncryptedPublicKey: string
-    encryptedVaultData: string
+    initiatorDeviceId: DeviceId
+    initiatorEncryptedPublicKey: EncryptedPublicKey
+    encryptedVaultData: EncryptedVaultData
+  }
+}
+
+export interface AddSyncDeviceCancelledMessage {
+  type: 'addSyncDeviceCancelled'
+  data: {
+    initiatorDeviceId: DeviceId
   }
 }
 
 export interface SyncCommandMessage {
   type: 'syncCommand'
   data: {
-    userId: string
-    encryptedCommands: string
-    encryptedSymmetricKey: string
+    deviceId: DeviceId
+    encryptedCommands: Encrypted<string>
+    encryptedSymmetricKey: EncryptedSymmetricKey
   }[]
-}
-
-export interface AddSyncDeviceCancelledMessage {
-  type: 'addSyncDeviceCancelled'
-  data: {
-    initiatorUserIdString: string
-  }
 }
 
 type IncomingMessage =
@@ -90,7 +98,7 @@ type IncomingMessage =
   | JPAKEPass3Message
   | PublicKeyMessage
   | VaultMessage
-  | SyncCommandMessage
   | AddSyncDeviceCancelledMessage
+  | SyncCommandMessage
 
 export default IncomingMessage

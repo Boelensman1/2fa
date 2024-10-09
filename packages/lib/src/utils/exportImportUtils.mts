@@ -179,6 +179,13 @@ export const processImportLines = async (
   )
 }
 
+/**
+ * Encrypts the given data using OpenPGP.
+ * @param openPgpLib - The OpenPGP library.
+ * @param data - The data to encrypt.
+ * @param password - The password to use for encryption.
+ * @returns A promise that resolves to the encrypted data.
+ */
 export const encryptExport = async (
   openPgpLib: typeof import('openpgp'),
   data: string,
@@ -192,6 +199,13 @@ export const encryptExport = async (
   return encrypted as string
 }
 
+/**
+ * Decrypts the given data using OpenPGP.
+ * @param openPgpLib - The OpenPGP library.
+ * @param data - The data to decrypt.
+ * @param password - The password to use for decryption.
+ * @returns A promise that resolves to the decrypted data.
+ */
 export const decryptExport = async (
   openPgpLib: typeof import('openpgp'),
   data: string,

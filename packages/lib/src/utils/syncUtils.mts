@@ -4,6 +4,13 @@ import { getImageDataBrowser, getImageDataNode } from './getImageData.mjs'
 import { InitiateAddDeviceFlowResult } from '../interfaces/SyncTypes.mjs'
 import { SyncError } from '../TwoFALibError.mjs'
 
+/**
+ * Decodes the initiator data from a string or QR code.
+ * @param initiatorData - The initiator data to decode.
+ * @param jsQr - The QR code decoder.
+ * @param getCanvasLib - A function to get the Canvas library.
+ * @returns A promise that resolves to the decoded initiator data.
+ */
 export const decodeInitiatorData = async (
   initiatorData: InitiateAddDeviceFlowResult | string | Uint8Array | File,
   jsQr: typeof import('jsqr').default,
@@ -61,17 +68,33 @@ export const decodeInitiatorData = async (
   return initiatorData
 }
 
-export const toUint8Array = (jsonObj: Record<string, number>) => {
+/**
+ * Converts a JSONified Uint8Array to a Uint8Array.
+ * A JSONified Uint8Array is the output of JSON.stringify on a Uint8Array.
+ * Example:
+ * JSON.stringify(new Uint8Array([123, 456])) looks like this:
+ * '{"0":123,"1":200}'
+ * @param jsonObj - The JSONified Uint8Array to convert.
+ * @returns A Uint8Array containing the values of the JSONified Uint8Array.
+ */
+export const jsonifiedUint8ArraytoUint8Array = (
+  jsonObj: Record<string, number>,
+) => {
   return new Uint8Array(Object.values(jsonObj))
 }
 
+/**
+ * Converts a JSON object to a record of Uint8Arrays.
+ * @param jsonObj - The JSON object to convert.
+ * @returns A record of Uint8Arrays.
+ */
 export const jsonToUint8Array = (
   jsonObj: Record<string, Record<string, number>>,
 ): Record<string, Uint8Array> => {
   return Object.entries(jsonObj).reduce(
     (acc, [key, value]) => ({
       ...acc,
-      [key]: toUint8Array(value),
+      [key]: jsonifiedUint8ArraytoUint8Array(value),
     }),
     {} as Record<string, Uint8Array>,
   )

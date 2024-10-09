@@ -17,24 +17,31 @@ import { EntryId } from '../interfaces/Entry.mjs'
 import type TwoFaLibMediator from '../TwoFaLibMediator.mjs'
 import { ExportImportError } from '../TwoFALibError.mjs'
 
+/**
+ * Manages the export and import of entries in various formats.
+ */
 class ExportImportManager {
+  /**
+   * Constructs a new instance of ExportImportManager.
+   * @param mediator - The mediator for accessing other components.
+   */
   constructor(private readonly mediator: TwoFaLibMediator) {}
 
-  get libraryLoader() {
-    return this.mediator.getLibraryLoader()
+  private get libraryLoader() {
+    return this.mediator.getComponent('libraryLoader')
   }
-  get internalVaultManager() {
-    return this.mediator.getInternalVaultManager()
+  private get vaultDataManager() {
+    return this.mediator.getComponent('vaultDataManager')
   }
-  get externalVaultManager() {
-    return this.mediator.getExternalVaultManager()
+  private get vaultOperationsManager() {
+    return this.mediator.getComponent('vaultOperationsManager')
   }
-  get persistentStorageManager() {
-    return this.mediator.getPersistentStorageManager()
+  private get persistentStorageManager() {
+    return this.mediator.getComponent('persistentStorageManager')
   }
 
   /**
-   * Export entries in the specified format, optionally encrypted with a password.
+   * Export entries in the specified format, optionally (when a password is provided) encrypted.
    * @param format - The export format ('text' or 'html').
    * @param password - Optional password for encryption.
    * @returns A promise that resolves to the exported data as a string.
@@ -65,19 +72,19 @@ class ExportImportManager {
   }
 
   private generateTextExport(): string {
-    return generateTextExport(this.internalVaultManager.getAllEntries())
+    return generateTextExport(this.vaultDataManager.getAllEntries())
   }
 
   private async generateHtmlExport(): Promise<string> {
     const qrGeneratorLib = await this.libraryLoader.getQrGeneratorLib()
     return generateHtmlExport(
       qrGeneratorLib,
-      this.internalVaultManager.getAllEntries(),
+      this.vaultDataManager.getAllEntries(),
     )
   }
 
   /**
-   * Import entries from a text file, optionally decrypt first
+   * Import entries from a text file, optionally (when a password is provided) decrypt first
    * @param fileContents - The contents of the text file.
    * @param password - Optional password for decryption.
    * @returns A promise that resolves to an array of objects, each containing the line number,
@@ -118,7 +125,7 @@ class ExportImportManager {
 
     const newEntry = parseOtpUri(UrlParser, otpUri.trim())
 
-    return this.externalVaultManager.addEntry(newEntry)
+    return this.vaultOperationsManager.addEntry(newEntry)
   }
 
   /**

@@ -20,38 +20,48 @@ const getMetaForEntry = (entry: Entry) => ({
   updatedAt: entry.updatedAt,
 })
 
+/**
+ * Manages the public operations related to the vault, including adding, deleting, and updating entries.
+ */
 class VaultManager {
+  /**
+   * Constructs a new instance of VaultManager.
+   * @param mediator - The mediator for accessing other components.
+   */
   constructor(private readonly mediator: TwoFaLibMediator) {}
 
-  get internalVaultManager() {
-    return this.mediator.getInternalVaultManager()
+  private get vaultDataManager() {
+    return this.mediator.getComponent('vaultDataManager')
   }
-  get commandManager() {
-    return this.mediator.getCommandManager()
+  private get commandManager() {
+    return this.mediator.getComponent('commandManager')
   }
 
+  /**
+   * @returns The number of entries in the vault.
+   */
   get size() {
-    return this.internalVaultManager.size
+    return this.vaultDataManager.size
   }
 
   /**
    * Retrieve metadata for a specific entry.
-   * @param entryId - The unique identifier of the entry.
+   * @param entryId - The ID of the entry.
    * @returns The entry's metadata.
    * @throws {EntryNotFoundError} If no entry exists with the given ID.
    */
   getEntryMeta(entryId: EntryId): EntryMeta {
-    return getMetaForEntry(this.internalVaultManager.getFullEntry(entryId))
+    return getMetaForEntry(this.vaultDataManager.getFullEntry(entryId))
   }
 
   /**
-   * Search for entries matching the provided query.
+   * Search for entry ids matching the provided query.
    * @param query - The search query string.
    * @returns An array of matching entry IDs.
    */
   searchEntries(query: string): EntryId[] {
     const lowercaseQuery = query.toLowerCase()
-    const entries = this.internalVaultManager.getAllEntries()
+    const entries = this.vaultDataManager.getAllEntries()
     return entries
       .filter(
         (entry) =>
@@ -68,7 +78,7 @@ class VaultManager {
    */
   searchEntriesMetas(query: string): EntryMeta[] {
     const lowercaseQuery = query.toLowerCase()
-    const entries = this.internalVaultManager.getAllEntries()
+    const entries = this.vaultDataManager.getAllEntries()
     return entries
       .filter(
         (entry) =>
@@ -83,7 +93,7 @@ class VaultManager {
    * @returns An array of all entry IDs.
    */
   listEntries(): EntryId[] {
-    return this.internalVaultManager.getAllEntries().map((entry) => entry.id)
+    return this.vaultDataManager.getAllEntries().map((entry) => entry.id)
   }
 
   /**
@@ -91,7 +101,7 @@ class VaultManager {
    * @returns An array of all entry metas.
    */
   listEntriesMetas(): EntryMeta[] {
-    const entries = this.internalVaultManager.getAllEntries()
+    const entries = this.vaultDataManager.getAllEntries()
     return entries.map((entry) => getMetaForEntry(entry))
   }
 
@@ -107,7 +117,7 @@ class VaultManager {
     id: EntryId,
     timestamp?: number,
   ): { validFrom: number; validTill: number; otp: string } {
-    return this.internalVaultManager.generateTokenForEntry(id, timestamp)
+    return this.vaultDataManager.generateTokenForEntry(id, timestamp)
   }
 
   /**
@@ -156,7 +166,7 @@ class VaultManager {
     if (Object.keys(updates).includes('id')) {
       throw new EntryNotFoundError("Can't update id")
     }
-    const oldEntry = this.internalVaultManager.getFullEntry(entryId)
+    const oldEntry = this.vaultDataManager.getFullEntry(entryId)
 
     const updatedEntry = { ...oldEntry, ...updates }
 

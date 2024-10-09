@@ -1,6 +1,8 @@
 import NodeCryptoProvider from '../src/CryptoProviders/node/index.mjs'
 import {
   createTwoFaLib,
+  DeviceId,
+  DeviceType,
   type NewEntry,
   type Passphrase,
   type TwoFaLib,
@@ -24,16 +26,25 @@ export const anotherTotpEntry: NewEntry = {
   issuer: 'Another Issuer',
 }
 
-export const deviceIdentifier = 'test-device'
+export const deviceId = 'device-id' as DeviceId
+export const deviceType = 'test-device' as DeviceType
 export const passphrase = 'testpassword' as Passphrase
 
+/**
+ * Creates a TwoFaLib instance that can be used for testing.
+ * @returns A promise that resolves to the TwoFaLib instance.
+ */
 export const createTwoFaLibForTests = async () => {
   const cryptoLib = new NodeCryptoProvider()
-  const result = await createTwoFaLib(deviceIdentifier, cryptoLib, passphrase)
+  const result = await createTwoFaLib(deviceType, cryptoLib, passphrase)
 
   return { cryptoLib, passphrase, ...result }
 }
 
+/**
+ * Clears all entries from the vault.
+ * @param twoFaLib - The TwoFaLib instance.
+ */
 export const clearEntries = async (twoFaLib: TwoFaLib) => {
   const entries = twoFaLib.vault.listEntries()
   for (const entryId of entries) {
@@ -41,5 +52,11 @@ export const clearEntries = async (twoFaLib: TwoFaLib) => {
   }
 }
 
+/**
+ * Omits the specified keys from an object.
+ * @param obj - The object to omit keys from.
+ * @param keys - The keys to omit.
+ * @returns A new object with the specified keys omitted.
+ */
 export const omit = (obj: Record<string, unknown>, ...keys: string[]) =>
   Object.fromEntries(Object.entries(obj).filter(([k]) => !keys.includes(k)))

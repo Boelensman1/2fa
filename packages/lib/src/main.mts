@@ -12,16 +12,26 @@ import type {
 } from './interfaces/Entry.mjs'
 import type CryptoLib from './interfaces/CryptoLib.mjs'
 import type {
+  Encrypted,
   EncryptedPrivateKey,
   EncryptedSymmetricKey,
+  EncryptedPublicKey,
   PrivateKey,
   SymmetricKey,
   PublicKey,
   Passphrase,
   Salt,
 } from './interfaces/CryptoLib.mjs'
-import { SaveFunction } from './interfaces/SaveFunction.mjs'
-import type { SyncDevice, UserId } from './interfaces/SyncTypes.mjs'
+import type {
+  SyncDevice,
+  DeviceId,
+  DeviceType,
+} from './interfaces/SyncTypes.mjs'
+import type { EncryptedVaultData } from './interfaces/Vault.mjs'
+import type {
+  ChangedEventData,
+  ChangedEventWasChangedSinceLastEvent,
+} from './interfaces/Events.mjs'
 
 import {
   TwoFALibError,
@@ -50,15 +60,20 @@ export type {
   EntryMeta,
   EntryType,
   TotpPayload,
+  EncryptedVaultData,
   CryptoLib,
+  Encrypted,
   EncryptedPrivateKey,
+  EncryptedPublicKey,
   EncryptedSymmetricKey,
   PrivateKey,
   SymmetricKey,
-  SaveFunction,
   PublicKey,
   Passphrase,
   Salt,
-  UserId,
+  DeviceId,
+  DeviceType,
+  ChangedEventWasChangedSinceLastEvent,
+  ChangedEventData,
   SyncDevice,
 }

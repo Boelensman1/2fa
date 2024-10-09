@@ -6,6 +6,7 @@ import type {
   VaultMessage as VaultServerMessage,
   AddSyncDeviceCancelledMessage as AddSyncDeviceCancelledServerMessage,
 } from './ClientMessage.mjs'
+import { Encrypted, EncryptedSymmetricKey } from '2falib'
 
 export interface ConfirmAddSyncDeviceInitialiseData {
   type: 'confirmAddSyncDeviceInitialiseData'
@@ -21,8 +22,8 @@ export type AddSyncDeviceCancelledMessage = AddSyncDeviceCancelledServerMessage
 export interface SyncCommandMessage {
   type: 'syncCommand'
   data: {
-    encryptedCommands: string
-    encryptedSymmetricKey: string
+    encryptedCommands: Encrypted<string>
+    encryptedSymmetricKey: EncryptedSymmetricKey
   }
 }
 

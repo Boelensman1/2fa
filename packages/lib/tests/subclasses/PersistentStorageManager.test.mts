@@ -8,6 +8,7 @@ import {
   type Mock,
 } from 'vitest'
 import {
+  ChangedEventData,
   createTwoFaLib,
   CryptoLib,
   EncryptedPrivateKey,
@@ -19,13 +20,13 @@ import {
 import {
   clearEntries,
   createTwoFaLibForTests,
-  deviceIdentifier,
+  deviceId,
+  deviceType,
   omit,
   passphrase,
 } from '../testUtils.mjs'
 import { totpEntry } from '../testUtils.mjs'
-import type { SaveFunctionData } from '../../src/interfaces/SaveFunction.mjs'
-import type { UserId } from '../../src/interfaces/SyncTypes.mjs'
+import type { DeviceId } from '../../src/interfaces/SyncTypes.mjs'
 import { TwoFaLibEvent } from '../../src/TwoFaLibEvent.mjs'
 
 const getNthCallTypeAndDetail = (mockFn: Mock, n: number) => {
@@ -65,13 +66,13 @@ describe('PersistentStorageManager', () => {
     const locked = await twoFaLib.persistentStorage.getLockedRepresentation()
     expect(locked).toHaveLength(345)
 
-    const second2faLib = new TwoFaLib(deviceIdentifier, cryptoLib)
+    const second2faLib = new TwoFaLib(deviceType, cryptoLib)
     await second2faLib.init(
       encryptedPrivateKey,
       encryptedSymmetricKey,
       salt,
       passphrase,
-      'userid' as UserId,
+      'deviceid' as DeviceId,
     )
     await second2faLib.persistentStorage.loadFromLockedRepresentation(locked)
 
@@ -97,7 +98,7 @@ describe('PersistentStorageManager', () => {
         encryptedSymmetricKey,
         salt,
         'not-the-passphrase' as Passphrase,
-        'userid' as UserId,
+        deviceId,
       ),
     ).rejects.toThrow('Invalid passphrase')
   })
@@ -109,7 +110,7 @@ describe('PersistentStorageManager', () => {
         encryptedSymmetricKey,
         salt,
         'testpassword' as Passphrase,
-        'userid' as UserId,
+        deviceId,
       ),
     ).rejects.toThrow('Invalid private key')
   })
@@ -132,7 +133,7 @@ describe('PersistentStorageManager', () => {
 
   it('should call save function when changes are made', async () => {
     const result = await createTwoFaLib(
-      deviceIdentifier,
+      deviceType,
       cryptoLib,
       'testpassword' as Passphrase,
     )
@@ -159,7 +160,7 @@ describe('PersistentStorageManager', () => {
         encryptedPrivateKey: expect.any(String) as string,
         encryptedSymmetricKey: expect.any(String) as string,
         salt: expect.any(String) as string,
-        userId: expect.any(String) as string,
+        deviceId: expect.any(String) as string,
         syncDevices: expect.any(String) as string,
       }) as unknown,
       changed: expect.objectContaining({
@@ -167,7 +168,7 @@ describe('PersistentStorageManager', () => {
         encryptedPrivateKey: true,
         encryptedSymmetricKey: true,
         salt: true,
-        userId: true,
+        deviceId: true,
         syncDevices: true,
       }) as unknown,
     })
@@ -188,7 +189,7 @@ describe('PersistentStorageManager', () => {
         encryptedPrivateKey: expect.any(String) as string,
         encryptedSymmetricKey: expect.any(String) as string,
         salt: expect.any(String) as string,
-        userId: expect.any(String) as string,
+        deviceId: expect.any(String) as string,
         syncDevices: expect.any(String) as string,
       }) as unknown,
       changed: expect.objectContaining({
@@ -196,7 +197,7 @@ describe('PersistentStorageManager', () => {
         encryptedPrivateKey: false,
         encryptedSymmetricKey: false,
         salt: false,
-        userId: false,
+        deviceId: false,
         syncDevices: false,
       }) as unknown,
     })
@@ -205,17 +206,13 @@ describe('PersistentStorageManager', () => {
   it('should change passphrase', async () => {
     const oldPassphrase = 'testpassword' as Passphrase
     const newPassphrase = 'newpassword' as Passphrase
-    let savedData: SaveFunctionData
+    let savedData: ChangedEventData
 
-    const mockSaveFunction = vi.fn((data: SaveFunctionData) => {
+    const mockSaveFunction = vi.fn((data: ChangedEventData) => {
       savedData = data
     })
 
-    const result = await createTwoFaLib(
-      deviceIdentifier,
-      cryptoLib,
-      oldPassphrase,
-    )
+    const result = await createTwoFaLib(deviceType, cryptoLib, oldPassphrase)
     const originalTwoFaLib = result.twoFaLib
     originalTwoFaLib.addEventListener(TwoFaLibEvent.Changed, (evt) => {
       mockSaveFunction(evt.detail.data)
@@ -235,13 +232,13 @@ describe('PersistentStorageManager', () => {
     }
 
     // Create a new TwoFaLib instance with the saved data
-    const newTwoFaLib = new TwoFaLib(deviceIdentifier, cryptoLib)
+    const newTwoFaLib = new TwoFaLib(deviceType, cryptoLib)
     await newTwoFaLib.init(
       savedData.encryptedPrivateKey,
       savedData.encryptedSymmetricKey,
       savedData.salt,
       newPassphrase,
-      'userid' as UserId,
+      deviceId,
     )
 
     // Verify that the new passphrase works

@@ -1,7 +1,10 @@
 import { WebSocketServer, WebSocket } from 'ws'
+
+import ConnectedDevicesManager from './ConnectedDevicesManager.mjs'
+
 import type ClientMessage from './types/ClientMessage.mjs'
 import type { AddSyncDeviceInitialiseDataMessage } from './types/ClientMessage.mjs'
-import ServerMessage from './types/ServerMessage.mjs'
+import type ServerMessage from './types/ServerMessage.mjs'
 
 const port = 8080
 const wss = new WebSocketServer({ port })
@@ -11,7 +14,7 @@ const ongoingAddDeviceRequests: (AddSyncDeviceInitialiseDataMessage['data'] & {
   wsInitiator: WebSocket
   wsResponder?: WebSocket
 })[] = []
-const connectedDevices: { userId: string; ws: WebSocket }[] = []
+const connectedDevices = new ConnectedDevicesManager()
 
 const send = <T extends ServerMessage['type']>(
   ws: WebSocket,
@@ -25,12 +28,9 @@ const handleMessage = (ws: WebSocket, message: ClientMessage) => {
   console.log('message', message.type)
   switch (message.type) {
     case 'connect': {
-      const { userId } = message.data
-      connectedDevices.push({ userId, ws })
-      console.log(
-        'Connected devices',
-        connectedDevices.map((c) => c.userId),
-      )
+      const { deviceId } = message.data
+      connectedDevices.addDevice(deviceId, ws)
+      console.log('Connected devices', connectedDevices.size)
       break
     }
     case 'addSyncDeviceInitialiseData': {
@@ -39,10 +39,10 @@ const handleMessage = (ws: WebSocket, message: ClientMessage) => {
       return
     }
     case 'JPAKEPass2': {
-      const { initiatorUserIdString } = message.data
+      const { initiatorDeviceId } = message.data
       // find matching request
       const request = ongoingAddDeviceRequests.find(
-        (r) => r.initiatorUserIdString === initiatorUserIdString,
+        (r) => r.initiatorDeviceId === initiatorDeviceId,
       )
       if (!request) {
         console.error('Request not found')
@@ -53,10 +53,10 @@ const handleMessage = (ws: WebSocket, message: ClientMessage) => {
       return
     }
     case 'JPAKEPass3': {
-      const { initiatorUserIdString } = message.data
+      const { initiatorDeviceId } = message.data
       // find matching request
       const request = ongoingAddDeviceRequests.find(
-        (r) => r.initiatorUserIdString === initiatorUserIdString,
+        (r) => r.initiatorDeviceId === initiatorDeviceId,
       )
       if (!request) {
         console.error('Request not found')
@@ -70,10 +70,10 @@ const handleMessage = (ws: WebSocket, message: ClientMessage) => {
       return
     }
     case 'publicKey': {
-      const { initiatorUserIdString } = message.data
+      const { initiatorDeviceId } = message.data
       // find matching request
       const request = ongoingAddDeviceRequests.find(
-        (r) => r.initiatorUserIdString === initiatorUserIdString,
+        (r) => r.initiatorDeviceId === initiatorDeviceId,
       )
       if (!request) {
         console.error('Request not found')
@@ -84,10 +84,10 @@ const handleMessage = (ws: WebSocket, message: ClientMessage) => {
       return
     }
     case 'vault': {
-      const { initiatorUserIdString } = message.data
+      const { initiatorDeviceId } = message.data
       // find matching request
       const request = ongoingAddDeviceRequests.find(
-        (r) => r.initiatorUserIdString === initiatorUserIdString,
+        (r) => r.initiatorDeviceId === initiatorDeviceId,
       )
       if (!request) {
         console.error('Request not found')
@@ -101,17 +101,42 @@ const handleMessage = (ws: WebSocket, message: ClientMessage) => {
       send(request.wsResponder, 'vault', message.data)
       return
     }
+    case 'addSyncDeviceCancelled': {
+      const { initiatorDeviceId } = message.data
+      // find matching request
+      const request = ongoingAddDeviceRequests.find(
+        (r) => r.initiatorDeviceId === initiatorDeviceId,
+      )
+      if (!request) {
+        console.error('Request not found')
+        return
+      }
+      // remove from ongoing add device requests
+      ongoingAddDeviceRequests.splice(
+        ongoingAddDeviceRequests.indexOf(request),
+        1,
+      )
+
+      // notify other device that the request has been cancelled
+      if (ws === request.wsResponder) {
+        send(request.wsInitiator, 'addSyncDeviceCancelled')
+      } else {
+        send(request.wsInitiator, 'addSyncDeviceCancelled')
+      }
+
+      return
+    }
     case 'syncCommand': {
       message.data.forEach((data) => {
-        const { userId, encryptedCommands, encryptedSymmetricKey } = data
+        const { deviceId, encryptedCommands, encryptedSymmetricKey } = data
 
         // find matching connection
-        const device = connectedDevices.find((r) => r.userId === userId)
-        if (!device) {
+        const deviceWs = connectedDevices.getWs(deviceId)
+        if (!deviceWs) {
           console.error('Request not found')
           return
         }
-        send(device.ws, 'syncCommand', {
+        send(deviceWs, 'syncCommand', {
           encryptedSymmetricKey,
           encryptedCommands,
         })
@@ -131,5 +156,20 @@ wss.on('connection', function connection(ws) {
     handleMessage(ws, messageDecoded as ClientMessage)
   })
 
-  // ws.send('something')
+  ws.on('close', function close() {
+    // find matching connected device
+    connectedDevices.removeDeviceByWs(this)
+
+    // find matching ongoing add device request
+    const request = ongoingAddDeviceRequests.find(
+      (r) => r.wsInitiator === this || r.wsResponder === this,
+    )
+    if (request) {
+      // remove from ongoing add device requests
+      ongoingAddDeviceRequests.splice(
+        ongoingAddDeviceRequests.indexOf(request),
+        1,
+      )
+    }
+  })
 })

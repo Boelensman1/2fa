@@ -25,12 +25,11 @@ const actions = {
     type: types.SET_CONNECTING_TO_EXISTING_VAULT,
     payload: connecting,
   }),
-  initialize: (twoFaLib: TwoFaLib | null, isConnecting?: boolean): Action => ({
+  initialize: (twoFaLib: TwoFaLib | null): Action => ({
     type: types.INITIALIZE,
     payload: twoFaLib
       ? {
           twoFaLib,
-          isConnecting: !!isConnecting,
         }
       : null,
   }),

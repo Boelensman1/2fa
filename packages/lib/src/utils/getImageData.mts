@@ -3,6 +3,12 @@ import { isUint8Array } from 'uint8array-extras'
 
 import { TwoFALibError } from '../TwoFALibError.mjs'
 
+/**
+ * Gets the ImageData from an image, for browser environments.
+ * This ImageData is then further processed to get QR codes.
+ * @param input - The image to get the ImageData from.
+ * @returns A promise that resolves to the ImageData.
+ */
 export const getImageDataBrowser = (
   input: string | File,
 ): Promise<ImageData> => {
@@ -37,6 +43,13 @@ export const getImageDataBrowser = (
   })
 }
 
+/**
+ * Gets the ImageData from an image, for Node.js environments.
+ * This ImageData is then further processed to get QR codes.
+ * @param canvasLib - The Canvas library.
+ * @param inputImage - The image to get the ImageData from.
+ * @returns A promise that resolves to the ImageData.
+ */
 export const getImageDataNode = async (
   canvasLib: typeof import('canvas'),
   inputImage: Uint8Array | string,

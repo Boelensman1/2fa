@@ -19,15 +19,17 @@ import {
   ActiveAddDeviceFlow,
   InitiateAddDeviceFlowResult,
   SyncDevice,
-  UserId,
+  DeviceId,
+  DeviceType,
 } from '../interfaces/SyncTypes.mjs'
 import { decodeInitiatorData, jsonToUint8Array } from '../utils/syncUtils.mjs'
 import type {
+  Encrypted,
   EncryptedPublicKey,
   EncryptedSymmetricKey,
   PrivateKey,
   PublicKey,
-  SymmetricKey,
+  Salt,
 } from '../interfaces/CryptoLib.mjs'
 import type Command from '../Command/BaseCommand.mjs'
 import type { SyncCommand } from '../Command/commandTypes.mjs'
@@ -42,6 +44,7 @@ import {
   SyncNoServerConnectionError,
   TwoFALibError,
 } from '../TwoFALibError.mjs'
+import { EncryptedVaultData } from '../interfaces/Vault.mjs'
 
 const generateNonCryptographicRandomString = () => {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
@@ -52,19 +55,33 @@ const generateNonCryptographicRandomString = () => {
   ).join('')
 }
 
+/**
+ * Manages synchronization of 2FA devices and communication with the server.
+ */
 class SyncManager {
   private ws?: WebSocket
   private activeAddDeviceFlow?: ActiveAddDeviceFlow
   syncDevices: SyncDevice[]
-  userId: UserId
+  deviceId: DeviceId
 
+  /**
+   * Creates an instance of SyncManager.
+   * @param mediator - The mediator for accessing other components.
+   * @param deviceType - The type of the device.
+   * @param publicKey - The public key of the device.
+   * @param privateKey - The private key of the device.
+   * @param serverUrl - The WebSocket server URL.
+   * @param deviceId - The unique identifier of the device.
+   * @param syncDevices - An array of devices to synchronize with.
+   * @throws {InitializationError} If initialization fails (e.g., if the server URL is invalid).
+   */
   constructor(
     private readonly mediator: TwoFaLibMediator,
-    private readonly deviceIdentifier: string,
+    private readonly deviceType: DeviceType,
     private readonly publicKey: PublicKey,
     private readonly privateKey: PrivateKey,
     serverUrl: string,
-    userId: UserId,
+    deviceId: DeviceId,
     syncDevices = [] as SyncDevice[],
   ) {
     if (!serverUrl.startsWith('ws://') && !serverUrl.startsWith('wss://')) {
@@ -72,33 +89,48 @@ class SyncManager {
         'Invalid server URL, protocol must be ws or wss',
       )
     }
-    this.userId = userId
+    this.deviceId = deviceId
     this.syncDevices = syncDevices
     this.initServerConnection(serverUrl)
   }
 
   private get libraryLoader() {
-    return this.mediator.getLibraryLoader()
+    return this.mediator.getComponent('libraryLoader')
   }
+
   private get cryptoLib() {
     return this.libraryLoader.getCryptoLib()
   }
-  get persistentStorageManager() {
-    return this.mediator.getPersistentStorageManager()
-  }
-  get commandManager() {
-    return this.mediator.getCommandManager()
-  }
-  private get dispatchLibEvent() {
-    return this.mediator.getDispatchLibEvent()
+
+  private get persistentStorageManager() {
+    return this.mediator.getComponent('persistentStorageManager')
   }
 
+  private get commandManager() {
+    return this.mediator.getComponent('commandManager')
+  }
+
+  private get dispatchLibEvent() {
+    return this.mediator.getComponent('dispatchLibEvent')
+  }
+
+  /**
+   * @returns Whether an add device flow is currently active.
+   */
   get inAddDeviceFlow(): boolean {
     return Boolean(this.activeAddDeviceFlow)
   }
+
+  /**
+   * @returns Whether the WebSocket connection is open.
+   */
   get webSocketConnected(): boolean {
     return this.ws?.readyState === WebSocket.OPEN
   }
+
+  /**
+   * @returns Whether commands should be sent based on connection and device state.
+   */
   get shouldSendCommands(): boolean {
     return (
       this.webSocketConnected &&
@@ -106,6 +138,7 @@ class SyncManager {
       this.syncDevices.length > 0
     )
   }
+
   private async getNonce() {
     return uint8ArrayToBase64(await this.cryptoLib.getRandomBytes(16))
   }
@@ -120,6 +153,10 @@ class SyncManager {
     this.ws.send(JSON.stringify({ type, data }))
   }
 
+  /**
+   * Initializes the WebSocket connection to the server.
+   * @param serverUrl - The URL of the WebSocket server.
+   */
   initServerConnection(serverUrl: string) {
     const ws = new WebSocket(serverUrl)
 
@@ -139,7 +176,7 @@ class SyncManager {
     })
 
     ws.addEventListener('open', () => {
-      this.sendToServer('connect', { userId: libInstance.userId })
+      this.sendToServer('connect', { deviceId: libInstance.deviceId })
     })
 
     this.ws = ws
@@ -165,8 +202,8 @@ class SyncManager {
 
         void this.finishAddDeviceFlowKeyExchangeInitiator(
           pass2Result,
-          data.responderUserIdString,
-          data.responderDeviceIdentifier,
+          data.responderDeviceId,
+          data.responderDeviceType,
         )
         break
       }
@@ -199,8 +236,7 @@ class SyncManager {
       }
       case 'syncCommand': {
         const { data } = message
-        const encryptedSymmetricKey =
-          data.encryptedSymmetricKey as EncryptedSymmetricKey
+        const encryptedSymmetricKey = data.encryptedSymmetricKey
         const encryptedCommands = data.encryptedCommands
         void this.receiveCommands(encryptedSymmetricKey, encryptedCommands)
         break
@@ -209,12 +245,13 @@ class SyncManager {
   }
 
   /**
-   * Initiate an add device flow.
+   * Initiates the process to add a new device.
    * @param returnQr - If true, returns a QR code as a string. If false, returns the raw data.
    * @returns A promise that resolves to the result of the add device flow.
    *          This result can be used to continue the flow and should be
    *          displayed to the user. If returnQr is true, the result is a QR code string.
-   * @throws {Error} If an add device flow is already active.
+   * @throws {SyncAddDeviceFlowConflictError} If an add device flow is already active.
+   * @throws {SyncNoServerConnectionError} If there is no server connection.
    */
   async initiateAddDeviceFlow<T extends boolean = true>(
     returnQr: T = true as T,
@@ -231,7 +268,7 @@ class SyncManager {
     )
     const timestamp = Date.now()
 
-    const jpak = new JPakeThreePass(this.userId)
+    const jpak = new JPakeThreePass(this.deviceId)
     const pass1Result = jpak.pass1()
 
     let reject: (error: TwoFALibError) => void
@@ -241,7 +278,7 @@ class SyncManager {
         state: 'initiator:initiated',
         jpak,
         addDevicePassword,
-        initiatorUserIdString: this.userId,
+        initiatorDeviceId: this.deviceId,
         timestamp,
         resolveContinuePromise: resolve,
       }
@@ -249,8 +286,8 @@ class SyncManager {
 
     // register this add device request at the server
     this.sendToServer('addSyncDeviceInitialiseData', {
-      initiatorDeviceIdentifier: this.deviceIdentifier,
-      initiatorUserIdString: this.userId,
+      initiatorDeviceType: this.deviceType,
+      initiatorDeviceId: this.deviceId,
       timestamp,
       nonce: await this.getNonce(),
     })
@@ -272,8 +309,8 @@ class SyncManager {
 
     const returnData: InitiateAddDeviceFlowResult = {
       addDevicePassword: uint8ArrayToBase64(addDevicePassword),
-      initiatorUserIdString: this.userId,
-      initiatorDeviceIdentifier: this.deviceIdentifier,
+      initiatorDeviceId: this.deviceId,
+      initiatorDeviceType: this.deviceType,
       timestamp,
       pass1Result: {
         G1: uint8ArrayToHex(pass1Result.G1),
@@ -299,7 +336,9 @@ class SyncManager {
   /**
    * Responds to an add device flow initiated by another device.
    * @param initiatorData The data received from the initiating device.
-   * @throws {Error} If the initiator data is invalid or if there's an error in the JPAKE process.
+   * @throws {SyncNoServerConnectionError} If there is no server connection.
+   * @throws {SyncAddDeviceFlowConflictError} If an add device flow is already active.
+   * @throws {SyncError} If the initiator data is invalid.
    */
   async respondToAddDeviceFlow(
     initiatorData: InitiateAddDeviceFlowResult | string | Uint8Array | File,
@@ -313,10 +352,10 @@ class SyncManager {
 
     const {
       addDevicePassword,
-      initiatorUserIdString,
+      initiatorDeviceId,
       timestamp,
       pass1Result,
-      initiatorDeviceIdentifier,
+      initiatorDeviceType: initiatorDeviceIdentifier,
     } = await decodeInitiatorData(
       initiatorData,
       await this.libraryLoader.getJsQrLib(),
@@ -325,7 +364,7 @@ class SyncManager {
 
     if (
       !addDevicePassword ||
-      !initiatorUserIdString ||
+      !initiatorDeviceId ||
       !timestamp ||
       !pass1Result ||
       !initiatorDeviceIdentifier
@@ -336,7 +375,7 @@ class SyncManager {
     // Decode the base64 password
     const decodedPassword = base64ToUint8Array(addDevicePassword)
 
-    const jpak = new JPakeThreePass(this.userId)
+    const jpak = new JPakeThreePass(this.deviceId)
 
     // Process the first pass from the initiator
     const initiatorPass1Result = {
@@ -351,7 +390,7 @@ class SyncManager {
       pass2Result = jpak.pass2(
         initiatorPass1Result,
         decodedPassword,
-        initiatorUserIdString,
+        initiatorDeviceId,
       )
     } catch {
       throw new SyncError('Error processing initiator pass 1')
@@ -361,9 +400,9 @@ class SyncManager {
       state: 'responder:initated',
       jpak,
       addDevicePassword: decodedPassword,
-      responderUserIdString: this.userId,
-      initiatorUserIdString,
-      initiatorDeviceIdentifier,
+      responderDeviceId: this.deviceId,
+      initiatorDeviceId: initiatorDeviceId,
+      initiatorDeviceType: initiatorDeviceIdentifier,
       timestamp: Date.now(),
     }
 
@@ -372,16 +411,16 @@ class SyncManager {
       nonce: await this.getNonce(),
       // @ts-expect-error we get a type mismatch because we input Uint8Array instead of JsonifiedUint8Array, but it will get jsonified later
       pass2Result,
-      responderUserIdString: this.userId,
-      initiatorUserIdString,
-      responderDeviceIdentifier: this.deviceIdentifier,
+      responderDeviceId: this.deviceId,
+      initiatorDeviceId: initiatorDeviceId,
+      responderDeviceType: this.deviceType,
     })
   }
 
   private async finishAddDeviceFlowKeyExchangeInitiator(
     pass2Result: Pass2Result,
-    responderUserIdString: string,
-    responderDeviceIdentifier: string,
+    responderDeviceId: DeviceId,
+    responderDeviceType: DeviceType,
   ) {
     if (!this.ws || !this.webSocketConnected) {
       throw new SyncNoServerConnectionError()
@@ -394,12 +433,12 @@ class SyncManager {
     const pass3Result = this.activeAddDeviceFlow.jpak.pass3(
       pass2Result,
       this.activeAddDeviceFlow.addDevicePassword,
-      responderUserIdString,
+      responderDeviceId,
     )
 
     this.sendToServer('JPAKEPass3', {
       nonce: await this.getNonce(),
-      initiatorUserIdString: this.activeAddDeviceFlow.initiatorUserIdString,
+      initiatorDeviceId: this.activeAddDeviceFlow.initiatorDeviceId,
       // @ts-expect-error we get a type mismatch because we input Uint8Array instead of JsonifiedUint8Array, but it will get jsonified later
       pass3Result,
     })
@@ -407,13 +446,13 @@ class SyncManager {
     const sharedKey = this.activeAddDeviceFlow.jpak.deriveSharedKey()
     const syncKey = await this.cryptoLib.createSyncKey(
       sharedKey,
-      responderUserIdString.repeat(3), // repeat it so it is long enough to be used as a salt
+      responderDeviceId as string as Salt,
     )
     this.activeAddDeviceFlow = {
       ...this.activeAddDeviceFlow,
       state: 'initiator:syncKeyCreated',
-      responderUserIdString,
-      responderDeviceIdentifier,
+      responderDeviceId: responderDeviceId,
+      responderDeviceType: responderDeviceType,
       syncKey,
     }
   }
@@ -438,7 +477,7 @@ class SyncManager {
     const sharedKey = this.activeAddDeviceFlow.jpak.deriveSharedKey()
     const syncKey = await this.cryptoLib.createSyncKey(
       sharedKey,
-      this.activeAddDeviceFlow.responderUserIdString.repeat(3), // repeat it so it is long enough to be used as a salt
+      this.activeAddDeviceFlow.responderDeviceId as string as Salt,
     )
     this.activeAddDeviceFlow = {
       ...this.activeAddDeviceFlow,
@@ -454,7 +493,7 @@ class SyncManager {
     this.sendToServer('publicKey', {
       nonce: await this.getNonce(),
       responderEncryptedPublicKey,
-      initiatorUserIdString: this.activeAddDeviceFlow.initiatorUserIdString,
+      initiatorDeviceId: this.activeAddDeviceFlow.initiatorDeviceId,
     })
   }
 
@@ -493,13 +532,13 @@ class SyncManager {
     this.sendToServer('vault', {
       nonce: await this.getNonce(),
       encryptedVaultData,
-      initiatorUserIdString: this.activeAddDeviceFlow.initiatorUserIdString,
+      initiatorDeviceId: this.activeAddDeviceFlow.initiatorDeviceId,
       initiatorEncryptedPublicKey,
     })
 
     this.syncDevices.push({
-      userId: this.activeAddDeviceFlow.responderUserIdString,
-      deviceIdentifier: this.activeAddDeviceFlow.responderDeviceIdentifier,
+      deviceId: this.activeAddDeviceFlow.responderDeviceId,
+      deviceType: this.activeAddDeviceFlow.responderDeviceType,
       publicKey: decryptedPublicKey as PublicKey,
     })
     this.persistentStorageManager.__updateWasChangedSinceLastSave([
@@ -512,7 +551,7 @@ class SyncManager {
   }
 
   private async importInitialVaultData(
-    encryptedVaultData: string,
+    encryptedVaultData: EncryptedVaultData,
     encryptedPublicKey: EncryptedPublicKey,
   ) {
     if (this.activeAddDeviceFlow?.state !== 'responder:syncKeyCreated') {
@@ -535,8 +574,8 @@ class SyncManager {
 
     // Update the sync devices list with the initiator's information
     this.syncDevices.push({
-      userId: this.activeAddDeviceFlow.initiatorUserIdString,
-      deviceIdentifier: this.activeAddDeviceFlow.initiatorDeviceIdentifier,
+      deviceId: this.activeAddDeviceFlow.initiatorDeviceId,
+      deviceType: this.activeAddDeviceFlow.initiatorDeviceType,
       publicKey: decryptedPublicKey as PublicKey,
     })
     this.persistentStorageManager.__updateWasChangedSinceLastSave([
@@ -549,6 +588,11 @@ class SyncManager {
     this.dispatchLibEvent(TwoFaLibEvent.ConnectToExistingVaultFinished)
   }
 
+  /**
+   * Cancels the active add sync device flow.
+   * @throws {SyncNoServerConnectionError} If there is no server connection.
+   * @throws {SyncInWrongStateError} If there is no active add device flow.
+   */
   cancelAddSyncDevice() {
     if (!this.ws || !this.webSocketConnected) {
       throw new SyncNoServerConnectionError()
@@ -559,13 +603,18 @@ class SyncManager {
       )
     }
     this.sendToServer('addSyncDeviceCancelled', {
-      initiatorUserIdString: this.activeAddDeviceFlow.initiatorUserIdString,
+      initiatorDeviceId: this.activeAddDeviceFlow.initiatorDeviceId,
     })
     // Reset the active add device flow
     this.activeAddDeviceFlow = undefined
     this.dispatchLibEvent(TwoFaLibEvent.ConnectToExistingVaultFinished)
   }
 
+  /**
+   * Sends a command to the server to synchronize with other devices.
+   * @param command - The command to be sent.
+   * @throws {SyncNoServerConnectionError} If there is no server connection.
+   */
   async sendCommand(command: Command) {
     if (!this.ws || !this.webSocketConnected) {
       throw new SyncNoServerConnectionError()
@@ -588,7 +637,7 @@ class SyncManager {
           }),
         )
         return {
-          userId: device.userId,
+          deviceId: device.deviceId,
           encryptedSymmetricKey,
           encryptedCommands,
         }
@@ -598,14 +647,20 @@ class SyncManager {
     this.sendToServer('syncCommand', data)
   }
 
+  /**
+   * Receives and processes commands from other devices.
+   * @param encryptedSymmetricKey - The encrypted symmetric key.
+   * @param encryptedData - The encrypted command data.
+   * @throws {CryptoError} If decryption fails.
+   */
   async receiveCommands(
     encryptedSymmetricKey: EncryptedSymmetricKey,
-    encryptedData: string,
+    encryptedData: Encrypted<string>,
   ) {
-    const symmetricKey = (await this.cryptoLib.decrypt(
+    const symmetricKey = await this.cryptoLib.decrypt(
       this.privateKey,
       encryptedSymmetricKey,
-    )) as SymmetricKey
+    )
     const data = JSON.parse(
       await this.cryptoLib.decryptSymmetric(symmetricKey, encryptedData),
     ) as SyncCommand

@@ -2,7 +2,7 @@ import { type Component, createSignal } from 'solid-js'
 import { createTwoFaLib, Passphrase, TwoFaLibEvent } from '2falib'
 import BrowserCryptoProvider from '2falib/cryptoProviders/browser'
 
-import { syncServerUrl } from '../parameters'
+import { deviceType, syncServerUrl } from '../parameters'
 
 import useStore from '../store/useStore'
 import actions from '../store/actions'
@@ -19,7 +19,7 @@ const CreateVault: Component = () => {
     const cryptoLib = new BrowserCryptoProvider()
     const passphrase = password() as Passphrase
     const { twoFaLib } = await createTwoFaLib(
-      'browser',
+      deviceType,
       cryptoLib,
       passphrase,
       syncServerUrl,

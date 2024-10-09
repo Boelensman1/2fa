@@ -1,6 +1,6 @@
 import { InvalidCommandError } from '../../TwoFALibError.mjs'
 import Command from '../BaseCommand.mjs'
-import type InternalVaultManager from '../../subclasses/InternalVaultManager.mjs'
+import type InternalVaultManager from '../../subclasses/VaultDataManager.mjs'
 import type { EntryId } from '../../interfaces/Entry.mjs'
 
 import AddEntryCommand from './AddEntryCommand.mjs'
@@ -10,9 +10,17 @@ export interface DeleteEntryData {
   entryId: EntryId
 }
 
+/**
+ * Represents a command that when executed deletes an entry from the vault.
+ */
 class DeleteEntryCommand extends Command<DeleteEntryData> {
   private deletedEntry?: Entry
 
+  /**
+   * Creates a new DeleteEntryCommand instance.
+   * @inheritdoc
+   * @param data - The data of the entry to be deleted.
+   */
   constructor(
     data: DeleteEntryData,
     id?: string,
@@ -23,6 +31,11 @@ class DeleteEntryCommand extends Command<DeleteEntryData> {
     super('DeleteEntry', data, id, timestamp, version, fromRemote)
   }
 
+  /**
+   * Executes the command to delete the entry from the vault.
+   * @inheritdoc
+   * @throws {InvalidCommandError} If the command data is invalid or the entry doesn't exist.
+   */
   async execute(vault: InternalVaultManager) {
     if (!this.validate()) {
       throw new InvalidCommandError('Invalid DeleteEntry command')
@@ -36,6 +49,10 @@ class DeleteEntryCommand extends Command<DeleteEntryData> {
     await vault.deleteEntry(this.data.entryId)
   }
 
+  /**
+   * @inheritdoc
+   * @throws {InvalidCommandError} If the deleted entry content is not available.
+   */
   createUndoCommand(): Command {
     if (this.deletedEntry === undefined) {
       throw new InvalidCommandError(
@@ -45,6 +62,10 @@ class DeleteEntryCommand extends Command<DeleteEntryData> {
     return AddEntryCommand.create(this.deletedEntry)
   }
 
+  /**
+   * Validates the command data.
+   * @returns True if the command data is valid, false otherwise.
+   */
   validate(): boolean {
     return this.data.entryId !== undefined
   }

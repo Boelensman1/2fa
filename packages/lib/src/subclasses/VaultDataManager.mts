@@ -13,15 +13,26 @@ import {
 
 import { Vault } from '../interfaces/Vault.mjs'
 
-class VaultManager {
+/**
+ * Manages the data within the vault. This class should only be used internally
+ * by the library, for public methods, see VaultOperationsManager.
+ */
+class VaultDataManager {
   private vault: Vault = []
 
+  /**
+   * Constructs a new VaultDataManager instance.
+   * @param mediator - The mediator for accessing other components.
+   */
   constructor(private readonly mediator: TwoFaLibMediator) {}
 
-  get persistentStorageManager() {
-    return this.mediator.getPersistentStorageManager()
+  private get persistentStorageManager() {
+    return this.mediator.getComponent('persistentStorageManager')
   }
 
+  /**
+   * @returns The number of entries in the vault.
+   */
   get size() {
     return this.vault.length
   }
@@ -29,7 +40,7 @@ class VaultManager {
   /**
    * Retrieve a specific entry.
    * @param entryId - The unique identifier of the entry.
-   * @returns The entry
+   * @returns The entry.
    * @throws {EntryNotFoundError} If no entry exists with the given ID.
    */
   getFullEntry(entryId: EntryId): Entry {
@@ -38,6 +49,10 @@ class VaultManager {
     return entry
   }
 
+  /**
+   * Retrieve all entries in the vault.
+   * @returns An array of all entries.
+   */
   getAllEntries() {
     return this.vault
   }
@@ -46,7 +61,7 @@ class VaultManager {
    * Generate a time-based one-time password (TOTP) for a specific entry.
    * @param id - The unique identifier of the entry.
    * @param timestamp - Optional timestamp to use for token generation (default is current time).
-   * @returns An object containing the token and between which timestamps it is valid
+   * @returns An object containing the token and the validity period.
    * @throws {EntryNotFoundError} If no entry exists with the given ID.
    * @throws {TokenGenerationError} If token generation fails due to invalid entry data or technical issues.
    */
@@ -77,9 +92,9 @@ class VaultManager {
   }
 
   /**
-   * Add a new entry to the library.
+   * Add a new entry to the vault.
    * @param entry - The entry data to add (without an ID, as it will be generated).
-   * @returns A promise that resolves to the newly generated EntryId.
+   * @returns A promise that resolves when the entry is added.
    */
   async addEntry(entry: Entry): Promise<void> {
     this.vault.push(entry)
@@ -92,8 +107,8 @@ class VaultManager {
   }
 
   /**
-   * Delete an existing entry from the library.
-   * @param entryId - The unique identifier of the entry to delete.
+   * Delete an entry from the vault.
+   * @param entryId - The identifier of the entry to delete.
    * @throws {EntryNotFoundError} If no entry exists with the given ID.
    */
   async deleteEntry(entryId: EntryId): Promise<void> {
@@ -108,9 +123,9 @@ class VaultManager {
   }
 
   /**
-   * Update an existing entry in the library.
-   * @param updatedEntry - An object containing the updated entry
-   * @returns A promise that resolves when done.
+   * Update an existing entry in the vault.
+   * @param updatedEntry - An object containing the updated entry.
+   * @returns A promise that resolves when the entry is updated.
    * @throws {EntryNotFoundError} If no entry exists with the given ID.
    */
   async updateEntry(updatedEntry: Entry): Promise<void> {
@@ -126,9 +141,13 @@ class VaultManager {
     await this.persistentStorageManager.save()
   }
 
+  /**
+   * Replace the current vault with a new one.
+   * @param newVault - The new vault data to replace the existing vault.
+   */
   replaceVault(newVault: Vault) {
     this.vault = newVault
   }
 }
 
-export default VaultManager
+export default VaultDataManager

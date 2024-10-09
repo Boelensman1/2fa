@@ -1,25 +1,8 @@
-import {
-  EncryptedPrivateKey,
-  EncryptedSymmetricKey,
-  Salt,
-  UserId,
-} from '2falib'
+import { ChangedEventWasChangedSinceLastEvent, ChangedEventData } from '2falib'
 
 const saveFunction = (
-  changed: {
-    lockedRepresentation: boolean
-    encryptedPrivateKey: boolean
-    encryptedSymmetricKey: boolean
-    salt: boolean
-    userId: boolean
-  },
-  data: {
-    lockedRepresentation: string
-    encryptedPrivateKey: EncryptedPrivateKey
-    encryptedSymmetricKey: EncryptedSymmetricKey
-    salt: Salt
-    userId: UserId
-  },
+  changed: ChangedEventWasChangedSinceLastEvent,
+  data: ChangedEventData,
 ) => {
   Object.entries(changed).forEach(([key, isChanged]) => {
     if (isChanged) {

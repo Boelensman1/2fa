@@ -7,8 +7,9 @@ import type {
   EncryptedSymmetricKey,
   Passphrase,
   Salt,
-  UserId,
+  DeviceId,
   SyncDevice,
+  EncryptedVaultData,
 } from '2falib'
 import { syncServerUrl } from '../parameters'
 
@@ -29,14 +30,14 @@ const Login: Component = () => {
     const encryptedSymmetricKey = localStorage.getItem('encryptedSymmetricKey')
     const salt = localStorage.getItem('salt')
     const syncDevices = localStorage.getItem('syncDevices')
-    const userId = localStorage.getItem('userId')
+    const deviceId = localStorage.getItem('deviceId')
 
     if (
       !lockedRepresentation ||
       !encryptedPrivateKey ||
       !encryptedSymmetricKey ||
       !salt ||
-      !userId
+      !deviceId
     ) {
       throw new Error('localStorage is not complete')
     }
@@ -46,12 +47,12 @@ const Login: Component = () => {
       encryptedSymmetricKey as EncryptedSymmetricKey,
       salt as Salt,
       password() as Passphrase,
-      userId as UserId,
+      deviceId as DeviceId,
       syncServerUrl,
       syncDevices ? (JSON.parse(syncDevices) as SyncDevice[]) : undefined,
     )
     await twoFaLib.persistentStorage.loadFromLockedRepresentation(
-      lockedRepresentation,
+      lockedRepresentation as EncryptedVaultData,
     )
 
     syncStoreWithLib(twoFaLib)

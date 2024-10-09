@@ -10,6 +10,7 @@ import { argon2id } from 'hash-wasm'
 import { CryptoError } from '../../TwoFALibError.mjs'
 import type CryptoLib from '../../interfaces/CryptoLib.mjs'
 import type {
+  Encrypted,
   EncryptedPrivateKey,
   EncryptedSymmetricKey,
   Passphrase,
@@ -21,10 +22,22 @@ import type {
   SyncKey,
 } from '../../interfaces/CryptoLib.mjs'
 
+/**
+ * Normalizes line endings in a string so they match the
+ * node cryptoprovider format
+ * @param str - The input string to normalize.
+ * @returns The normalized string with consistent line endings.
+ */
 const normalizeLineEndings = (str: string): string => {
   return str.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
 }
 
+/**
+ * Create a password hash
+ * @param salt - The salt to use
+ * @param passphrase - The passphrase to hash
+ * @returns The calculated password hash
+ */
 export const generatePassphraseHash = (
   salt: Salt,
   passphrase: string,
@@ -40,7 +53,20 @@ export const generatePassphraseHash = (
   }) as Promise<PassphraseHash>
 }
 
+/**
+ * @inheritdoc
+ */
 class BrowserCryptoLib implements CryptoLib {
+  /**
+   * @inheritdoc
+   */
+  async getRandomBytes(count: number) {
+    return Promise.resolve(window.crypto.getRandomValues(new Uint8Array(count)))
+  }
+
+  /**
+   * @inheritdoc
+   */
   async createKeys(passphrase: Passphrase) {
     // create random salt
     const salt = uint8ArrayToBase64(
@@ -63,27 +89,9 @@ class BrowserCryptoLib implements CryptoLib {
     }
   }
 
-  async decryptKeys(
-    encryptedPrivateKey: EncryptedPrivateKey,
-    encryptedSymmetricKey: EncryptedSymmetricKey,
-    salt: Salt,
-    passphrase: Passphrase,
-  ) {
-    // recreate passwordHash
-    const passphraseHash = await generatePassphraseHash(salt, passphrase)
-
-    const { privateKey, publicKey } = await this.decryptPrivateKey(
-      encryptedPrivateKey,
-      passphraseHash,
-    )
-    const symmetricKey = (await this.decrypt(
-      privateKey,
-      encryptedSymmetricKey,
-    )) as SymmetricKey
-
-    return { privateKey, publicKey, symmetricKey }
-  }
-
+  /**
+   * @inheritdoc
+   */
   async encryptKeys(
     privateKey: PrivateKey,
     symmetricKey: SymmetricKey,
@@ -106,30 +114,149 @@ class BrowserCryptoLib implements CryptoLib {
     }
   }
 
-  private async createKeyPair(passphrase: string): Promise<{
-    encryptedPrivateKey: EncryptedPrivateKey
-    publicKey: PublicKey
-  }> {
-    return new Promise((resolve, reject) => {
-      forge.pki.rsa.generateKeyPair({ bits: 4096 }, (err, keyPair) => {
-        if (err) {
-          reject(err)
-        } else {
-          const publicKey = forge.pki.publicKeyToPem(keyPair.publicKey)
-          const encryptedPrivateKey = forge.pki.encryptRsaPrivateKey(
-            keyPair.privateKey,
-            passphrase,
-            {
-              algorithm: 'aes256',
-            },
-          ) as EncryptedPrivateKey
-          resolve({
-            encryptedPrivateKey,
-            publicKey: normalizeLineEndings(publicKey) as PublicKey,
-          })
-        }
-      })
+  /**
+   * @inheritdoc
+   */
+  async decryptKeys(
+    encryptedPrivateKey: EncryptedPrivateKey,
+    encryptedSymmetricKey: EncryptedSymmetricKey,
+    salt: Salt,
+    passphrase: Passphrase,
+  ) {
+    // recreate passwordHash
+    const passphraseHash = await generatePassphraseHash(salt, passphrase)
+
+    const { privateKey, publicKey } = await this.decryptPrivateKey(
+      encryptedPrivateKey,
+      passphraseHash,
+    )
+    const symmetricKey = (await this.decrypt(
+      privateKey,
+      encryptedSymmetricKey,
+    )) as SymmetricKey
+
+    return { privateKey, publicKey, symmetricKey }
+  }
+
+  /**
+   * @inheritdoc
+   */
+  async encrypt<T extends string>(publicKey: PublicKey, plainText: T) {
+    const publicKeyObj = forge.pki.publicKeyFromPem(publicKey as string)
+    const encrypted = publicKeyObj.encrypt(plainText, 'RSA-OAEP')
+    return Promise.resolve(btoa(encrypted) as Encrypted<T>)
+  }
+
+  /**
+   * @inheritdoc
+   */
+  async decrypt<T extends string>(
+    privateKey: PrivateKey,
+    encryptedText: Encrypted<T>,
+  ) {
+    const privateKeyObj = forge.pki.privateKeyFromPem(privateKey as string)
+    const decrypted = privateKeyObj.decrypt(atob(encryptedText), 'RSA-OAEP')
+    return Promise.resolve(decrypted as T)
+  }
+
+  /**
+   * @inheritdoc
+   */
+  async encryptSymmetric<T extends string>(
+    symmetricKey: SymmetricKey,
+    plainText: T,
+  ) {
+    const key = await window.crypto.subtle.importKey(
+      'raw',
+      base64ToUint8Array(symmetricKey),
+      { name: 'AES-CBC', length: 256 },
+      false,
+      ['encrypt'],
+    )
+    const iv = window.crypto.getRandomValues(new Uint8Array(16))
+    const encrypted = await window.crypto.subtle.encrypt(
+      { name: 'AES-CBC', iv },
+      key,
+      stringToUint8Array(plainText),
+    )
+    const result = [
+      uint8ArrayToBase64(iv),
+      uint8ArrayToBase64(new Uint8Array(encrypted)),
+    ]
+    return result.join(':') as Encrypted<T>
+  }
+
+  /**
+   * @inheritdoc
+   */
+  async decryptSymmetric<T extends string>(
+    symmetricKey: SymmetricKey,
+    encryptedText: Encrypted<T>,
+  ) {
+    const [ivString, encryptedData] = encryptedText.split(':')
+    const iv = base64ToUint8Array(ivString)
+    const keyUint8Array = base64ToUint8Array(symmetricKey)
+
+    const key = await window.crypto.subtle.importKey(
+      'raw',
+      keyUint8Array,
+      { name: 'AES-CBC', length: 256 },
+      false,
+      ['decrypt'],
+    )
+
+    const encrypted = base64ToUint8Array(encryptedData)
+    const decrypted = await window.crypto.subtle.decrypt(
+      { name: 'AES-CBC', iv },
+      key,
+      encrypted,
+    )
+
+    return uint8ArrayToString(decrypted) as T
+  }
+
+  /**
+   * @inheritdoc
+   */
+  async createSymmetricKey(): Promise<SymmetricKey> {
+    const key = await window.crypto.subtle.generateKey(
+      { name: 'AES-CBC', length: 256 },
+      true,
+      ['encrypt', 'decrypt'],
+    )
+    const exportedKey = await window.crypto.subtle.exportKey('raw', key)
+    return uint8ArrayToBase64(new Uint8Array(exportedKey)) as SymmetricKey
+  }
+
+  /**
+   * @inheritdoc
+   */
+  async createSyncKey(sharedKey: Uint8Array, salt: string): Promise<SyncKey> {
+    const key = await argon2id({
+      password: sharedKey,
+      salt,
+      parallelism: 1,
+      iterations: 256,
+      memorySize: 512,
+      hashLength: 32,
+      outputType: 'binary',
     })
+    return uint8ArrayToBase64(key) as SyncKey
+  }
+
+  private async encryptPrivateKey(
+    privateKey: PrivateKey,
+    passphraseHash: PassphraseHash,
+  ): Promise<EncryptedPrivateKey> {
+    const privateKeyObj = forge.pki.privateKeyFromPem(privateKey as string)
+    const encryptedPrivateKey = forge.pki.encryptRsaPrivateKey(
+      privateKeyObj,
+      passphraseHash,
+      {
+        algorithm: 'aes256',
+      },
+    ) as EncryptedPrivateKey
+    return Promise.resolve(encryptedPrivateKey)
   }
 
   private async decryptPrivateKey(
@@ -166,19 +293,30 @@ class BrowserCryptoLib implements CryptoLib {
     }
   }
 
-  private async encryptPrivateKey(
-    privateKey: PrivateKey,
-    passphraseHash: PassphraseHash,
-  ): Promise<EncryptedPrivateKey> {
-    const privateKeyObj = forge.pki.privateKeyFromPem(privateKey as string)
-    const encryptedPrivateKey = forge.pki.encryptRsaPrivateKey(
-      privateKeyObj,
-      passphraseHash,
-      {
-        algorithm: 'aes256',
-      },
-    ) as EncryptedPrivateKey
-    return Promise.resolve(encryptedPrivateKey)
+  private async createKeyPair(passphrase: string): Promise<{
+    encryptedPrivateKey: EncryptedPrivateKey
+    publicKey: PublicKey
+  }> {
+    return new Promise((resolve, reject) => {
+      forge.pki.rsa.generateKeyPair({ bits: 4096 }, (err, keyPair) => {
+        if (err) {
+          reject(err)
+        } else {
+          const publicKey = forge.pki.publicKeyToPem(keyPair.publicKey)
+          const encryptedPrivateKey = forge.pki.encryptRsaPrivateKey(
+            keyPair.privateKey,
+            passphrase,
+            {
+              algorithm: 'aes256',
+            },
+          ) as EncryptedPrivateKey
+          resolve({
+            encryptedPrivateKey,
+            publicKey: normalizeLineEndings(publicKey) as PublicKey,
+          })
+        }
+      })
+    })
   }
 
   private async getPublicKeyFromPrivateKey(
@@ -189,98 +327,6 @@ class BrowserCryptoLib implements CryptoLib {
       forge.pki.setRsaPublicKey(privateKeyObj.n, privateKeyObj.e),
     )
     return Promise.resolve(normalizeLineEndings(publicKey) as PublicKey)
-  }
-
-  async encrypt(publicKey: PublicKey, plainText: string): Promise<string> {
-    const publicKeyObj = forge.pki.publicKeyFromPem(publicKey as string)
-    const encrypted = publicKeyObj.encrypt(plainText, 'RSA-OAEP')
-    return Promise.resolve(btoa(encrypted))
-  }
-
-  async decrypt(
-    privateKey: PrivateKey,
-    encryptedTextB64: string,
-  ): Promise<string> {
-    const privateKeyObj = forge.pki.privateKeyFromPem(privateKey as string)
-    const decrypted = privateKeyObj.decrypt(atob(encryptedTextB64), 'RSA-OAEP')
-    return Promise.resolve(decrypted)
-  }
-
-  async createSymmetricKey(): Promise<SymmetricKey> {
-    const key = await window.crypto.subtle.generateKey(
-      { name: 'AES-CBC', length: 256 },
-      true,
-      ['encrypt', 'decrypt'],
-    )
-    const exportedKey = await window.crypto.subtle.exportKey('raw', key)
-    return uint8ArrayToBase64(new Uint8Array(exportedKey)) as SymmetricKey
-  }
-
-  async encryptSymmetric(
-    symmetricKey: SymmetricKey,
-    plainText: string,
-  ): Promise<string> {
-    const key = await window.crypto.subtle.importKey(
-      'raw',
-      base64ToUint8Array(symmetricKey),
-      { name: 'AES-CBC', length: 256 },
-      false,
-      ['encrypt'],
-    )
-    const iv = window.crypto.getRandomValues(new Uint8Array(16))
-    const encrypted = await window.crypto.subtle.encrypt(
-      { name: 'AES-CBC', iv },
-      key,
-      stringToUint8Array(plainText),
-    )
-    const result = [
-      uint8ArrayToBase64(iv),
-      uint8ArrayToBase64(new Uint8Array(encrypted)),
-    ]
-    return result.join(':')
-  }
-
-  async decryptSymmetric(
-    symmetricKey: SymmetricKey,
-    encryptedText: string,
-  ): Promise<string> {
-    const [ivString, encryptedData] = encryptedText.split(':')
-    const iv = base64ToUint8Array(ivString)
-    const keyUint8Array = base64ToUint8Array(symmetricKey)
-
-    const key = await window.crypto.subtle.importKey(
-      'raw',
-      keyUint8Array,
-      { name: 'AES-CBC', length: 256 },
-      false,
-      ['decrypt'],
-    )
-
-    const encrypted = base64ToUint8Array(encryptedData)
-    const decrypted = await window.crypto.subtle.decrypt(
-      { name: 'AES-CBC', iv },
-      key,
-      encrypted,
-    )
-
-    return uint8ArrayToString(decrypted)
-  }
-
-  async getRandomBytes(count: number) {
-    return Promise.resolve(window.crypto.getRandomValues(new Uint8Array(count)))
-  }
-
-  async createSyncKey(sharedKey: Uint8Array, salt: string): Promise<SyncKey> {
-    const key = await argon2id({
-      password: sharedKey,
-      salt,
-      parallelism: 1,
-      iterations: 256,
-      memorySize: 512,
-      hashLength: 32,
-      outputType: 'binary',
-    })
-    return uint8ArrayToBase64(key) as SyncKey
   }
 }
 

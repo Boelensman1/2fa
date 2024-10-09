@@ -5,13 +5,13 @@ participant Server
 
 == Connection Management ==
 
-ExistingDevice -> Server: connect(userId)
+ExistingDevice -> Server: connect(deviceId)
 activate Server
 note right of Server: Register ExistingDevice as connected and\n send pending commands to connected devices
 Server -> ExistingDevice: pendingCommands(pendingCommands)
 deactivate Server
 
-NewDevice -> Server: connect(userId)
+NewDevice -> Server: connect(deviceId)
 activate Server
 note right of Server: Register NewDevice as connected
 Server -> NewDevice: pendingCommands(pendingCommands)
@@ -57,7 +57,7 @@ deactivate Server
 
 == Synchronizing Online Devices ==
 
-ExistingDevice -> Server: syncCommand(userId, commandData)
+ExistingDevice -> Server: syncCommand(deviceId, commandData)
 activate Server
 note right of Server: Forward to NewDevice or store command as pending
 Server --> ExistingDevice: confirmSyncCommand()

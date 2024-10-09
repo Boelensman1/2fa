@@ -1,5 +1,8 @@
 import { Tagged } from 'type-fest'
 
+// `Encrypted<T>` tags the original string type to denote that is encrypted
+export type Encrypted<T extends string> = Tagged<T, 'Encrypted'>
+
 /** Represents a passphrase  */
 export type Passphrase = Tagged<string, 'Passphrase'>
 
@@ -8,15 +11,6 @@ export type PassphraseHash = Tagged<string, 'PassphraseHash'>
 
 /** Represents a salt (base64 encoded) */
 export type Salt = Tagged<string, 'Salt'>
-
-/** Represents an encrypted private key (base64 encoded) */
-export type EncryptedPrivateKey = Tagged<string, 'EncryptedPrivateKey'>
-
-/** Represents an encrypted symmetric key (base64 encoded) */
-export type EncryptedSymmetricKey = Tagged<string, 'EncryptedSymmetricKey'>
-
-/** Represents an encrypted public key (base64 encoded) */
-export type EncryptedPublicKey = Tagged<string, 'EncryptedPublicKey'>
 
 /** Represents a private key */
 export type PrivateKey = Tagged<string, 'PrivateKey'>
@@ -30,11 +24,27 @@ export type SymmetricKey = Tagged<string, 'SymmetricKey'>
 /** Represents a sync (symmetric) key (base64 encoded) */
 export type SyncKey = Tagged<SymmetricKey, 'SyncKey'>
 
+/** Represents an encrypted private key (base64 encoded) */
+export type EncryptedPrivateKey = Encrypted<PrivateKey>
+
+/** Represents an encrypted symmetric key (base64 encoded) */
+export type EncryptedSymmetricKey = Encrypted<SymmetricKey>
+
+/** Represents an encrypted public key (base64 encoded) */
+export type EncryptedPublicKey = Encrypted<PublicKey>
+
 /**
  * Interface for cryptographic operations.
  * The implementation in CryptoProviders/node is the reference implementation
  */
 interface CryptoLib {
+  /**
+   * Get a number of cryptographically securely generated random bytes
+   * @param count - The amount of bytes to generate
+   * @returns A promise that resolves to the generated random bytes
+   */
+  getRandomBytes: (count: number) => Promise<Uint8Array>
+
   /**
    * Creates the keys required for further operations.
    * It first creates a public/private key pair, with the private key being encrypted using the passphrase.
@@ -90,7 +100,10 @@ interface CryptoLib {
    * @param plainText - The text to encrypt
    * @returns A promise that resolves to the encrypted text (base64 encoded)
    */
-  encrypt: (publicKey: PublicKey, plainText: string) => Promise<string>
+  encrypt: <T extends string>(
+    publicKey: PublicKey,
+    plainText: T,
+  ) => Promise<Encrypted<T>>
 
   /**
    * Decrypts an encrypted message using a private key
@@ -98,7 +111,10 @@ interface CryptoLib {
    * @param encryptedText - The text to decrypt
    * @returns A promise that resolves to the decrypted text
    */
-  decrypt: (privateKey: PrivateKey, encryptedText: string) => Promise<string>
+  decrypt: <T extends string>(
+    privateKey: PrivateKey,
+    encryptedText: Encrypted<T>,
+  ) => Promise<T>
 
   /**
    * Decrypts an encrypted message using a symmetric key
@@ -106,10 +122,10 @@ interface CryptoLib {
    * @param encryptedText - The text to decrypt
    * @returns A promise that resolves to the decrypted text
    */
-  decryptSymmetric: (
+  decryptSymmetric: <T extends string>(
     symmetricKey: SymmetricKey,
-    encryptedText: string,
-  ) => Promise<string>
+    encryptedText: Encrypted<T>,
+  ) => Promise<T>
 
   /**
    * Encrypts a plain text message using a symmetric key
@@ -117,12 +133,16 @@ interface CryptoLib {
    * @param plainText - The text to encrypt
    * @returns A promise that resolves to the encrypted text (base64 encoded)
    */
-  encryptSymmetric: (
+  encryptSymmetric: <T extends string>(
     symmetricKey: SymmetricKey,
-    plainText: string,
-  ) => Promise<string>
+    plainText: T,
+  ) => Promise<Encrypted<T>>
 
-  getRandomBytes: (count: number) => Promise<Uint8Array>
+  /**
+   * Creates a random symmetric key
+   * @returns A promise that resolves to the newly created symmetric key
+   */
+  createSymmetricKey: () => Promise<SymmetricKey>
 
   /**
    * Creates a sync key from a shared key (that was created from a JPAKE exchange)
@@ -130,13 +150,7 @@ interface CryptoLib {
    * @param salt - A salt to derive the key with
    * @returns A promise that resolves to the derived key
    */
-  createSyncKey: (sharedKey: Uint8Array, salt: string) => Promise<SyncKey>
-
-  /**
-   * Creates a random symmetric key
-   * @returns A promise that resolves to the newly created symmetric key
-   */
-  createSymmetricKey: () => Promise<SymmetricKey>
+  createSyncKey: (sharedKey: Uint8Array, salt: Salt) => Promise<SyncKey>
 }
 
 export default CryptoLib

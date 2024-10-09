@@ -36,6 +36,21 @@ export default [
           message: 'Use Uint8Array instead.',
         },
       ],
+      'jsdoc/require-jsdoc': [
+        'error',
+        {
+          publicOnly: true,
+          require: {
+            FunctionDeclaration: true,
+            MethodDefinition: true,
+            ClassDeclaration: true,
+            ArrowFunctionExpression: true,
+            FunctionExpression: true,
+          },
+        },
+      ],
+      'jsdoc/require-param': ['error', { checkDestructured: false }],
+      'jsdoc/check-param-names': ['error', { checkDestructured: false }],
     },
   },
   {
@@ -54,6 +69,7 @@ export default [
     rules: {
       ...solidPlugin.configs.recommended.rules,
       'no-restricted-globals': ['off'],
+      'jsdoc/require-jsdoc': ['off'],
     },
     languageOptions: {
       globals: {

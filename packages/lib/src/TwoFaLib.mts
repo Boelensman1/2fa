@@ -8,7 +8,11 @@ import type {
   Salt,
 } from './interfaces/CryptoLib.mjs'
 
-import type { SyncDevice, UserId } from './interfaces/SyncTypes.mjs'
+import type {
+  SyncDevice,
+  DeviceId,
+  DeviceType,
+} from './interfaces/SyncTypes.mjs'
 import type {
   TwoFaLibEventMap,
   TwoFaLibEventMapEvents,
@@ -20,79 +24,109 @@ import SyncManager from './subclasses/SyncManager.mjs'
 import LibraryLoader from './subclasses/LibraryLoader.mjs'
 import ExportImportManager from './subclasses/ExportImportManager.mjs'
 import PersistentStorageManager from './subclasses/PersistentStorageManager.mjs'
-import InternalVaultManager from './subclasses/InternalVaultManager.mjs'
-import ExternalVaultManager from './subclasses/ExternalVaultManager.mjs'
+import VaultDataManager from './subclasses/VaultDataManager.mjs'
+import VaultOperationsManager from './subclasses/VaultOperationsManager.mjs'
 import CommandManager from './subclasses/CommandManager.mjs'
 import TwoFaLibMediator from './TwoFaLibMediator.mjs'
 
 /**
- * Two-Factor Authentication Library
- * This library provides functionality for managing 2FA entries
- * and handling encrypted data.
+ * The Two-Factor Library, this is the main entry point.
  */
 class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
-  public readonly deviceIdentifier
-  public readonly userId?: UserId
+  public readonly deviceType: DeviceType
+  public readonly deviceId?: DeviceId
 
   private mediator: TwoFaLibMediator
 
-  constructor(deviceIdentifier: string, cryptoLib: CryptoLib) {
+  /**
+   * Constructs a new instance of TwoFaLib.
+   * @param deviceType - A unique identifier for this device type (e.g. 2fa-cli).
+   * @param cryptoLib - An instance of CryptoLib that is compatible with the environment.
+   * @throws {InitializationError} If the device identifier is invalid.
+   */
+  constructor(deviceType: DeviceType, cryptoLib: CryptoLib) {
     super()
-    if (!deviceIdentifier) {
+    if (!deviceType) {
       throw new InitializationError('Device identifier is required')
     }
-    if (deviceIdentifier.length > 256) {
+    if (deviceType.length > 256) {
       throw new InitializationError(
         'Device identifier is too long, max 256 characters',
       )
     }
-    this.deviceIdentifier = deviceIdentifier
+    this.deviceType = deviceType
 
     this.mediator = new TwoFaLibMediator()
     this.mediator.registerComponents([
       ['libraryLoader', new LibraryLoader(cryptoLib)],
       ['persistentStorageManager', new PersistentStorageManager(this.mediator)],
-      ['internalVaultManager', new InternalVaultManager(this.mediator)],
+      ['vaultDataManager', new VaultDataManager(this.mediator)],
       ['commandManager', new CommandManager(this.mediator)],
-      ['externalVaultManager', new ExternalVaultManager(this.mediator)],
+      ['vaultOperationsManager', new VaultOperationsManager(this.mediator)],
       ['exportImportManager', new ExportImportManager(this.mediator)],
       ['dispatchLibEvent', this.dispatchLibEvent.bind(this)],
     ])
   }
 
+  /**
+   * Gives access to vault operations.
+   * @returns The vault manager instance which can be used to perform operations on the vault.
+   */
   get vault() {
-    return this.mediator.getExternalVaultManager()
+    return this.mediator.getComponent('vaultOperationsManager')
   }
 
+  /**
+   * Gives access to export/import operations.
+   * @returns The export/import manager instance which can be used to export and import vaults.
+   */
   get exportImport() {
-    return this.mediator.getExportImportManager()
+    return this.mediator.getComponent('exportImportManager')
   }
 
+  /**
+   * Gives access to sync operations.
+   * @returns The sync manager instance which can be used to sync the vault with a server or null if none was initialized.
+   */
   get sync() {
-    return this.mediator.getSyncManager()
+    if (!this.mediator.componentIsInitialised('syncManager')) {
+      return null
+    }
+    return this.mediator.getComponent('syncManager')
   }
 
+  /**
+   * Gives access to persistent storage operations.
+   * @returns The persistent storage manager instance which can be used to store data.
+   */
   get persistentStorage() {
-    return this.mediator.getPersistentStorageManager()
+    return this.mediator.getComponent('persistentStorageManager')
   }
 
+  /**
+   * Dispatches a library event.
+   * @param eventType - The type of the event to dispatch, uses the TwoFaLibEvent enum.
+   * @param data - Optional data to include with the event.
+   */
   private dispatchLibEvent<K extends keyof TwoFaLibEventMap>(
-    eventName: K,
+    eventType: K,
     data?: TwoFaLibEventMap[K],
   ) {
     this.dispatchTypedEvent(
-      eventName,
-      new CustomEvent(eventName, { detail: data }) as TwoFaLibEventMapEvents[K],
+      eventType,
+      new CustomEvent(eventType, { detail: data }) as TwoFaLibEventMapEvents[K],
     )
   }
 
   /**
-   * Initialize the library with an encrypted private key and passphrase.
-   * @param encryptedPrivateKey - The encrypted private key used for secure operations.
-   * @param encryptedSymmetricKey - The encrypted symmetric key used for secure operations.
-   * @param salt - The salt used for key derivation.
+   * Initialize the library, must be called before any other method. If no
+   * encryptedPrivateKey and passphrase have been created yet, use the createNewTwoFaLibVault
+   * method. If a serverUrl is provided, the library will use it for its sync operations.
+   * @param encryptedPrivateKey - The encrypted private key used for cryptographic operations.
+   * @param encryptedSymmetricKey - The encrypted symmetric key used for cryptographic operations.
+   * @param salt - The salt used for key derivation from the passphrase.
    * @param passphrase - The passphrase to decrypt the private key.
-   * @param userId - The user ID used for identification.
+   * @param deviceId - A unique identifier for this device.
    * @param serverUrl - The server URL for syncing.
    * @param syncDevices - The devices to sync with.
    * @returns A promise that resolves when initialization is complete.
@@ -104,17 +138,15 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
     encryptedSymmetricKey: EncryptedSymmetricKey,
     salt: Salt,
     passphrase: Passphrase,
-    userId: UserId,
+    deviceId: DeviceId,
     serverUrl?: string,
     syncDevices?: SyncDevice[],
   ): Promise<void> {
-    // @ts-expect-error userId is readonly but we can't set it in the constructor
-    this.userId = userId
+    // @ts-expect-error deviceId is readonly but we can't set it in the constructor
+    this.deviceId = deviceId
 
-    const getPersistentStorageManager =
-      this.mediator.getPersistentStorageManager()
-    const { publicKey, privateKey } = await getPersistentStorageManager.init(
-      userId,
+    const { publicKey, privateKey } = await this.persistentStorage.init(
+      deviceId,
       encryptedPrivateKey,
       encryptedSymmetricKey,
       salt,
@@ -126,11 +158,11 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
         'syncManager',
         new SyncManager(
           this.mediator,
-          this.deviceIdentifier,
+          this.deviceType,
           publicKey,
           privateKey,
           serverUrl,
-          userId,
+          deviceId,
           syncDevices,
         ),
       )
@@ -138,23 +170,32 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
   }
 }
 
+/**
+ * Creates a new TwoFaLib vault. This is the function to use to first create a
+ * new vault. This should not be used to load an already created vault.
+ * @param deviceType - A unique identifier for the device type e.g. 2fa-cli.
+ * @param cryptoLib - An instance of CryptoLib that is compatible with the environment.
+ * @param passphrase - The passphrase to be used to encrypt the private key.
+ * @param serverUrl - The server URL for syncing.
+ * @returns A promise that resolves to an object containing the newly created TwoFaLib instance, the cryptographic keys and the salt used to hash the passphrase.
+ */
 export const createNewTwoFaLibVault = async (
-  deviceIdentifier: string,
-  cryptolib: CryptoLib,
+  deviceType: DeviceType,
+  cryptoLib: CryptoLib,
   passphrase: Passphrase,
   serverUrl?: string,
 ) => {
   const { publicKey, encryptedPrivateKey, encryptedSymmetricKey, salt } =
-    await cryptolib.createKeys(passphrase)
+    await cryptoLib.createKeys(passphrase)
 
-  const userId = genUuidV4() as UserId
-  const twoFaLib = new TwoFaLib(deviceIdentifier, cryptolib)
+  const deviceId = genUuidV4() as DeviceId
+  const twoFaLib = new TwoFaLib(deviceType, cryptoLib)
   await twoFaLib.init(
     encryptedPrivateKey,
     encryptedSymmetricKey,
     salt,
     passphrase,
-    userId,
+    deviceId,
     serverUrl,
   )
 

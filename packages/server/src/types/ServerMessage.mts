@@ -4,6 +4,7 @@ import type {
   JPAKEPass3Message as JPAKEPass3ServerMessage,
   PublicKeyMessage as PublicKeyServerMessage,
   VaultMessage as VaultServerMessage,
+  AddSyncDeviceCancelledMessage as AddSyncDeviceCancelledServerMessage,
 } from './ClientMessage.mjs'
 
 export interface ConfirmAddSyncDeviceInitialiseData {
@@ -15,6 +16,7 @@ export type JPAKEPass2Message = JPAKEPass2ServerMessage
 export type JPAKEPass3Message = JPAKEPass3ServerMessage
 export type PublicKeyMessage = PublicKeyServerMessage
 export type VaultMessage = VaultServerMessage
+export type AddSyncDeviceCancelledMessage = AddSyncDeviceCancelledServerMessage
 
 export interface SyncCommandMessage {
   type: 'syncCommand'
@@ -31,5 +33,6 @@ type OutgoingMessage =
   | PublicKeyMessage
   | VaultMessage
   | SyncCommandMessage
+  | AddSyncDeviceCancelledMessage
 
 export default OutgoingMessage

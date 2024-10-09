@@ -1,4 +1,5 @@
 import { type Component, createSignal, Show } from 'solid-js'
+import useStore from '../store/useStore'
 import Add from './Add'
 import ItemList from './ItemList'
 import Importer from './Importer'
@@ -6,6 +7,8 @@ import Settings from './Settings'
 import AddDevice from './AddDevice'
 
 const AppAuthenticated: Component = () => {
+  const [state] = useStore()
+  const { twoFaLib } = state
   const [showAdd, setShowAdd] = createSignal(false)
   const [showImporter, setShowImporter] = createSignal(false)
   const [showSettings, setShowSettings] = createSignal(false)
@@ -36,8 +39,11 @@ const AppAuthenticated: Component = () => {
         </button>
         <button
           onClick={() => {
-            setShowAddDevice(!showAddDevice())
-            // TODO: if now !showAddDevice, cancel the ongoing add device flow
+            const newShowAddDevice = !showAddDevice()
+            setShowAddDevice(newShowAddDevice)
+            if (!newShowAddDevice) {
+              twoFaLib?.sync?.cancelAddSyncDevice()
+            }
           }}
           class="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded transition duration-200"
         >

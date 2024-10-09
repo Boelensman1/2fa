@@ -25,7 +25,7 @@ const normalizeLineEndings = (str: string): string => {
   return str.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
 }
 
-const generatePassphraseHash = (
+export const generatePassphraseHash = (
   salt: Salt,
   passphrase: string,
 ): Promise<PassphraseHash> => {

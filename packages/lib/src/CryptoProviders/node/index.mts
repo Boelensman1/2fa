@@ -27,21 +27,10 @@ import type {
   SymmetricKey,
   SyncKey,
 } from '../../interfaces/CryptoLib.mjs'
+import { generatePassphraseHash } from '../browser/index.mjs'
 
 const generateKeyPair = promisify(generateKeyPairCb)
 const generateKey = promisify(generateKeyCb)
-
-const generatePassphraseHash = (salt: Salt, passphrase: string) => {
-  return argon2id({
-    password: passphrase,
-    salt,
-    parallelism: 1,
-    iterations: 256,
-    memorySize: 512,
-    hashLength: 64,
-    outputType: 'hex',
-  })
-}
 
 class NodeCryptoLib implements CryptoLib {
   async createSymmetricKey(): Promise<SymmetricKey> {

@@ -76,6 +76,13 @@ export interface SyncCommandMessage {
   }[]
 }
 
+export interface AddSyncDeviceCancelledMessage {
+  type: 'addSyncDeviceCancelled'
+  data: {
+    initiatorUserIdString: string
+  }
+}
+
 type IncomingMessage =
   | ConnectMessage
   | AddSyncDeviceInitialiseDataMessage
@@ -84,5 +91,6 @@ type IncomingMessage =
   | PublicKeyMessage
   | VaultMessage
   | SyncCommandMessage
+  | AddSyncDeviceCancelledMessage
 
 export default IncomingMessage

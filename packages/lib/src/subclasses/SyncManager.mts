@@ -549,6 +549,23 @@ class SyncManager {
     this.dispatchLibEvent(TwoFaLibEvent.ConnectToExistingVaultFinished)
   }
 
+  cancelAddSyncDevice() {
+    if (!this.ws || !this.webSocketConnected) {
+      throw new SyncNoServerConnectionError()
+    }
+    if (!this.activeAddDeviceFlow) {
+      throw new SyncInWrongStateError(
+        'Trying to cancel addSyncDevice while not active',
+      )
+    }
+    this.sendToServer('addSyncDeviceCancelled', {
+      initiatorUserIdString: this.activeAddDeviceFlow.initiatorUserIdString,
+    })
+    // Reset the active add device flow
+    this.activeAddDeviceFlow = undefined
+    this.dispatchLibEvent(TwoFaLibEvent.ConnectToExistingVaultFinished)
+  }
+
   async sendCommand(command: Command) {
     if (!this.ws || !this.webSocketConnected) {
       throw new SyncNoServerConnectionError()

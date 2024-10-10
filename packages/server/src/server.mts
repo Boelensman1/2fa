@@ -17,7 +17,7 @@ const config = JSON.parse(
 const knex = createKnex(config)
 Model.knex(knex)
 
-const port = 8080
+const port = Number(process.env.PORT ?? 8080)
 const wss = new WebSocketServer({ port })
 console.log(`Server started on port ${port}`)
 

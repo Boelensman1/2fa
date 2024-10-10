@@ -73,7 +73,9 @@ const EntryComponent = (props: {
     >
       <div class="flex flex-col mb-2">
         <div class="flex justify-between items-center">
-          <span class="font-medium">{props.entry.issuer}</span>
+          <span class="font-medium break-words max-w-[calc(100%-160px)]">
+            {props.entry.issuer}
+          </span>
           <div class="flex items-center">
             <span class="font-mono text-lg mr-3">{displayOtp()}</span>
             <button
@@ -84,7 +86,9 @@ const EntryComponent = (props: {
             </button>
           </div>
         </div>
-        <span class="text-sm text-gray-600">{props.entry.name}</span>
+        <span class="text-sm text-gray-600 break-words">
+          {props.entry.name}
+        </span>
       </div>
       <div class="w-full bg-gray-200 rounded-full h-2.5">
         <div

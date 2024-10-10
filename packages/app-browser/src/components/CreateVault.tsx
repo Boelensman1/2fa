@@ -35,6 +35,9 @@ const CreateVault: Component = () => {
         dispatch(actions.setConnectingToExistingVault(false))
       },
     )
+    if (mode() === 'create') {
+      void twoFaLib.persistentStorage.save()
+    }
 
     dispatch(actions.setAuthenticated(true))
     dispatch(actions.setConnectingToExistingVault(mode() === 'connect'))

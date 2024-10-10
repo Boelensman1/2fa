@@ -64,6 +64,13 @@ const Login: Component = () => {
     void login()
   }
 
+  const onReset = () => {
+    if (confirm('Are you sure you want to reset?')) {
+      localStorage.clear()
+      window.location.reload()
+    }
+  }
+
   return (
     <div>
       <form
@@ -94,6 +101,13 @@ const Login: Component = () => {
           class="w-full bg-blue-500 text-white py-2 px-4 rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 transition duration-200"
         >
           Log In
+        </button>
+        <button
+          type="button"
+          onClick={onReset}
+          class="w-full bg-gray-500 text-white py-2 px-4 rounded-md hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-opacity-50 transition duration-200 mt-2"
+        >
+          Reset
         </button>
       </form>
       <div class="absolute bottom-2 right-2 text-xs text-gray-500">

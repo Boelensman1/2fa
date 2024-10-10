@@ -1,4 +1,4 @@
-import WebSocket, { MessageEvent } from 'isomorphic-ws'
+import WebSocket, { MessageEvent, CloseEvent } from 'isomorphic-ws'
 import {
   base64ToUint8Array,
   hexToUint8Array,
@@ -62,6 +62,8 @@ const generateNonCryptographicRandomString = () => {
 class SyncManager {
   private ws?: WebSocket
   private activeAddDeviceFlow?: ActiveAddDeviceFlow
+  private readonly reconnectInterval: number = 5000 // 5 seconds
+  private readonly serverUrl: string
   syncDevices: SyncDevice[]
   deviceId: DeviceId
 
@@ -92,7 +94,8 @@ class SyncManager {
     }
     this.deviceId = deviceId
     this.syncDevices = syncDevices
-    this.initServerConnection(serverUrl)
+    this.serverUrl = serverUrl
+    this.initServerConnection()
   }
 
   private get libraryLoader() {
@@ -156,10 +159,9 @@ class SyncManager {
 
   /**
    * Initializes the WebSocket connection to the server.
-   * @param serverUrl - The URL of the WebSocket server.
    */
-  initServerConnection(serverUrl: string) {
-    const ws = new WebSocket(serverUrl)
+  initServerConnection() {
+    const ws = new WebSocket(this.serverUrl)
 
     // eslint-disable-next-line @typescript-eslint/no-this-alias
     const libInstance = this
@@ -177,10 +179,22 @@ class SyncManager {
     })
 
     ws.addEventListener('open', () => {
+      console.log('WebSocket connection opened')
       this.sendToServer('connect', { deviceId: libInstance.deviceId })
+      this.dispatchLibEvent(TwoFaLibEvent.ConnectionToSyncServerStatusChanged, {
+        connected: true,
+      })
     })
+    ws.addEventListener('close', this.handleWebSocketClose.bind(this))
 
     this.ws = ws
+  }
+  private handleWebSocketClose(event: CloseEvent) {
+    console.log('WebSocket closed:', event.code, event.reason)
+    this.dispatchLibEvent(TwoFaLibEvent.ConnectionToSyncServerStatusChanged, {
+      connected: false,
+    })
+    this.attemptReconnect()
   }
 
   private handleServerMessage(message: ServerMessage) {
@@ -251,6 +265,14 @@ class SyncManager {
         break
       }
     }
+  }
+
+  private attemptReconnect() {
+    console.log(`Connection to server lost, attempting to reconnect...`)
+
+    setTimeout(() => {
+      this.initServerConnection()
+    }, this.reconnectInterval)
   }
 
   /**

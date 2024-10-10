@@ -27,6 +27,9 @@ export interface TwoFaLibEventMap {
   [TwoFaLibEvent.Changed]: ChangedEvent
   [TwoFaLibEvent.LoadedFromLockedRepresentation]: EmptyObject
   [TwoFaLibEvent.ConnectToExistingVaultFinished]: EmptyObject
+  [TwoFaLibEvent.ConnectionToSyncServerStatusChanged]: {
+    connected: boolean
+  }
 }
 
 export type TwoFaLibEventMapEvents = {

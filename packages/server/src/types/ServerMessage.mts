@@ -22,6 +22,7 @@ export type AddSyncDeviceCancelledMessage = AddSyncDeviceCancelledServerMessage
 export interface SyncCommandMessage {
   type: 'syncCommand'
   data: {
+    id: number
     encryptedCommands: Encrypted<string>
     encryptedSymmetricKey: EncryptedSymmetricKey
   }

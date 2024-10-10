@@ -1,10 +1,21 @@
+import fs from 'node:fs'
 import { WebSocketServer, WebSocket } from 'ws'
+import { Model } from 'objection'
+import type { Knex } from 'knex'
+import createKnex from 'knex'
 
 import ConnectedDevicesManager from './ConnectedDevicesManager.mjs'
+import UnExecutedSyncCommand from './models/UnExecutedSyncCommand.mjs'
 
 import type ClientMessage from './types/ClientMessage.mjs'
 import type { AddSyncDeviceInitialiseDataMessage } from './types/ClientMessage.mjs'
 import type ServerMessage from './types/ServerMessage.mjs'
+
+const config = JSON.parse(
+  fs.readFileSync('./knexfile.json').toString(),
+) as Knex.Config
+const knex = createKnex(config)
+Model.knex(knex)
 
 const port = 8080
 const wss = new WebSocketServer({ port })
@@ -25,12 +36,27 @@ const send = <T extends ServerMessage['type']>(
 }
 
 const handleMessage = (ws: WebSocket, message: ClientMessage) => {
-  console.log('message', message.type)
   switch (message.type) {
     case 'connect': {
       const { deviceId } = message.data
       connectedDevices.addDevice(deviceId, ws)
       console.log('Connected devices', connectedDevices.size)
+
+      // check if there are still unExecutedSyncCommands
+      void UnExecutedSyncCommand.query()
+        .where({
+          deviceId,
+        })
+        .then((unExecutedSyncCommands) =>
+          unExecutedSyncCommands.forEach((unExecutedSyncCommand) => {
+            send(ws, 'syncCommand', {
+              id: unExecutedSyncCommand.id,
+              encryptedSymmetricKey:
+                unExecutedSyncCommand.encryptedSymmetricKey,
+              encryptedCommands: unExecutedSyncCommand.encryptedCommands,
+            })
+          }),
+        )
       break
     }
     case 'addSyncDeviceInitialiseData': {
@@ -127,8 +153,16 @@ const handleMessage = (ws: WebSocket, message: ClientMessage) => {
       return
     }
     case 'syncCommand': {
-      message.data.forEach((data) => {
+      void message.data.map(async (data) => {
         const { deviceId, encryptedCommands, encryptedSymmetricKey } = data
+
+        const unExecutedSyncCommand = await UnExecutedSyncCommand.query()
+          .insert({
+            deviceId,
+            encryptedCommands,
+            encryptedSymmetricKey,
+          })
+          .returning('id')
 
         // find matching connection
         const deviceWs = connectedDevices.getWs(deviceId)
@@ -137,10 +171,17 @@ const handleMessage = (ws: WebSocket, message: ClientMessage) => {
           return
         }
         send(deviceWs, 'syncCommand', {
+          id: unExecutedSyncCommand.id,
           encryptedSymmetricKey,
           encryptedCommands,
         })
       })
+      return
+    }
+    case 'syncCommandExecuted': {
+      // sync commands executed, can be removed
+      const { id } = message.data
+      void UnExecutedSyncCommand.query().findById(id).del().execute()
       return
     }
   }
@@ -152,7 +193,6 @@ wss.on('connection', function connection(ws) {
 
   ws.on('message', function message(data) {
     const messageDecoded = JSON.parse(String(data)) as unknown
-    // console.log(JSON.stringify(messageDecoded))
     handleMessage(ws, messageDecoded as ClientMessage)
   })
 

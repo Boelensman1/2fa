@@ -22,6 +22,7 @@ export interface AddDeviceFlowInitiator_Initiated extends BaseAddDeviceFlow {
   state: 'initiator:initiated'
   resolveContinuePromise: (value: unknown) => void
   initiatorDeviceId: DeviceId
+  timeout: NodeJS.Timeout
 }
 
 export interface AddDeviceFlowInitiator_SyncKeyCreated

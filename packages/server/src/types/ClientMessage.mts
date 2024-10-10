@@ -91,6 +91,13 @@ export interface SyncCommandMessage {
   }[]
 }
 
+export interface SyncCommandExecutedMessage {
+  type: 'syncCommandExecuted'
+  data: {
+    id: number
+  }
+}
+
 type IncomingMessage =
   | ConnectMessage
   | AddSyncDeviceInitialiseDataMessage
@@ -100,5 +107,6 @@ type IncomingMessage =
   | VaultMessage
   | AddSyncDeviceCancelledMessage
   | SyncCommandMessage
+  | SyncCommandExecutedMessage
 
 export default IncomingMessage

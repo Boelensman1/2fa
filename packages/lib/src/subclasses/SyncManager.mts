@@ -186,8 +186,11 @@ class SyncManager {
     switch (message.type) {
       case 'confirmAddSyncDeviceInitialiseData': {
         if (this.activeAddDeviceFlow?.state !== 'initiator:initiated') {
-          throw new SyncInWrongStateError()
+          throw new SyncInWrongStateError(
+            `Expected initiator:initiated, got ${this.activeAddDeviceFlow?.state}`,
+          )
         }
+        clearTimeout(this.activeAddDeviceFlow.timeout)
         this.activeAddDeviceFlow.resolveContinuePromise(message)
         break
       }
@@ -236,9 +239,14 @@ class SyncManager {
       }
       case 'syncCommand': {
         const { data } = message
+        const syncCommandId = data.id
         const encryptedSymmetricKey = data.encryptedSymmetricKey
         const encryptedCommands = data.encryptedCommands
-        void this.receiveCommands(encryptedSymmetricKey, encryptedCommands)
+        void this.receiveCommands(
+          syncCommandId,
+          encryptedSymmetricKey,
+          encryptedCommands,
+        )
         break
       }
     }
@@ -271,9 +279,19 @@ class SyncManager {
     const jpak = new JPakeThreePass(this.deviceId)
     const pass1Result = jpak.pass1()
 
-    let reject: (error: TwoFALibError) => void
-    const continuePromise = new Promise((resolve, r) => {
-      reject = r
+    const continuePromise = new Promise((resolve, reject) => {
+      // Set a timeout for if we get no response from the server
+      const timeout = setTimeout(() => {
+        if (this.activeAddDeviceFlow?.state === 'initiator:initiated') {
+          reject(
+            new TwoFALibError(
+              'Timeout of registerAddDeviceFlowRequest, no response',
+            ),
+          )
+          this.activeAddDeviceFlow = undefined
+        }
+      }, 10000)
+
       this.activeAddDeviceFlow = {
         state: 'initiator:initiated',
         jpak,
@@ -281,6 +299,7 @@ class SyncManager {
         initiatorDeviceId: this.deviceId,
         timestamp,
         resolveContinuePromise: resolve,
+        timeout,
       }
     })
 
@@ -291,18 +310,6 @@ class SyncManager {
       timestamp,
       nonce: await this.getNonce(),
     })
-
-    // Set a timeout for if we get no response from the server
-    setTimeout(() => {
-      if (this.activeAddDeviceFlow?.state === 'initiator:initiated') {
-        reject(
-          new TwoFALibError(
-            'Timeout of registerAddDeviceFlowRequest, no response',
-          ),
-        )
-        this.activeAddDeviceFlow = undefined
-      }
-    }, 10000)
 
     // wait for the server to confirm it has registered the add device request
     await continuePromise
@@ -427,7 +434,9 @@ class SyncManager {
     }
 
     if (this.activeAddDeviceFlow?.state !== 'initiator:initiated') {
-      throw new SyncInWrongStateError()
+      throw new SyncInWrongStateError(
+        `Expected initiator:initiated, got ${this.activeAddDeviceFlow?.state}`,
+      )
     }
 
     const pass3Result = this.activeAddDeviceFlow.jpak.pass3(
@@ -465,7 +474,9 @@ class SyncManager {
     }
 
     if (this.activeAddDeviceFlow?.state !== 'responder:initated') {
-      throw new SyncInWrongStateError()
+      throw new SyncInWrongStateError(
+        `Expected responder:initiated, got ${this.activeAddDeviceFlow?.state}`,
+      )
     }
 
     if (!this.publicKey) {
@@ -505,7 +516,9 @@ class SyncManager {
     }
 
     if (this.activeAddDeviceFlow?.state !== 'initiator:syncKeyCreated') {
-      throw new SyncInWrongStateError()
+      throw new SyncInWrongStateError(
+        `Expected initiator:syncKeyCreated, got ${this.activeAddDeviceFlow?.state}`,
+      )
     }
 
     if (!this.publicKey) {
@@ -555,7 +568,9 @@ class SyncManager {
     encryptedPublicKey: EncryptedPublicKey,
   ) {
     if (this.activeAddDeviceFlow?.state !== 'responder:syncKeyCreated') {
-      throw new SyncInWrongStateError()
+      throw new SyncInWrongStateError(
+        `Expected responder:syncKeyCreated, got ${this.activeAddDeviceFlow?.state}`,
+      )
     }
 
     const syncKey = this.activeAddDeviceFlow.syncKey
@@ -649,11 +664,13 @@ class SyncManager {
 
   /**
    * Receives and processes commands from other devices.
+   * @param syncCommandId - The id of this batch of syncCommands
    * @param encryptedSymmetricKey - The encrypted symmetric key.
    * @param encryptedData - The encrypted command data.
    * @throws {CryptoError} If decryption fails.
    */
   async receiveCommands(
+    syncCommandId: number,
     encryptedSymmetricKey: EncryptedSymmetricKey,
     encryptedData: Encrypted<string>,
   ) {
@@ -666,6 +683,7 @@ class SyncManager {
     ) as SyncCommand
     this.commandManager.receiveRemoteCommand(data)
     await this.commandManager.processRemoteCommands()
+    this.sendToServer('syncCommandExecuted', { id: syncCommandId })
   }
 }
 

@@ -1,6 +1,6 @@
 {
   "extends": "./tsconfig.json",
-  "include": ["src/**/*", "global.d.ts"],
+  "include": ["src/**/*", "migrations/**/*"],
   "compilerOptions": {
     "noEmit": false,
     "outDir": "./build"

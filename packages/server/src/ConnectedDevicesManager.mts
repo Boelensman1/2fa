@@ -6,7 +6,7 @@ import type { DeviceId } from '2falib'
  */
 class ConnectedDevicesManager {
   private deviceToWs = new Map<DeviceId, WebSocket>()
-  private wsToDevice = new WeakMap<WebSocket, DeviceId>()
+  private wsToDevice = new Map<WebSocket, DeviceId>()
 
   /**
    * @returns The number of connected devices.

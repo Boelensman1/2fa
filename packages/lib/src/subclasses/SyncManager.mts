@@ -2,6 +2,7 @@ import WebSocket, { MessageEvent } from 'isomorphic-ws'
 import {
   base64ToUint8Array,
   hexToUint8Array,
+  stringToBase64,
   uint8ArrayToBase64,
   uint8ArrayToHex,
 } from 'uint8array-extras'
@@ -254,16 +255,44 @@ class SyncManager {
 
   /**
    * Initiates the process to add a new device.
-   * @param returnQr - If true, returns a QR code as a string. If false, returns the raw data.
-   * @returns A promise that resolves to the result of the add device flow.
-   *          This result can be used to continue the flow and should be
-   *          displayed to the user. If returnQr is true, the result is a QR code string.
+   * @param returnAs - An object specifying what should be returned:
+   *   - `qr: boolean` - If `true`, the result will include a QR code string in the `qr` property.
+   *   - `text: boolean` - If `true`, the result will include initiation data in the `text` property.
+   * @returns A promise that resolves to an object containing:
+   *   - `qr`: If `returnAs.qr` is `true`, this will be a `string` containing the QR code; otherwise, `null`.
+   *   - `text`: If `returnAs.text` is `true`, this will be an `InitiateAddDeviceFlowResult` object; otherwise, `null`.
    * @throws {SyncAddDeviceFlowConflictError} If an add device flow is already active.
    * @throws {SyncNoServerConnectionError} If there is no server connection.
    */
-  async initiateAddDeviceFlow<T extends boolean = true>(
-    returnQr: T = true as T,
-  ): Promise<T extends true ? string : InitiateAddDeviceFlowResult> {
+  async initiateAddDeviceFlow(returnAs: {
+    qr: true
+    text: true
+  }): Promise<{ qr: string; text: string }>
+  /**
+   * @inheritdoc
+   */
+  async initiateAddDeviceFlow(returnAs: {
+    qr: true
+    text: false
+  }): Promise<{ qr: string; text: null }>
+  /**
+   * @inheritdoc
+   */
+  async initiateAddDeviceFlow(returnAs: {
+    qr: false
+    text: true
+  }): Promise<{ qr: null; text: string }>
+  /**
+   * @inheritdoc
+   */
+  async initiateAddDeviceFlow(returnAs: {
+    qr: false
+    text: false
+  }): Promise<{ qr: null; text: null }>
+  /**
+   * @inheritdoc
+   */
+  async initiateAddDeviceFlow(returnAs: { qr: boolean; text: boolean }) {
     if (this.activeAddDeviceFlow) {
       throw new SyncAddDeviceFlowConflictError()
     }
@@ -327,28 +356,31 @@ class SyncManager {
       },
     }
 
-    if (returnQr) {
+    let returnQr = null
+    if (returnAs.qr) {
       const qrGeneratorLib = await this.libraryLoader.getQrGeneratorLib()
-      const qrString = await qrGeneratorLib.toDataURL(
-        JSON.stringify(returnData),
-      )
-
-      // typescript has difficulty with the conditional types
-      return qrString as T extends true ? typeof qrString : never
-    } else {
-      return returnData as T extends true ? never : typeof returnData
+      returnQr = await qrGeneratorLib.toDataURL(JSON.stringify(returnData))
+    }
+    const returnText = returnAs.text
+      ? stringToBase64(JSON.stringify(returnData), { urlSafe: true })
+      : null
+    return {
+      qr: returnQr,
+      text: returnText,
     }
   }
 
   /**
    * Responds to an add device flow initiated by another device.
    * @param initiatorData The data received from the initiating device.
+   * @param initiatorDataType The type of the initiatorData, determines how it should be decoded
    * @throws {SyncNoServerConnectionError} If there is no server connection.
    * @throws {SyncAddDeviceFlowConflictError} If an add device flow is already active.
    * @throws {SyncError} If the initiator data is invalid.
    */
   async respondToAddDeviceFlow(
-    initiatorData: InitiateAddDeviceFlowResult | string | Uint8Array | File,
+    initiatorData: string | Uint8Array | File,
+    initiatorDataType: 'text' | 'qr',
   ) {
     if (!this.ws || !this.webSocketConnected) {
       throw new SyncNoServerConnectionError()
@@ -365,6 +397,7 @@ class SyncManager {
       initiatorDeviceType: initiatorDeviceIdentifier,
     } = await decodeInitiatorData(
       initiatorData,
+      initiatorDataType,
       await this.libraryLoader.getJsQrLib(),
       this.libraryLoader.getCanvasLib.bind(this),
     )

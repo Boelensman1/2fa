@@ -147,18 +147,24 @@ describe('SyncManager', () => {
     temporaryServer.close()
 
     await expect(
-      disconnectedTwoFaLib.sync?.initiateAddDeviceFlow(false),
+      disconnectedTwoFaLib.sync?.initiateAddDeviceFlow({
+        qr: false,
+        text: true,
+      }),
     ).rejects.toThrow(SyncNoServerConnectionError)
   })
 
   it('should throw an error when initiating add device flow while another flow is active', async () => {
-    const initiatePromise = senderTwoFaLib.sync?.initiateAddDeviceFlow(false)
+    const initiatePromise = senderTwoFaLib.sync?.initiateAddDeviceFlow({
+      qr: false,
+      text: true,
+    })
     await server.nextMessage
     send(senderWsInstance, 'confirmAddSyncDeviceInitialiseData')
 
     await initiatePromise
     await expect(
-      senderTwoFaLib.sync?.initiateAddDeviceFlow(false),
+      senderTwoFaLib.sync?.initiateAddDeviceFlow({ qr: false, text: true }),
     ).rejects.toThrow(SyncAddDeviceFlowConflictError)
   })
 
@@ -169,8 +175,10 @@ describe('SyncManager', () => {
     }
 
     // initiate the add device flow
-    const initiateResultPromise =
-      senderTwoFaLib.sync.initiateAddDeviceFlow(false)
+    const initiateResultPromise = senderTwoFaLib.sync.initiateAddDeviceFlow({
+      qr: false,
+      text: true,
+    })
 
     // wait for message to be received and send response
     await server.nextMessage
@@ -178,7 +186,10 @@ describe('SyncManager', () => {
 
     // get the initiateResult and pass it to the receiver (this part is usually done via QR)
     const initiateResult = await initiateResultPromise
-    await receiverTwoFaLib.sync.respondToAddDeviceFlow(initiateResult)
+    await receiverTwoFaLib.sync.respondToAddDeviceFlow(
+      initiateResult.text,
+      'text',
+    )
 
     // complete the rest of the flow
     const messages: { type: ServerMessage['type']; sender: WsClient }[] = [

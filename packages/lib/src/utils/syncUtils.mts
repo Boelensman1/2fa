@@ -1,4 +1,5 @@
 import type { ImageData } from 'canvas'
+import { base64ToString } from 'uint8array-extras'
 
 import { getImageDataBrowser, getImageDataNode } from './getImageData.mjs'
 import { InitiateAddDeviceFlowResult } from '../interfaces/SyncTypes.mjs'
@@ -7,20 +8,18 @@ import { SyncError } from '../TwoFALibError.mjs'
 /**
  * Decodes the initiator data from a string or QR code.
  * @param initiatorData - The initiator data to decode.
+ * @param initiatorDataType The type of the initiatorData, determines how it should be decoded
  * @param jsQr - The QR code decoder.
  * @param getCanvasLib - A function to get the Canvas library.
  * @returns A promise that resolves to the decoded initiator data.
  */
 export const decodeInitiatorData = async (
-  initiatorData: InitiateAddDeviceFlowResult | string | Uint8Array | File,
+  initiatorData: string | Uint8Array | File,
+  initiatorDataType: 'text' | 'qr',
   jsQr: typeof import('jsqr').default,
   getCanvasLib: () => Promise<typeof import('canvas')>,
 ): Promise<InitiateAddDeviceFlowResult> => {
-  if (
-    typeof initiatorData === 'string' ||
-    initiatorData instanceof Uint8Array ||
-    initiatorData instanceof File
-  ) {
+  if (initiatorDataType === 'qr') {
     try {
       let imageData: ImageData
 
@@ -59,13 +58,20 @@ export const decodeInitiatorData = async (
       }
       throw new SyncError('Failed to decode QR code: unknown error.')
     }
-  }
+  } else {
+    if (typeof initiatorData !== 'string') {
+      throw new SyncError('Invalid initiator data')
+    }
+    const parsedInitiatorData = JSON.parse(
+      base64ToString(initiatorData),
+    ) as InitiateAddDeviceFlowResult
 
-  if (!initiatorData || typeof initiatorData !== 'object') {
-    throw new SyncError('Invalid initiator data')
-  }
+    if (!parsedInitiatorData || typeof parsedInitiatorData !== 'object') {
+      throw new SyncError('Invalid initiator data')
+    }
 
-  return initiatorData
+    return parsedInitiatorData
+  }
 }
 
 /**

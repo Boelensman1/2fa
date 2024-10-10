@@ -4,6 +4,7 @@ import useStore from '../store/useStore'
 const AddDevice = () => {
   const [state] = useStore()
   const [qrCodeData, setQrCodeData] = createSignal('')
+  const [textData, setTextData] = createSignal('')
   const [error, setError] = createSignal('')
 
   const createQr = async () => {
@@ -16,8 +17,12 @@ const AddDevice = () => {
         throw new Error('sync not loaded / no server connection')
       }
 
-      const result = await twoFaLib.sync.initiateAddDeviceFlow(true)
-      setQrCodeData(result)
+      const result = await twoFaLib.sync.initiateAddDeviceFlow({
+        qr: true,
+        text: true,
+      })
+      setQrCodeData(result.qr)
+      setTextData(result.text)
     } catch (err) {
       setError('Failed to generate QR code')
       console.error(err)
@@ -41,6 +46,12 @@ const AddDevice = () => {
             alt="QR Code for adding device"
             class="mx-auto"
           />
+          <div class="mt-4">
+            <p class="mb-2">Or enter this code manually:</p>
+            <pre class="bg-gray-100 p-2 rounded-md overflow-x-auto">
+              {textData()}
+            </pre>
+          </div>
         </div>
       ) : (
         <div class="loader mx-auto" />

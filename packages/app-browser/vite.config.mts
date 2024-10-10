@@ -15,6 +15,7 @@ export default defineConfig({
     solidPlugin(),
     VitePWA({
       registerType: 'autoUpdate',
+      manifest: { theme_color: 'white' },
     }),
   ],
   server: {

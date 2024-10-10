@@ -1,7 +1,9 @@
 import { defineConfig } from 'vite'
 import solidPlugin from 'vite-plugin-solid'
 import { VitePWA } from 'vite-plugin-pwa'
-// import devtools from 'solid-devtools/vite'
+import { execSync } from 'child_process'
+
+const commitHash = execSync('git rev-parse --short HEAD').toString().trim()
 
 export default defineConfig({
   plugins: [
@@ -22,5 +24,8 @@ export default defineConfig({
   build: {
     outDir: 'build',
     target: 'esnext',
+  },
+  define: {
+    'import.meta.env.VITE_COMMIT_HASH': JSON.stringify(commitHash),
   },
 })

@@ -3,4 +3,5 @@ export enum TwoFaLibEvent {
   LoadedFromLockedRepresentation = 'loadedFromLockedRepresentation',
   ConnectToExistingVaultFinished = 'connectToExistingVaultFinished',
   ConnectionToSyncServerStatusChanged = 'connectionToSyncServerStatusChanged',
+  Log = 'log',
 }

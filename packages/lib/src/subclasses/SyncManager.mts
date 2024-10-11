@@ -118,6 +118,10 @@ class SyncManager {
     return this.mediator.getComponent('dispatchLibEvent')
   }
 
+  private get log() {
+    return this.mediator.getComponent('log')
+  }
+
   /**
    * @returns Whether an add device flow is currently active.
    */
@@ -164,7 +168,7 @@ class SyncManager {
     const ws = new WebSocket(this.serverUrl)
 
     // eslint-disable-next-line @typescript-eslint/no-this-alias
-    const libInstance = this
+    const syncManager = this
     ws.addEventListener('error', console.error)
 
     ws.addEventListener('message', function message(message: MessageEvent) {
@@ -172,15 +176,25 @@ class SyncManager {
         const jsonString = String(message.data)
         const parsedMessage = JSON.parse(jsonString) as ServerMessage
 
-        libInstance.handleServerMessage(parsedMessage)
+        syncManager.handleServerMessage(parsedMessage)
       } catch (error) {
-        console.error('Failed to parse message:', error)
+        // eslint-disable-next-line no-restricted-globals
+        if (error instanceof Error) {
+          syncManager.log(
+            'warning',
+            `Failed to parse message: ${error.message}`,
+          )
+        } else {
+          syncManager.log(
+            'warning',
+            `Failed to parse message: ${String(error)}`,
+          )
+        }
       }
     })
 
     ws.addEventListener('open', () => {
-      console.log('WebSocket connection opened')
-      this.sendToServer('connect', { deviceId: libInstance.deviceId })
+      this.sendToServer('connect', { deviceId: syncManager.deviceId })
       this.dispatchLibEvent(TwoFaLibEvent.ConnectionToSyncServerStatusChanged, {
         connected: true,
       })
@@ -190,7 +204,7 @@ class SyncManager {
     this.ws = ws
   }
   private handleWebSocketClose(event: CloseEvent) {
-    console.log('WebSocket closed:', event.code, event.reason)
+    this.log('warning', `WebSocket closed: ${event.code} ${event.reason}`)
     this.dispatchLibEvent(TwoFaLibEvent.ConnectionToSyncServerStatusChanged, {
       connected: false,
     })
@@ -268,7 +282,7 @@ class SyncManager {
   }
 
   private attemptReconnect() {
-    console.log(`Connection to server lost, attempting to reconnect...`)
+    this.log('info', 'Connection to server lost, attempting to reconnect...')
 
     setTimeout(() => {
       this.initServerConnection()

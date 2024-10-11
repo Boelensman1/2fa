@@ -18,6 +18,7 @@ import type {
   TwoFaLibEventMapEvents,
 } from './interfaces/Events.mjs'
 
+import { TwoFaLibEvent } from './TwoFaLibEvent.mjs'
 import { InitializationError } from './TwoFALibError.mjs'
 
 import SyncManager from './subclasses/SyncManager.mjs'
@@ -65,6 +66,7 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
       ['vaultOperationsManager', new VaultOperationsManager(this.mediator)],
       ['exportImportManager', new ExportImportManager(this.mediator)],
       ['dispatchLibEvent', this.dispatchLibEvent.bind(this)],
+      ['log', this.log.bind(this)],
     ])
   }
 
@@ -116,6 +118,15 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
       eventType,
       new CustomEvent(eventType, { detail: data }) as TwoFaLibEventMapEvents[K],
     )
+  }
+
+  /**
+   * Log a message
+   * @param severity - The severity of the message, either 'info' or 'warning'.
+   * @param message - The message to log.
+   */
+  private log(severity: 'info' | 'warning', message: string) {
+    this.dispatchLibEvent(TwoFaLibEvent.Log, { severity, message })
   }
 
   /**

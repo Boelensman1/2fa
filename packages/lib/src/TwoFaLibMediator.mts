@@ -19,8 +19,9 @@ class TwoFaLibMediator {
     commandManager?: CommandManager
     vaultOperationsManager?: ExternalVaultManager
     exportImportManager?: ExportImportManager
-    dispatchLibEvent?: (typeof TwoFaLib.prototype)['dispatchLibEvent']
     syncManager?: SyncManager
+    dispatchLibEvent?: (typeof TwoFaLib.prototype)['dispatchLibEvent']
+    log?: (typeof TwoFaLib.prototype)['log']
   } = {}
 
   /**

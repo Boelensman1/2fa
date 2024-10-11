@@ -38,13 +38,17 @@ class CommandManager {
     return this.mediator.getComponent('syncManager')
   }
 
+  private get log() {
+    return this.mediator.getComponent('log')
+  }
+
   /**
    * Executes a command and manages its state.
    * @param command - The command to execute.
    */
   async execute(command: Command): Promise<void> {
     if (this.processedCommandIds.has(command.id)) {
-      console.error(`Command ${command.id} has already been processed`)
+      this.log('warning', `Command ${command.id} has already been processed`)
       return
     }
 

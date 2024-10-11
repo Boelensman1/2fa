@@ -30,6 +30,10 @@ export interface TwoFaLibEventMap {
   [TwoFaLibEvent.ConnectionToSyncServerStatusChanged]: {
     connected: boolean
   }
+  [TwoFaLibEvent.Log]: {
+    severity: 'info' | 'warning'
+    message: string
+  }
 }
 
 export type TwoFaLibEventMapEvents = {

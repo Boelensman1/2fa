@@ -4,7 +4,10 @@ import CryptoLib from '../../src/interfaces/CryptoLib.mjs'
 import { InitializationError, TwoFALibError } from '../../src/TwoFALibError.mjs'
 
 // Mock the external libraries
-vi.mock('openpgp', () => ({ mockOpenPGP: true }))
+vi.mock('openpgp', () => ({
+  config: {},
+  mockOpenPGP: true,
+}))
 vi.mock('qrcode', () => ({ default: { mockQRCode: true } }))
 vi.mock('jsqr', () => ({ default: { default: { mockJsQR: true } } }))
 vi.mock('canvas', () => ({ default: { mockCanvas: true } }))
@@ -51,7 +54,10 @@ describe('LibraryLoader', () => {
     const openPgpLib = await libraryLoader.getOpenPGPLib()
 
     expect(openPgpLib).toBeDefined()
-    expect(openPgpLib).toEqual({ mockOpenPGP: true })
+    expect(openPgpLib).toEqual({
+      mockOpenPGP: true,
+      config: { aeadProtect: true },
+    })
   })
 
   it('should load QR Generator library', async () => {

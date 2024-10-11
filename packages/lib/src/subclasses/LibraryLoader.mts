@@ -42,6 +42,8 @@ class LibraryLoader {
   async getOpenPGPLib() {
     if (!this.openPgpLib) {
       const module = await import('openpgp')
+      // enable Authenticated Encryption with Associated Data
+      module.config.aeadProtect = true
       this.openPgpLib = module
     }
     return this.openPgpLib

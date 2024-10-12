@@ -7,7 +7,7 @@ import type { Passphrase } from '../interfaces/CryptoLib.mjs'
 import type { DeviceId, DeviceType } from '../interfaces/SyncTypes.mjs'
 
 import TwoFaLib from '../TwoFaLib.mjs'
-import { InitializationError } from '../TwoFALibError.mjs'
+import { TwoFALibError } from '../TwoFALibError.mjs'
 
 import LibraryLoader from '../subclasses/LibraryLoader.mjs'
 
@@ -69,7 +69,7 @@ export const validatePassphraseStrength = async (
     passphraseExtraDict,
   )
   if (passphraseStrength.score < 3) {
-    throw new InitializationError('Passphrase is too weak')
+    throw new TwoFALibError('Passphrase is too weak')
   }
 }
 

@@ -77,7 +77,10 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
       ['vaultDataManager', new VaultDataManager(this.mediator)],
       ['commandManager', new CommandManager(this.mediator)],
       ['vaultOperationsManager', new VaultOperationsManager(this.mediator)],
-      ['exportImportManager', new ExportImportManager(this.mediator)],
+      [
+        'exportImportManager',
+        new ExportImportManager(this.mediator, passphraseExtraDict),
+      ],
       ['dispatchLibEvent', this.dispatchLibEvent.bind(this)],
       ['log', this.log.bind(this)],
     ])

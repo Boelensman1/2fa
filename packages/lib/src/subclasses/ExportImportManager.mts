@@ -1,4 +1,5 @@
 import type { ImageData } from 'canvas'
+import type { NonEmptyTuple } from 'type-fest'
 
 import {
   parseOtpUri,
@@ -13,9 +14,11 @@ import {
   getImageDataNode,
 } from '../utils/getImageData.mjs'
 import { EntryId } from '../interfaces/Entry.mjs'
+import type { Passphrase } from '../interfaces/CryptoLib.mjs'
 
 import type TwoFaLibMediator from '../TwoFaLibMediator.mjs'
 import { ExportImportError } from '../TwoFALibError.mjs'
+import { validatePassphraseStrength } from '../utils/creationUtils.mjs'
 
 /**
  * Manages the export and import of entries in various formats.
@@ -24,8 +27,12 @@ class ExportImportManager {
   /**
    * Constructs a new instance of ExportImportManager.
    * @param mediator - The mediator for accessing other components.
+   * @param passphraseExtraDict - Additional words to be used for passphrase strength evaluation.
    */
-  constructor(private readonly mediator: TwoFaLibMediator) {}
+  constructor(
+    private readonly mediator: TwoFaLibMediator,
+    private readonly passphraseExtraDict: NonEmptyTuple<string>,
+  ) {}
 
   private get libraryLoader() {
     return this.mediator.getComponent('libraryLoader')
@@ -42,15 +49,24 @@ class ExportImportManager {
 
   /**
    * Export entries in the specified format, optionally (when a password is provided) encrypted.
+   * If the password is not provided, the user be warned about the dangers of exporting clear text.
    * @param format - The export format ('text' or 'html').
-   * @param password - Optional password for encryption.
+   * @param passphrase - Optional password for encryption.
+   * @param userWasWarnedAboutExportingClearText - Whether the user was warned about exporting clear text.
    * @returns A promise that resolves to the exported data as a string.
    */
   async exportEntries(
     format: 'text' | 'html',
-    password?: string,
+    passphrase?: string,
+    userWasWarnedAboutExportingClearText?: boolean,
   ): Promise<string> {
     let exportData: string
+
+    if (!passphrase && !userWasWarnedAboutExportingClearText) {
+      throw new ExportImportError(
+        'User was not warned about the dangers of unencrypted exporting',
+      )
+    }
 
     if (format === 'text') {
       exportData = this.generateTextExport()
@@ -60,11 +76,16 @@ class ExportImportManager {
       throw new ExportImportError('Invalid export format')
     }
 
-    if (password) {
+    if (passphrase) {
+      await validatePassphraseStrength(
+        this.libraryLoader,
+        passphrase as Passphrase,
+        this.passphraseExtraDict,
+      )
       return encryptExport(
         await this.libraryLoader.getOpenPGPLib(),
         exportData,
-        password,
+        passphrase,
       )
     }
 
@@ -86,19 +107,19 @@ class ExportImportManager {
   /**
    * Import entries from a text file, optionally (when a password is provided) decrypt first
    * @param fileContents - The contents of the text file.
-   * @param password - Optional password for decryption.
+   * @param passphrase - Optional password for decryption.
    * @returns A promise that resolves to an array of objects, each containing the line number,
    *          the EntryId or null if it was not a valid entry and the error if there was one.
    */
   async importFromTextFile(
     fileContents: string,
-    password?: string,
+    passphrase?: string,
   ): Promise<{ lineNr: number; entryId: EntryId | null; error: unknown }[]> {
-    if (password) {
+    if (passphrase) {
       const decrypted = await decryptExport(
         await this.libraryLoader.getOpenPGPLib(),
         fileContents,
-        password,
+        passphrase,
       )
       return this.importFromTextFile(decrypted)
     }

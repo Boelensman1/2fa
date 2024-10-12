@@ -1,10 +1,35 @@
-import { createSignal } from 'solid-js'
+import { createSignal, Show, createEffect } from 'solid-js'
 import useStore from '../store/useStore'
+import PasswordStrengthMeter from './PasswordStrengthMeter'
+import { getTwoFaLibVaultCreationUtils, type Passphrase } from '2falib'
+import BrowserCryptoProvider from '2falib/cryptoProviders/browser'
+import type { ZxcvbnResult } from '@zxcvbn-ts/core'
 
 const Exporter = () => {
   const [state] = useStore()
   const [format, setFormat] = createSignal<'html' | 'text'>('text')
-  const [password, setPassword] = createSignal('')
+  const [password, setPassword] = createSignal<Passphrase>('')
+  const [acknowledgedWarning, setAcknowledgedWarning] = createSignal(false)
+  const [passwordStrength, setPasswordStrength] =
+    createSignal<ZxcvbnResult | null>(null)
+
+  const creationUtils = getTwoFaLibVaultCreationUtils(
+    new BrowserCryptoProvider(),
+  )
+
+  createEffect(() => {
+    if (password()) {
+      void calculatePasswordStrength(password()).then(setPasswordStrength)
+    } else {
+      setPasswordStrength(null)
+    }
+  })
+
+  const calculatePasswordStrength = async (
+    passphrase: Passphrase,
+  ): Promise<ZxcvbnResult> => {
+    return await creationUtils.getPassphraseStrength(passphrase, ['browser'])
+  }
 
   const handleExport = async () => {
     const { twoFaLib } = state
@@ -16,6 +41,7 @@ const Exporter = () => {
       const result = await twoFaLib.exportImport.exportEntries(
         format(),
         password() || undefined,
+        acknowledgedWarning(),
       )
 
       // Create a Blob with the exported data
@@ -63,14 +89,35 @@ const Exporter = () => {
           <input
             type="password"
             value={password()}
-            onInput={(e) => setPassword(e.currentTarget.value)}
+            onInput={(e) => setPassword(e.currentTarget.value as Passphrase)}
             class="ml-2 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </label>
+        <Show when={password()}>
+          <PasswordStrengthMeter
+            password={password()}
+            passwordStrength={passwordStrength()}
+          />
+        </Show>
       </div>
+      <Show when={!password()}>
+        <div class="mb-4">
+          <label class="flex items-center text-sm font-medium text-gray-700">
+            <input
+              type="checkbox"
+              checked={acknowledgedWarning()}
+              onChange={(e) => setAcknowledgedWarning(e.currentTarget.checked)}
+              class="mr-2 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+            />
+            I acknowledge that exporting without a password will result in clear
+            text that can be read by anyone
+          </label>
+        </div>
+      </Show>
       <button
         onClick={() => void handleExport}
-        class="bg-blue-500 text-white py-2 px-4 rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 transition duration-200"
+        disabled={!password() && !acknowledgedWarning()}
+        class="bg-blue-500 text-white py-2 px-4 rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
       >
         Export and Download
       </button>

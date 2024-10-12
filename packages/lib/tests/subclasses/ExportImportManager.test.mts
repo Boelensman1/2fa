@@ -10,6 +10,7 @@ import {
   totpEntry,
   clearEntries,
   createTwoFaLibForTests,
+  passphrase,
 } from '../testUtils.mjs'
 
 describe('ExportImportManager', () => {
@@ -35,7 +36,11 @@ describe('ExportImportManager', () => {
     })
 
     it('should export entries in text format', async () => {
-      const result = await twoFaLib.exportImport.exportEntries('text')
+      const result = await twoFaLib.exportImport.exportEntries(
+        'text',
+        undefined,
+        true,
+      )
       expect(result).toContain(
         'otpauth://totp/Test%20Issuer:Test%20TOTP?secret=TESTSECRET&issuer=Test%20Issuer&algorithm=SHA-1&digits=6&period=30',
       )
@@ -45,7 +50,11 @@ describe('ExportImportManager', () => {
     })
 
     it('should export entries in HTML format', async () => {
-      const result = await twoFaLib.exportImport.exportEntries('html')
+      const result = await twoFaLib.exportImport.exportEntries(
+        'html',
+        undefined,
+        true,
+      )
       expect(result).toContain('<html>')
       expect(result).toContain('Test TOTP')
       expect(result).toContain('Another TOTP')
@@ -55,20 +64,26 @@ describe('ExportImportManager', () => {
 
     it('should throw an error for invalid format', async () => {
       await expect(
-        twoFaLib.exportImport.exportEntries('invalid' as 'html'),
+        twoFaLib.exportImport.exportEntries(
+          'invalid' as 'html',
+          undefined,
+          true,
+        ),
       ).rejects.toThrow('Invalid export format')
     })
 
     it('should encrypt the export when password is provided', async () => {
-      const password = 'exportPassword'
-      const result = await twoFaLib.exportImport.exportEntries('text', password)
+      const result = await twoFaLib.exportImport.exportEntries(
+        'text',
+        passphrase,
+      )
 
       expect(result).not.toContain('Test TOTP')
       expect(result).not.toContain('TESTSECRET')
 
       const decrypted = await openpgp.decrypt({
         message: await openpgp.readMessage({ armoredMessage: result }),
-        passwords: [password],
+        passwords: [passphrase],
       })
 
       expect(decrypted.data).toContain(
@@ -80,19 +95,38 @@ describe('ExportImportManager', () => {
     })
 
     it('should encrypt HTML export when password is provided', async () => {
-      const password = 'exportPassword'
-      const result = await twoFaLib.exportImport.exportEntries('html', password)
+      const result = await twoFaLib.exportImport.exportEntries(
+        'html',
+        passphrase,
+      )
 
       expect(result).not.toContain('<html>')
       expect(result).not.toContain('Test TOTP')
 
       const decrypted = await openpgp.decrypt({
         message: await openpgp.readMessage({ armoredMessage: result }),
-        passwords: [password],
+        passwords: [passphrase],
       })
 
       expect(decrypted.data).toContain('<html>')
       expect(decrypted.data).toContain('Test TOTP')
+    })
+
+    it('should throw an error when user was not warned about exporting unencrypted', async () => {
+      await expect(twoFaLib.exportImport.exportEntries('text')).rejects.toThrow(
+        'User was not warned about the dangers of unencrypted exporting',
+      )
+    })
+
+    it('should throw an error when password is too weak', async () => {
+      await twoFaLib.vault.addEntry(totpEntry)
+      await twoFaLib.vault.addEntry(anotherTotpEntry)
+
+      const weakPassword = 'weak'
+
+      await expect(
+        twoFaLib.exportImport.exportEntries('text', weakPassword),
+      ).rejects.toThrow('Passphrase is too weak')
     })
   })
 
@@ -262,18 +296,21 @@ describe('ExportImportManager', () => {
     })
 
     it('should give no errors on importing empty file', async () => {
-      const contents = await twoFaLib.exportImport.exportEntries('text')
+      const contents = await twoFaLib.exportImport.exportEntries(
+        'text',
+        undefined,
+        true,
+      )
       const result = await twoFaLib.exportImport.importFromTextFile(contents)
       expect(result).toHaveLength(0)
 
-      const password = 'testPassword'
       const encryptedContents = await twoFaLib.exportImport.exportEntries(
         'text',
-        password,
+        passphrase,
       )
       const resultEncrypted = await twoFaLib.exportImport.importFromTextFile(
         encryptedContents,
-        password,
+        passphrase,
       )
       expect(resultEncrypted).toHaveLength(0)
     })
@@ -282,17 +319,16 @@ describe('ExportImportManager', () => {
       await twoFaLib.vault.addEntry(totpEntry)
       await twoFaLib.vault.addEntry(anotherTotpEntry)
 
-      const password = 'testPassword'
       const encryptedContents = await twoFaLib.exportImport.exportEntries(
         'text',
-        password,
+        passphrase,
       )
 
       await clearEntries(twoFaLib)
 
       const result = await twoFaLib.exportImport.importFromTextFile(
         encryptedContents,
-        password,
+        passphrase,
       )
 
       expect(result).toHaveLength(2)
@@ -316,7 +352,7 @@ describe('ExportImportManager', () => {
     })
 
     it('should throw an error when trying to decrypt with an incorrect password', async () => {
-      const correctPassword = 'correctPassword'
+      const correctPassword = passphrase
       const incorrectPassword = 'incorrectPassword'
       const encryptedContents = await twoFaLib.exportImport.exportEntries(
         'text',

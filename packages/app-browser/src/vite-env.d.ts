@@ -2,6 +2,7 @@
 
 interface ImportMetaEnv {
   readonly VITE_SYNCSERVERURL: string
+  readonly VITE_COMMIT_HASH: string
 }
 
 interface ImportMeta {

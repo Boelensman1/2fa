@@ -46,7 +46,7 @@ const ConnectToExistingVault = () => {
   const handleTextSubmit = () => {
     const [state] = useStore()
     const { twoFaLib } = state
-    if (!twoFaLib || !twoFaLib.sync) {
+    if (!twoFaLib?.sync) {
       setErrorMessage('Error: twoFaLib not loaded or no server connection')
       return
     }

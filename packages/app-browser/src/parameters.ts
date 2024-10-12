@@ -5,3 +5,4 @@ export const syncServerUrl =
 export const deviceType = 'browser' as DeviceType
 
 export const version = import.meta.env.VITE_COMMIT_HASH ?? 'unknown'
+export const passphraseExtraDict = ['browser'] as const

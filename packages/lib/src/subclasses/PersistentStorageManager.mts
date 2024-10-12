@@ -1,3 +1,4 @@
+import type { NonEmptyTuple } from 'type-fest'
 import { InitializationError, AuthenticationError } from '../TwoFALibError.mjs'
 
 import type {
@@ -16,6 +17,8 @@ import type { DeviceId } from '../interfaces/SyncTypes.mjs'
 import type { ChangedEventWasChangedSinceLastEvent } from '../interfaces/Events.mjs'
 
 import { TwoFaLibEvent } from '../TwoFaLibEvent.mjs'
+
+import { validatePassphraseStrength } from '../utils/creationUtils.mjs'
 
 /**
  * Manages all storage of data that should be persistent.
@@ -39,8 +42,12 @@ class PersistentStorageManager {
   /**
    * Constructs a new instance of PersistentStorageManager.
    * @param mediator - The mediator for accessing other components.
+   * @param passphraseExtraDict - Additional words to be used for passphrase strength evaluation.
    */
-  constructor(private mediator: TwoFaLibMediator) {}
+  constructor(
+    private mediator: TwoFaLibMediator,
+    private readonly passphraseExtraDict: NonEmptyTuple<string>,
+  ) {}
 
   private get cryptoLib() {
     return this.mediator.getComponent('libraryLoader').getCryptoLib()
@@ -228,6 +235,12 @@ class PersistentStorageManager {
       throw new InitializationError('SymmetricKey missing')
     if (!this.salt) throw new InitializationError('Salt missing')
     if (!this.deviceId) throw new InitializationError('Salt missing')
+
+    await validatePassphraseStrength(
+      this.mediator.getComponent('libraryLoader'),
+      newPassphrase,
+      this.passphraseExtraDict,
+    )
 
     const isValid = await this.validatePassphrase(this.salt, oldPassphrase)
     if (!isValid) throw new AuthenticationError('Invalid old passphrase')

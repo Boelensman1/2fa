@@ -1,5 +1,6 @@
-import { v4 as genUuidV4 } from 'uuid'
 import { TypedEventTarget } from 'typescript-event-target'
+import type { NonEmptyTuple } from 'type-fest'
+
 import type CryptoLib from './interfaces/CryptoLib.mjs'
 import type {
   EncryptedPrivateKey,
@@ -7,7 +8,6 @@ import type {
   Passphrase,
   Salt,
 } from './interfaces/CryptoLib.mjs'
-
 import type {
   SyncDevice,
   DeviceId,
@@ -18,6 +18,7 @@ import type {
   TwoFaLibEventMapEvents,
 } from './interfaces/Events.mjs'
 
+import TwoFaLibMediator from './TwoFaLibMediator.mjs'
 import { TwoFaLibEvent } from './TwoFaLibEvent.mjs'
 import { InitializationError } from './TwoFALibError.mjs'
 
@@ -28,7 +29,6 @@ import PersistentStorageManager from './subclasses/PersistentStorageManager.mjs'
 import VaultDataManager from './subclasses/VaultDataManager.mjs'
 import VaultOperationsManager from './subclasses/VaultOperationsManager.mjs'
 import CommandManager from './subclasses/CommandManager.mjs'
-import TwoFaLibMediator from './TwoFaLibMediator.mjs'
 
 /**
  * The Two-Factor Library, this is the main entry point.
@@ -43,9 +43,14 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
    * Constructs a new instance of TwoFaLib.
    * @param deviceType - A unique identifier for this device type (e.g. 2fa-cli).
    * @param cryptoLib - An instance of CryptoLib that is compatible with the environment.
+   * @param passphraseExtraDict - Additional words to be used for passphrase strength evaluation.
    * @throws {InitializationError} If the device identifier is invalid.
    */
-  constructor(deviceType: DeviceType, cryptoLib: CryptoLib) {
+  constructor(
+    deviceType: DeviceType,
+    cryptoLib: CryptoLib,
+    passphraseExtraDict: NonEmptyTuple<string>,
+  ) {
     super()
     if (!deviceType) {
       throw new InitializationError('Device identifier is required')
@@ -55,12 +60,20 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
         'Device identifier is too long, max 256 characters',
       )
     }
+    if (passphraseExtraDict?.length === 0) {
+      throw new InitializationError(
+        'Passphrase extra dictionary is required and must contain at least one element (eg phone)',
+      )
+    }
     this.deviceType = deviceType
 
     this.mediator = new TwoFaLibMediator()
     this.mediator.registerComponents([
       ['libraryLoader', new LibraryLoader(cryptoLib)],
-      ['persistentStorageManager', new PersistentStorageManager(this.mediator)],
+      [
+        'persistentStorageManager',
+        new PersistentStorageManager(this.mediator, passphraseExtraDict),
+      ],
       ['vaultDataManager', new VaultDataManager(this.mediator)],
       ['commandManager', new CommandManager(this.mediator)],
       ['vaultOperationsManager', new VaultOperationsManager(this.mediator)],
@@ -180,43 +193,4 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
     }
   }
 }
-
-/**
- * Creates a new TwoFaLib vault. This is the function to use to first create a
- * new vault. This should not be used to load an already created vault.
- * @param deviceType - A unique identifier for the device type e.g. 2fa-cli.
- * @param cryptoLib - An instance of CryptoLib that is compatible with the environment.
- * @param passphrase - The passphrase to be used to encrypt the private key.
- * @param serverUrl - The server URL for syncing.
- * @returns A promise that resolves to an object containing the newly created TwoFaLib instance, the cryptographic keys and the salt used to hash the passphrase.
- */
-export const createNewTwoFaLibVault = async (
-  deviceType: DeviceType,
-  cryptoLib: CryptoLib,
-  passphrase: Passphrase,
-  serverUrl?: string,
-) => {
-  const { publicKey, encryptedPrivateKey, encryptedSymmetricKey, salt } =
-    await cryptoLib.createKeys(passphrase)
-
-  const deviceId = genUuidV4() as DeviceId
-  const twoFaLib = new TwoFaLib(deviceType, cryptoLib)
-  await twoFaLib.init(
-    encryptedPrivateKey,
-    encryptedSymmetricKey,
-    salt,
-    passphrase,
-    deviceId,
-    serverUrl,
-  )
-
-  return {
-    twoFaLib,
-    publicKey,
-    encryptedPrivateKey,
-    encryptedSymmetricKey,
-    salt,
-  }
-}
-
 export default TwoFaLib

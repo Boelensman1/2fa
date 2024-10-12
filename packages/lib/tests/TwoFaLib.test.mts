@@ -24,7 +24,7 @@ describe('2falib', () => {
 
   describe('TwoFaLib constructor', () => {
     it('should throw an error if device identifier is not provided', () => {
-      expect(() => new TwoFaLib('' as DeviceType, cryptoLib)).toThrow(
+      expect(() => new TwoFaLib('' as DeviceType, cryptoLib, ['test'])).toThrow(
         'Device identifier is required',
       )
     })
@@ -32,7 +32,8 @@ describe('2falib', () => {
     it('should throw an error if device identifier is too long', () => {
       const longDeviceIdentifier = 'a'.repeat(257)
       expect(
-        () => new TwoFaLib(longDeviceIdentifier as DeviceType, cryptoLib),
+        () =>
+          new TwoFaLib(longDeviceIdentifier as DeviceType, cryptoLib, ['test']),
       ).toThrow('Device identifier is too long, max 256 characters')
     })
 
@@ -43,8 +44,15 @@ describe('2falib', () => {
       )
     })
 
+    it('should throw an error if passphrase extra dictionary is not provided', () => {
+      // @ts-expect-error empty array is not a valid argument
+      expect(() => new TwoFaLib(deviceType, cryptoLib, [])).toThrow(
+        'Passphrase extra dictionary is required',
+      )
+    })
+
     it('should create a TwoFaLib instance with valid parameters', () => {
-      const twoFaLib = new TwoFaLib(deviceType, cryptoLib)
+      const twoFaLib = new TwoFaLib(deviceType, cryptoLib, ['test'])
       expect(twoFaLib).toBeInstanceOf(TwoFaLib)
       expect(twoFaLib.deviceType).toBe(deviceType)
     })

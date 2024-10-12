@@ -9,7 +9,6 @@ import {
 } from 'vitest'
 import {
   ChangedEventData,
-  createTwoFaLib,
   CryptoLib,
   EncryptedPrivateKey,
   EncryptedSymmetricKey,
@@ -66,7 +65,7 @@ describe('PersistentStorageManager', () => {
     const locked = await twoFaLib.persistentStorage.getLockedRepresentation()
     expect(locked).toHaveLength(345)
 
-    const second2faLib = new TwoFaLib(deviceType, cryptoLib)
+    const second2faLib = new TwoFaLib(deviceType, cryptoLib, ['test'])
     await second2faLib.init(
       encryptedPrivateKey,
       encryptedSymmetricKey,
@@ -131,14 +130,7 @@ describe('PersistentStorageManager', () => {
     expect(isValid).toBe(false)
   })
 
-  it('should call save function when changes are made', async () => {
-    const result = await createTwoFaLib(
-      deviceType,
-      cryptoLib,
-      'testpassword' as Passphrase,
-    )
-    const twoFaLib = result.twoFaLib
-
+  it('should emit changed event when save is called', async () => {
     const mockSaveFunction = vi.fn()
     twoFaLib.addEventListener(TwoFaLibEvent.Changed, mockSaveFunction)
     await twoFaLib.persistentStorage.save()
@@ -164,12 +156,12 @@ describe('PersistentStorageManager', () => {
         syncDevices: expect.any(String) as string,
       }) as unknown,
       changed: expect.objectContaining({
-        lockedRepresentation: true,
-        encryptedPrivateKey: true,
-        encryptedSymmetricKey: true,
-        salt: true,
-        deviceId: true,
-        syncDevices: true,
+        lockedRepresentation: false,
+        encryptedPrivateKey: false,
+        encryptedSymmetricKey: false,
+        salt: false,
+        deviceId: false,
+        syncDevices: false,
       }) as unknown,
     })
 
@@ -204,16 +196,15 @@ describe('PersistentStorageManager', () => {
   }, 15000) // long running test
 
   it('should change passphrase', async () => {
-    const oldPassphrase = 'testpassword' as Passphrase
-    const newPassphrase = 'newpassword' as Passphrase
+    const oldPassphrase = passphrase
+    const newPassphrase = '8ySml!DK6QxJP6e6l$Cf' as Passphrase
     let savedData: ChangedEventData
 
     const mockSaveFunction = vi.fn((data: ChangedEventData) => {
       savedData = data
     })
 
-    const result = await createTwoFaLib(deviceType, cryptoLib, oldPassphrase)
-    const originalTwoFaLib = result.twoFaLib
+    const originalTwoFaLib = twoFaLib
     originalTwoFaLib.addEventListener(TwoFaLibEvent.Changed, (evt) => {
       mockSaveFunction(evt.detail.data)
     })
@@ -232,7 +223,7 @@ describe('PersistentStorageManager', () => {
     }
 
     // Create a new TwoFaLib instance with the saved data
-    const newTwoFaLib = new TwoFaLib(deviceType, cryptoLib)
+    const newTwoFaLib = new TwoFaLib(deviceType, cryptoLib, ['test'])
     await newTwoFaLib.init(
       savedData.encryptedPrivateKey,
       savedData.encryptedSymmetricKey,
@@ -256,5 +247,30 @@ describe('PersistentStorageManager', () => {
         oldPassphrase,
       ),
     ).resolves.toBe(false)
+
+    // change back the passphrase for the next tests
+    await originalTwoFaLib.persistentStorage.changePassphrase(
+      newPassphrase,
+      oldPassphrase,
+    )
   }, 15000) // long running test
+
+  it('should throw an error when changing to a weak passphrase', async () => {
+    const oldPassphrase = passphrase
+    const weakPassphrase = 'test123' as Passphrase
+
+    await expect(
+      twoFaLib.persistentStorage.changePassphrase(
+        oldPassphrase,
+        weakPassphrase,
+      ),
+    ).rejects.toThrow('Passphrase is too weak')
+
+    // Verify that the old passphrase still works
+    const isValid = await twoFaLib.persistentStorage.validatePassphrase(
+      salt,
+      oldPassphrase,
+    )
+    expect(isValid).toBe(true)
+  })
 })

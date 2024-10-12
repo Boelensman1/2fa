@@ -33,6 +33,9 @@
     "vitest": "^2.1.2"
   },
   "dependencies": {
+    "@zxcvbn-ts/core": "^3.0.4",
+    "@zxcvbn-ts/language-common": "^3.0.4",
+    "@zxcvbn-ts/language-en": "^3.0.2",
     "canvas": "^2.11.2",
     "hash-wasm": "^4.11.0",
     "isomorphic-ws": "^5.0.0",

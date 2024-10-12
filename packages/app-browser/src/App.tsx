@@ -12,7 +12,7 @@ import ConnectToExistingVault from './components/ConnectToExistingVault'
 import CreateVault from './components/CreateVault'
 import saveFunction from './utils/saveFunction'
 import useSyncStoreWithLib from './utils/useSyncStoreWithLib'
-import { deviceType } from './parameters'
+import { deviceType, passphraseExtraDict } from './parameters'
 
 const App: Component = () => {
   const [state, dispatch] = useStore()
@@ -42,7 +42,7 @@ const App: Component = () => {
     }
 
     const cryptoLib = new BrowserCryptoProvider()
-    const twoFaLib = new TwoFaLib(deviceType, cryptoLib)
+    const twoFaLib = new TwoFaLib(deviceType, cryptoLib, passphraseExtraDict)
     twoFaLib.addEventListener(TwoFaLibEvent.Changed, (event) => {
       saveFunction(event.detail.changed, event.detail.data)
       syncStoreWithLib(twoFaLib)

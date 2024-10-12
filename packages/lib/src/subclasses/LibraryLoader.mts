@@ -15,6 +15,7 @@ class LibraryLoader {
   private jsQrLib?: typeof import('jsqr').default
   private canvasLib?: typeof import('canvas')
   private urlParserLib?: typeof import('whatwg-url')
+  private zxcvbn?: typeof import('@zxcvbn-ts/core').zxcvbn
 
   /**
    * Constructs a new instance of LibraryLoader.
@@ -100,6 +101,31 @@ class LibraryLoader {
       this.urlParserLib = module.default
     }
     return this.urlParserLib
+  }
+
+  /**
+   * Loads and returns the Zxcvbn library on demand.
+   * @returns A promise that resolves to the Zxcvbn library.
+   */
+  async getZxcvbn() {
+    if (!this.zxcvbn) {
+      const { zxcvbn, zxcvbnOptions } = await import('@zxcvbn-ts/core')
+      const zxcvbnCommonPackage = await import('@zxcvbn-ts/language-common')
+      const zxcvbnEnPackage = await import('@zxcvbn-ts/language-en')
+      const options = {
+        translations: zxcvbnEnPackage.translations,
+        graphs: zxcvbnCommonPackage.adjacencyGraphs,
+        dictionary: {
+          ...zxcvbnCommonPackage.dictionary,
+          ...zxcvbnEnPackage.dictionary,
+        },
+      }
+
+      zxcvbnOptions.setOptions(options)
+
+      this.zxcvbn = zxcvbn
+    }
+    return this.zxcvbn
   }
 }
 

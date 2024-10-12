@@ -1,6 +1,6 @@
 import NodeCryptoProvider from '../src/CryptoProviders/node/index.mjs'
 import {
-  createTwoFaLib,
+  getTwoFaLibVaultCreationUtils,
   DeviceId,
   DeviceType,
   type NewEntry,
@@ -28,7 +28,7 @@ export const anotherTotpEntry: NewEntry = {
 
 export const deviceId = 'device-id' as DeviceId
 export const deviceType = 'test-device' as DeviceType
-export const passphrase = 'testpassword' as Passphrase
+export const passphrase = 'w!22M@#GdRKqp#58#9&e' as Passphrase
 
 /**
  * Creates a TwoFaLib instance that can be used for testing.
@@ -36,7 +36,8 @@ export const passphrase = 'testpassword' as Passphrase
  */
 export const createTwoFaLibForTests = async () => {
   const cryptoLib = new NodeCryptoProvider()
-  const result = await createTwoFaLib(deviceType, cryptoLib, passphrase)
+  const { createNewTwoFaLibVault } = getTwoFaLibVaultCreationUtils(cryptoLib)
+  const result = await createNewTwoFaLibVault(deviceType, passphrase, ['test'])
 
   return { cryptoLib, passphrase, ...result }
 }

@@ -83,7 +83,7 @@ describe('SyncManager', () => {
       })
     })
 
-    senderTwoFaLib = new TwoFaLib('sender' as DeviceType, cryptoLib)
+    senderTwoFaLib = new TwoFaLib('sender' as DeviceType, cryptoLib, ['test'])
     await senderTwoFaLib.init(
       encryptedPrivateKey,
       encryptedSymmetricKey,
@@ -97,7 +97,9 @@ describe('SyncManager', () => {
 
     await senderTwoFaLib.vault.addEntry(totpEntry)
 
-    receiverTwoFaLib = new TwoFaLib('receiver' as DeviceType, cryptoLib)
+    receiverTwoFaLib = new TwoFaLib('receiver' as DeviceType, cryptoLib, [
+      'test',
+    ])
     await receiverTwoFaLib.init(
       encryptedPrivateKey,
       encryptedSymmetricKey,
@@ -134,6 +136,7 @@ describe('SyncManager', () => {
     const disconnectedTwoFaLib = new TwoFaLib(
       'disconnected' as DeviceType,
       cryptoLib,
+      ['test'],
     )
     await disconnectedTwoFaLib.init(
       encryptedPrivateKey,

@@ -19,7 +19,7 @@ export default defineConfig({
     }),
   ],
   server: {
-    port: 3005,
+    port: 3266, // 2f in utf-8 hex
     host: '0.0.0.0',
   },
   build: {

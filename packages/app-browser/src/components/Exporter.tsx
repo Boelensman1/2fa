@@ -8,7 +8,7 @@ import type { ZxcvbnResult } from '@zxcvbn-ts/core'
 const Exporter = () => {
   const [state] = useStore()
   const [format, setFormat] = createSignal<'html' | 'text'>('text')
-  const [password, setPassword] = createSignal<Passphrase>('')
+  const [password, setPassword] = createSignal<Passphrase>('' as Passphrase)
   const [acknowledgedWarning, setAcknowledgedWarning] = createSignal(false)
   const [passwordStrength, setPasswordStrength] =
     createSignal<ZxcvbnResult | null>(null)

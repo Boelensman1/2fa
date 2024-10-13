@@ -27,6 +27,7 @@ import {
 import { newTotpEntry } from '../testUtils.mjs'
 import type { DeviceId } from '../../src/interfaces/SyncTypes.mjs'
 import { TwoFaLibEvent } from '../../src/TwoFaLibEvent.mjs'
+import type PersistentStorageManager from '../../src/subclasses/PersistentStorageManager.mjs'
 
 const getNthCallTypeAndDetail = (mockFn: Mock, n: number) => {
   const call = mockFn.mock.calls[n][0] as {
@@ -45,6 +46,7 @@ describe('PersistentStorageManager', () => {
   let encryptedPrivateKey: EncryptedPrivateKey
   let encryptedSymmetricKey: EncryptedSymmetricKey
   let salt: Salt
+  let persistentStorageManager: PersistentStorageManager
 
   beforeAll(async () => {
     const result = await createTwoFaLibForTests()
@@ -53,6 +55,9 @@ describe('PersistentStorageManager', () => {
     encryptedPrivateKey = result.encryptedPrivateKey
     encryptedSymmetricKey = result.encryptedSymmetricKey
     salt = result.salt
+
+    // eslint-disable-next-line @typescript-eslint/dot-notation
+    persistentStorageManager = twoFaLib['persistentStorage']
   })
 
   beforeEach(async () => {
@@ -62,7 +67,7 @@ describe('PersistentStorageManager', () => {
   it('should return a locked representation', async () => {
     const entryId = await twoFaLib.vault.addEntry(newTotpEntry)
 
-    const locked = await twoFaLib.persistentStorage.getLockedRepresentation()
+    const locked = await persistentStorageManager.getLockedRepresentation()
     expect(locked).toHaveLength(325)
 
     const second2faLib = new TwoFaLib(deviceType, cryptoLib, ['test'])
@@ -73,7 +78,8 @@ describe('PersistentStorageManager', () => {
       passphrase,
       'deviceid' as DeviceId,
     )
-    await second2faLib.persistentStorage.loadFromLockedRepresentation(locked)
+    // eslint-disable-next-line @typescript-eslint/dot-notation
+    await second2faLib['persistentStorage'].loadFromLockedRepresentation(locked)
 
     const retrieved = second2faLib.vault.getEntryMeta(entryId)
     expect(retrieved).toEqual(
@@ -114,7 +120,7 @@ describe('PersistentStorageManager', () => {
   })
 
   it('should validate correct passphrase', async () => {
-    const isValid = await twoFaLib.persistentStorage.validatePassphrase(
+    const isValid = await persistentStorageManager.validatePassphrase(
       salt,
       passphrase,
     )
@@ -122,17 +128,26 @@ describe('PersistentStorageManager', () => {
   })
 
   it('should invalidate incorrect passphrase', async () => {
-    const isValid = await twoFaLib.persistentStorage.validatePassphrase(
+    const isValid = await persistentStorageManager.validatePassphrase(
       salt,
       'wrongpassword!' as Passphrase,
     )
     expect(isValid).toBe(false)
   })
 
-  it('should emit changed event when save is called', async () => {
+  it('should emit changed event when data is changed', async () => {
+    const mockChangedFunction = vi.fn()
+    twoFaLib.addEventListener(TwoFaLibEvent.Changed, mockChangedFunction)
+
+    await twoFaLib.vault.addEntry(newTotpEntry)
+
+    expect(mockChangedFunction).toHaveBeenCalledTimes(1)
+  })
+
+  it('Should set everything to changed when setChanged is called without arguments and emit the correct event', async () => {
     const mockSaveFunction = vi.fn()
     twoFaLib.addEventListener(TwoFaLibEvent.Changed, mockSaveFunction)
-    await twoFaLib.persistentStorage.save()
+    await persistentStorageManager.setChanged()
     // Check if save function was called
     expect(mockSaveFunction).toHaveBeenCalledTimes(1)
 
@@ -155,12 +170,12 @@ describe('PersistentStorageManager', () => {
         syncDevices: expect.any(String) as string,
       }) as unknown,
       changed: expect.objectContaining({
-        lockedRepresentation: false,
-        encryptedPrivateKey: false,
-        encryptedSymmetricKey: false,
-        salt: false,
-        deviceId: false,
-        syncDevices: false,
+        lockedRepresentation: true,
+        encryptedPrivateKey: true,
+        encryptedSymmetricKey: true,
+        salt: true,
+        deviceId: true,
+        syncDevices: true,
       }) as unknown,
     })
 
@@ -208,7 +223,7 @@ describe('PersistentStorageManager', () => {
       mockSaveFunction(evt.detail.data)
     })
 
-    await originalTwoFaLib.persistentStorage.changePassphrase(
+    await persistentStorageManager.changePassphrase(
       oldPassphrase,
       newPassphrase,
     )
@@ -230,10 +245,12 @@ describe('PersistentStorageManager', () => {
       newPassphrase,
       deviceId,
     )
+    // eslint-disable-next-line @typescript-eslint/dot-notation
+    const newPersistentStorageManager = newTwoFaLib['persistentStorage']
 
     // Verify that the new passphrase works
     await expect(
-      newTwoFaLib.persistentStorage.validatePassphrase(
+      newPersistentStorageManager.validatePassphrase(
         savedData.salt,
         newPassphrase,
       ),
@@ -241,14 +258,14 @@ describe('PersistentStorageManager', () => {
 
     // Verify that the old passphrase no longer works
     await expect(
-      newTwoFaLib.persistentStorage.validatePassphrase(
+      newPersistentStorageManager.validatePassphrase(
         savedData.salt,
         oldPassphrase,
       ),
     ).resolves.toBe(false)
 
     // change back the passphrase for the next tests
-    await originalTwoFaLib.persistentStorage.changePassphrase(
+    await persistentStorageManager.changePassphrase(
       newPassphrase,
       oldPassphrase,
     )
@@ -259,14 +276,11 @@ describe('PersistentStorageManager', () => {
     const weakPassphrase = 'test123' as Passphrase
 
     await expect(
-      twoFaLib.persistentStorage.changePassphrase(
-        oldPassphrase,
-        weakPassphrase,
-      ),
+      persistentStorageManager.changePassphrase(oldPassphrase, weakPassphrase),
     ).rejects.toThrow('Passphrase is too weak')
 
     // Verify that the old passphrase still works
-    const isValid = await twoFaLib.persistentStorage.validatePassphrase(
+    const isValid = await persistentStorageManager.validatePassphrase(
       salt,
       oldPassphrase,
     )

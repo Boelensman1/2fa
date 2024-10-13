@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, beforeAll } from 'vitest'
+import { describe, it, expect, beforeEach, beforeAll, vi, Mock } from 'vitest'
 
 import { CryptoLib, DeviceType, TwoFaLib } from '../src/main.mjs'
 
@@ -11,6 +11,7 @@ import {
 describe('2falib', () => {
   let cryptoLib: CryptoLib
   let twoFaLib: TwoFaLib
+  let mockPersistentStorageManager: { setChanged: Mock }
 
   beforeAll(async () => {
     const result = await createTwoFaLibForTests()
@@ -20,6 +21,12 @@ describe('2falib', () => {
 
   beforeEach(async () => {
     await clearEntries(twoFaLib)
+    mockPersistentStorageManager = {
+      setChanged: vi.fn(),
+    }
+    // @ts-expect-error: Overriding private property for testing
+    twoFaLib.mediator.components.persistentStorageManager =
+      mockPersistentStorageManager
   })
 
   describe('TwoFaLib constructor', () => {
@@ -56,5 +63,10 @@ describe('2falib', () => {
       expect(twoFaLib).toBeInstanceOf(TwoFaLib)
       expect(twoFaLib.deviceType).toBe(deviceType)
     })
+  })
+
+  it('should save the current state when forceSave is called', async () => {
+    await twoFaLib.forceSave()
+    expect(mockPersistentStorageManager.setChanged).toHaveBeenCalledWith()
   })
 })

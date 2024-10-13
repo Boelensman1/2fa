@@ -132,8 +132,7 @@ class PersistentStorageManager {
   /**
    * Loads the library state from a previously locked representation.
    * @param lockedRepresentation - The string representation of the locked state.
-   * @param key - The key to decrypt the locked representation with. If not provided,
-   *              the library's current symmetric key will be used.
+   * @param key - The key to decrypt the locked representation with. If not provided the library's current symmetric key will be used.
    * @returns A promise that resolves when loading is complete.
    * @throws {InitializationError} If loading fails due to invalid or corrupted data.
    */
@@ -159,7 +158,7 @@ class PersistentStorageManager {
    * @returns A promise that resolves when the save operation is complete.
    * @throws {InitializationError} If the initialization is not completed.
    */
-  async save() {
+  private async save() {
     if (
       !this.encryptedPrivateKey ||
       !this.encryptedSymmetricKey ||
@@ -268,14 +267,21 @@ class PersistentStorageManager {
 
   /**
    * Updates the state indicating which properties have changed since the last save.
-   * @param changed - An array of keys indicating which properties have changed.
+   * @param changed - Optional array of keys indicating which properties have changed. If not provided assumes everything has changed.
    */
-  __updateWasChangedSinceLastSave(
-    changed: (keyof ChangedEventWasChangedSinceLastEvent)[],
-  ) {
-    changed.forEach((change) => {
-      this.wasChangedSinceLastSave[change] = true
-    })
+  async setChanged(changed?: (keyof ChangedEventWasChangedSinceLastEvent)[]) {
+    if (changed) {
+      changed.forEach((change) => {
+        this.wasChangedSinceLastSave[change] = true
+      })
+    } else {
+      Object.keys(this.wasChangedSinceLastSave).forEach((key) => {
+        this.wasChangedSinceLastSave[
+          key as keyof ChangedEventWasChangedSinceLastEvent
+        ] = true
+      })
+    }
+    await this.save()
   }
 }
 

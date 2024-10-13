@@ -48,11 +48,9 @@ const Login: Component = () => {
       salt as Salt,
       password() as Passphrase,
       deviceId as DeviceId,
+      lockedRepresentation as EncryptedVaultData,
       syncServerUrl,
       syncDevices ? (JSON.parse(syncDevices) as SyncDevice[]) : undefined,
-    )
-    await twoFaLib.persistentStorage.loadFromLockedRepresentation(
-      lockedRepresentation as EncryptedVaultData,
     )
 
     syncStoreWithLib(twoFaLib)

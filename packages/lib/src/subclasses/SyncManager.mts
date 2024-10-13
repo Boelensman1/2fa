@@ -623,10 +623,7 @@ class SyncManager {
       deviceType: this.activeAddDeviceFlow.responderDeviceType,
       publicKey: decryptedPublicKey as PublicKey,
     })
-    this.persistentStorageManager.__updateWasChangedSinceLastSave([
-      'syncDevices',
-    ])
-    await this.persistentStorageManager.save()
+    await this.persistentStorageManager.setChanged(['syncDevices'])
 
     // all done
     this.activeAddDeviceFlow = undefined
@@ -662,10 +659,7 @@ class SyncManager {
       deviceType: this.activeAddDeviceFlow.initiatorDeviceType,
       publicKey: decryptedPublicKey as PublicKey,
     })
-    this.persistentStorageManager.__updateWasChangedSinceLastSave([
-      'syncDevices',
-    ])
-    await this.persistentStorageManager.save()
+    await this.persistentStorageManager.setChanged(['syncDevices'])
 
     // Reset the active add device flow
     this.activeAddDeviceFlow = undefined

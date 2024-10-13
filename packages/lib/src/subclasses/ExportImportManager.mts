@@ -129,8 +129,8 @@ class ExportImportManager {
       this.importFromUri(uri),
     )
 
-    // call save again to make sure we're not caught in a race condition
-    await this.persistentStorageManager.save()
+    // force save to make sure we're not caught in a race condition
+    await this.persistentStorageManager.setChanged(['lockedRepresentation'])
 
     return result
   }

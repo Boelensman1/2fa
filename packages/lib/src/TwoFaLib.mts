@@ -29,6 +29,7 @@ import PersistentStorageManager from './subclasses/PersistentStorageManager.mjs'
 import VaultDataManager from './subclasses/VaultDataManager.mjs'
 import VaultOperationsManager from './subclasses/VaultOperationsManager.mjs'
 import CommandManager from './subclasses/CommandManager.mjs'
+import { EncryptedVaultData } from './main.mjs'
 
 /**
  * The Two-Factor Library, this is the main entry point.
@@ -114,11 +115,17 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
   }
 
   /**
-   * Gives access to persistent storage operations.
    * @returns The persistent storage manager instance which can be used to store data.
    */
-  get persistentStorage() {
+  private get persistentStorage() {
     return this.mediator.getComponent('persistentStorageManager')
+  }
+
+  /**
+   * Forces a save of the persistent storage.
+   */
+  async forceSave() {
+    await this.persistentStorage.setChanged()
   }
 
   /**
@@ -154,6 +161,7 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
    * @param salt - The salt used for key derivation from the passphrase.
    * @param passphrase - The passphrase to decrypt the private key.
    * @param deviceId - A unique identifier for this device.
+   * @param lockedRepresentation - The locked representation of the vault to use for initialization.
    * @param serverUrl - The server URL for syncing.
    * @param syncDevices - The devices to sync with.
    * @returns A promise that resolves when initialization is complete.
@@ -166,6 +174,7 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
     salt: Salt,
     passphrase: Passphrase,
     deviceId: DeviceId,
+    lockedRepresentation?: EncryptedVaultData,
     serverUrl?: string,
     syncDevices?: SyncDevice[],
   ): Promise<void> {
@@ -179,6 +188,11 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
       salt,
       passphrase,
     )
+    if (lockedRepresentation) {
+      await this.persistentStorage.loadFromLockedRepresentation(
+        lockedRepresentation,
+      )
+    }
 
     if (serverUrl) {
       this.mediator.registerComponent(

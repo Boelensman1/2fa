@@ -99,11 +99,7 @@ class VaultDataManager {
   async addEntry(entry: Entry): Promise<void> {
     this.vault.push(entry)
 
-    this.persistentStorageManager.__updateWasChangedSinceLastSave([
-      'lockedRepresentation',
-    ])
-
-    await this.persistentStorageManager.save()
+    await this.persistentStorageManager.setChanged(['lockedRepresentation'])
   }
 
   /**
@@ -116,10 +112,7 @@ class VaultDataManager {
     if (index === -1) throw new EntryNotFoundError('Entry not found')
     this.vault.splice(index, 1)
 
-    this.persistentStorageManager.__updateWasChangedSinceLastSave([
-      'lockedRepresentation',
-    ])
-    await this.persistentStorageManager.save()
+    await this.persistentStorageManager.setChanged(['lockedRepresentation'])
   }
 
   /**
@@ -135,10 +128,7 @@ class VaultDataManager {
 
     this.vault[index] = updatedEntry
 
-    this.persistentStorageManager.__updateWasChangedSinceLastSave([
-      'lockedRepresentation',
-    ])
-    await this.persistentStorageManager.save()
+    await this.persistentStorageManager.setChanged(['lockedRepresentation'])
   }
 
   /**

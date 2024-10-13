@@ -90,6 +90,7 @@ describe('SyncManager', () => {
       salt,
       passphrase,
       'senderDeviceId' as DeviceId,
+      undefined,
       serverUrl,
     )
     await server.connected // only the first server.connected works atm
@@ -106,6 +107,7 @@ describe('SyncManager', () => {
       salt,
       passphrase,
       'receiverDeviceId' as DeviceId,
+      undefined,
       serverUrl,
     )
 
@@ -144,6 +146,7 @@ describe('SyncManager', () => {
       salt,
       passphrase,
       'tempDeviceId' as DeviceId,
+      undefined,
       temporaryServerUrl,
     )
     // await temporaryServer.connected

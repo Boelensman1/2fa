@@ -107,6 +107,7 @@ const createNewTwoFaLibVault = async (
     salt,
     passphrase,
     deviceId,
+    undefined,
     serverUrl,
   )
 

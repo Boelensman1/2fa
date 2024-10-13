@@ -52,7 +52,7 @@ const CreateVault: Component = () => {
       },
     )
     if (mode() === 'create') {
-      void twoFaLib.persistentStorage.save()
+      void twoFaLib.forceSave()
     }
 
     dispatch(actions.setAuthenticated(true))

@@ -19,13 +19,14 @@ export type PublicKeyMessage = PublicKeyServerMessage
 export type VaultMessage = VaultServerMessage
 export type AddSyncDeviceCancelledMessage = AddSyncDeviceCancelledServerMessage
 
+export interface SyncCommandFromServer {
+  id: number
+  encryptedCommand: Encrypted<string>
+  encryptedSymmetricKey: EncryptedSymmetricKey
+}
 export interface SyncCommandMessage {
-  type: 'syncCommand'
-  data: {
-    id: number
-    encryptedCommands: Encrypted<string>
-    encryptedSymmetricKey: EncryptedSymmetricKey
-  }
+  type: 'syncCommands'
+  data: SyncCommandFromServer[]
 }
 
 type OutgoingMessage =

@@ -4,4 +4,5 @@ export enum TwoFaLibEvent {
   ConnectToExistingVaultFinished = 'connectToExistingVaultFinished',
   ConnectionToSyncServerStatusChanged = 'connectionToSyncServerStatusChanged',
   Log = 'log',
+  Ready = 'ready',
 }

@@ -84,14 +84,29 @@ class CommandManager {
 
   /**
    * Processes all commands in the remote command queue.
+   * @returns An array of the IDs of the succesfully executed commands.
    */
-  async processRemoteCommands(): Promise<void> {
+  async processRemoteCommands(): Promise<string[]> {
+    const executedIds = []
     while (!this.remoteCommandQueue.isEmpty()) {
       const command = this.remoteCommandQueue.dequeue()
       if (command) {
-        await this.execute(command)
+        try {
+          await this.execute(command)
+          executedIds.push(command.id)
+        } catch (err) {
+          // eslint-disable-next-line no-restricted-globals
+          if (err instanceof Error) {
+            this.log(
+              'warning',
+              'Error while processing remote commands: ' + err.message,
+            )
+          }
+          this.log('warning', 'Unknown error while processing remote commands')
+        }
       }
     }
+    return executedIds
   }
 
   /**

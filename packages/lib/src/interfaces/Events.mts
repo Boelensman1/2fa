@@ -34,6 +34,7 @@ export interface TwoFaLibEventMap {
     severity: 'info' | 'warning'
     message: string
   }
+  [TwoFaLibEvent.Ready]: EmptyObject
 }
 
 export type TwoFaLibEventMapEvents = {

@@ -25,9 +25,7 @@ import {
 } from '../interfaces/SyncTypes.mjs'
 import { decodeInitiatorData, jsonToUint8Array } from '../utils/syncUtils.mjs'
 import type {
-  Encrypted,
   EncryptedPublicKey,
-  EncryptedSymmetricKey,
   PrivateKey,
   PublicKey,
   Salt,
@@ -46,6 +44,7 @@ import {
   TwoFALibError,
 } from '../TwoFALibError.mjs'
 import { EncryptedVaultData } from '../interfaces/Vault.mjs'
+import { SyncCommandFromServer } from '2faserver/ServerMessage'
 
 const generateNonCryptographicRandomString = () => {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
@@ -66,6 +65,8 @@ class SyncManager {
   private readonly serverUrl: string
   syncDevices: SyncDevice[]
   deviceId: DeviceId
+
+  private readySend = false
 
   /**
    * Creates an instance of SyncManager.
@@ -271,16 +272,9 @@ class SyncManager {
         )
         break
       }
-      case 'syncCommand': {
-        const { data } = message
-        const syncCommandId = data.id
-        const encryptedSymmetricKey = data.encryptedSymmetricKey
-        const encryptedCommands = data.encryptedCommands
-        void this.receiveCommands(
-          syncCommandId,
-          encryptedSymmetricKey,
-          encryptedCommands,
-        )
+      case 'syncCommands': {
+        const { data: commands } = message
+        void this.receiveCommands(commands)
         break
       }
     }
@@ -712,7 +706,7 @@ class SyncManager {
           device.publicKey,
           symmetricKey,
         )
-        const encryptedCommands = await this.cryptoLib.encryptSymmetric(
+        const encryptedCommand = await this.cryptoLib.encryptSymmetric(
           symmetricKey,
           JSON.stringify({
             ...commandJson,
@@ -722,36 +716,49 @@ class SyncManager {
         return {
           deviceId: device.deviceId,
           encryptedSymmetricKey,
-          encryptedCommands,
+          encryptedCommand,
         }
       }),
     )
 
-    this.sendToServer('syncCommand', data)
+    this.sendToServer('syncCommands', data)
   }
 
   /**
    * Receives and processes commands from other devices.
-   * @param syncCommandId - The id of this batch of syncCommands
-   * @param encryptedSymmetricKey - The encrypted symmetric key.
-   * @param encryptedData - The encrypted command data.
+   * @param encryptedCommands - The commands
    * @throws {CryptoError} If decryption fails.
    */
-  async receiveCommands(
-    syncCommandId: number,
-    encryptedSymmetricKey: EncryptedSymmetricKey,
-    encryptedData: Encrypted<string>,
-  ) {
-    const symmetricKey = await this.cryptoLib.decrypt(
-      this.privateKey,
-      encryptedSymmetricKey,
+  async receiveCommands(encryptedCommands: SyncCommandFromServer[]) {
+    await Promise.all(
+      encryptedCommands.map(async (data) => {
+        const symmetricKey = await this.cryptoLib.decrypt(
+          this.privateKey,
+          data.encryptedSymmetricKey,
+        )
+
+        const command = JSON.parse(
+          await this.cryptoLib.decryptSymmetric(
+            symmetricKey,
+            data.encryptedCommand,
+          ),
+        ) as SyncCommand
+
+        this.commandManager.receiveRemoteCommand(command)
+      }),
     )
-    const data = JSON.parse(
-      await this.cryptoLib.decryptSymmetric(symmetricKey, encryptedData),
-    ) as SyncCommand
-    this.commandManager.receiveRemoteCommand(data)
-    await this.commandManager.processRemoteCommands()
-    this.sendToServer('syncCommandExecuted', { id: syncCommandId })
+
+    const commandsExecutedIds =
+      await this.commandManager.processRemoteCommands()
+
+    // if this was the first time we received commands,
+    // we can signal that we're done loading after the commands where processed
+    if (!this.readySend) {
+      this.readySend = true
+      this.dispatchLibEvent(TwoFaLibEvent.Ready)
+    }
+
+    this.sendToServer('syncCommandsExecuted', { ids: commandsExecutedIds })
   }
 }
 

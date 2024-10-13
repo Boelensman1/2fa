@@ -25,6 +25,7 @@ import {
   createTwoFaLibForTests,
   passphrase,
   newTotpEntry,
+  totpEntry,
 } from '../testUtils.mjs'
 import { Client as WsClient } from 'mock-socket'
 import {
@@ -32,6 +33,7 @@ import {
   SyncNoServerConnectionError,
 } from '../../src/TwoFALibError.mjs'
 import type { DeviceId } from '../../src/interfaces/SyncTypes.mjs'
+import { TwoFaLibEvent } from '../../src/TwoFaLibEvent.mjs'
 
 // uses __mocks__/isomorphic-ws.js
 vi.mock('isomorphic-ws')
@@ -84,7 +86,7 @@ describe('SyncManager', () => {
     })
 
     senderTwoFaLib = new TwoFaLib('sender' as DeviceType, cryptoLib, ['test'])
-    await senderTwoFaLib.init(
+    const senderInitPromise = senderTwoFaLib.init(
       encryptedPrivateKey,
       encryptedSymmetricKey,
       salt,
@@ -93,15 +95,16 @@ describe('SyncManager', () => {
       undefined,
       serverUrl,
     )
-    await server.connected // only the first server.connected works atm
+    await server.connected
     await server.nextMessage // wait for the hello message
+    await senderInitPromise
 
     await senderTwoFaLib.vault.addEntry(newTotpEntry)
 
     receiverTwoFaLib = new TwoFaLib('receiver' as DeviceType, cryptoLib, [
       'test',
     ])
-    await receiverTwoFaLib.init(
+    const receiverInitPromise = receiverTwoFaLib.init(
       encryptedPrivateKey,
       encryptedSymmetricKey,
       salt,
@@ -113,6 +116,7 @@ describe('SyncManager', () => {
 
     await allConnected
     await server.nextMessage // wait for the hello message
+    await receiverInitPromise
   })
 
   afterEach(() => {
@@ -233,7 +237,7 @@ describe('SyncManager', () => {
     await senderTwoFaLib.vault.addEntry(anotherNewTotpEntry)
 
     const message = (await server.nextMessage) as { data: unknown[] }
-    send(receiverWsInstance, 'syncCommand', message.data[0])
+    send(receiverWsInstance, 'syncCommands', [message.data[0]])
 
     await vi.waitUntil(() => receiverTwoFaLib.vault.size !== 1, {
       timeout: 1000,
@@ -242,9 +246,21 @@ describe('SyncManager', () => {
     expect(receiverTwoFaLib.vault.listEntries()).toEqual(
       senderTwoFaLib.vault.listEntries(),
     )
-    /*
+
+    // receive the syncCommandsExecuted message
+    expect(await server.nextMessage).toEqual({
+      type: 'syncCommandsExecuted',
+      data: { ids: [expect.any(String)] },
+    })
+
     // and the other way around
-    await receiverTwoFaLib.vault.addEntry(totpEntry)
+    const addedEntryId = await receiverTwoFaLib.vault.addEntry(totpEntry)
+
+    // mock server
+    const message2 = (await server.nextMessage) as { data: unknown[] }
+    send(senderWsInstance, 'syncCommands', [message2.data[0]])
+
+    // entry should now be added
     await vi.waitUntil(() => senderTwoFaLib.vault.size !== 2, {
       timeout: 1000,
       interval: 20,
@@ -253,15 +269,51 @@ describe('SyncManager', () => {
       receiverTwoFaLib.vault.listEntries(),
     )
 
+    // receive the syncCommandsExecuted message
+    expect(await server.nextMessage).toEqual({
+      type: 'syncCommandsExecuted',
+      data: { ids: [expect.any(String)] },
+    })
+
     // if we delete an entry in one of the libs, it should also be deleted in the other
     await senderTwoFaLib.vault.deleteEntry(addedEntryId)
-    await vi.waitUntil(() => receiverTwoFaLib.vault.size !== 2, {
+
+    // mock server
+    const message3 = (await server.nextMessage) as { data: unknown[] }
+    send(receiverWsInstance, 'syncCommands', [message3.data[0]])
+
+    await vi.waitUntil(() => receiverTwoFaLib.vault.size !== 3, {
       timeout: 1000,
       interval: 20,
     })
+
     expect(receiverTwoFaLib.vault.listEntries()).toEqual(
       senderTwoFaLib.vault.listEntries(),
     )
-    */
+  })
+
+  it('should emit ready event after receiving syncCommands message', async () => {
+    const readyPromise = new Promise<void>((resolve) => {
+      senderTwoFaLib.addEventListener(TwoFaLibEvent.Ready, () => resolve())
+    })
+
+    const newTwoFaLib = new TwoFaLib('newSender' as DeviceType, cryptoLib, [
+      'test',
+    ])
+    await newTwoFaLib.init(
+      encryptedPrivateKey,
+      encryptedSymmetricKey,
+      salt,
+      passphrase,
+      'newSenderDeviceId' as DeviceId,
+      undefined,
+      serverUrl,
+    )
+
+    await server.nextMessage // wait for the connect message
+    send(senderWsInstance, 'syncCommands', [])
+
+    // syncCommands message has been send, readyPromise should resolve soon
+    await expect(readyPromise).resolves.toBeUndefined()
   })
 })

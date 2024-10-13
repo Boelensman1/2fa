@@ -83,18 +83,18 @@ export interface AddSyncDeviceCancelledMessage {
 }
 
 export interface SyncCommandMessage {
-  type: 'syncCommand'
+  type: 'syncCommands'
   data: {
     deviceId: DeviceId
-    encryptedCommands: Encrypted<string>
+    encryptedCommand: Encrypted<string>
     encryptedSymmetricKey: EncryptedSymmetricKey
   }[]
 }
 
-export interface SyncCommandExecutedMessage {
-  type: 'syncCommandExecuted'
+export interface SyncCommandsExecutedMessage {
+  type: 'syncCommandsExecuted'
   data: {
-    id: number
+    ids: string[]
   }
 }
 
@@ -107,6 +107,6 @@ type IncomingMessage =
   | VaultMessage
   | AddSyncDeviceCancelledMessage
   | SyncCommandMessage
-  | SyncCommandExecutedMessage
+  | SyncCommandsExecutedMessage
 
 export default IncomingMessage

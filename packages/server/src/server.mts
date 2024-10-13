@@ -47,16 +47,9 @@ const handleMessage = (ws: WebSocket, message: ClientMessage) => {
         .where({
           deviceId,
         })
-        .then((unExecutedSyncCommands) =>
-          unExecutedSyncCommands.forEach((unExecutedSyncCommand) => {
-            send(ws, 'syncCommand', {
-              id: unExecutedSyncCommand.id,
-              encryptedSymmetricKey:
-                unExecutedSyncCommand.encryptedSymmetricKey,
-              encryptedCommands: unExecutedSyncCommand.encryptedCommands,
-            })
-          }),
-        )
+        .then((unExecutedSyncCommands) => {
+          send(ws, 'syncCommands', unExecutedSyncCommands)
+        })
       break
     }
     case 'addSyncDeviceInitialiseData': {
@@ -152,14 +145,14 @@ const handleMessage = (ws: WebSocket, message: ClientMessage) => {
 
       return
     }
-    case 'syncCommand': {
+    case 'syncCommands': {
       void message.data.map(async (data) => {
-        const { deviceId, encryptedCommands, encryptedSymmetricKey } = data
+        const { deviceId, encryptedCommand, encryptedSymmetricKey } = data
 
         const unExecutedSyncCommand = await UnExecutedSyncCommand.query()
           .insert({
             deviceId,
-            encryptedCommands,
+            encryptedCommand,
             encryptedSymmetricKey,
           })
           .returning('id')
@@ -170,18 +163,20 @@ const handleMessage = (ws: WebSocket, message: ClientMessage) => {
           console.error('Request not found')
           return
         }
-        send(deviceWs, 'syncCommand', {
-          id: unExecutedSyncCommand.id,
-          encryptedSymmetricKey,
-          encryptedCommands,
-        })
+        send(deviceWs, 'syncCommands', [
+          {
+            id: unExecutedSyncCommand.id,
+            encryptedSymmetricKey,
+            encryptedCommand,
+          },
+        ])
       })
       return
     }
-    case 'syncCommandExecuted': {
+    case 'syncCommandsExecuted': {
       // sync commands executed, can be removed
-      const { id } = message.data
-      void UnExecutedSyncCommand.query().findById(id).del().execute()
+      const { ids } = message.data
+      void UnExecutedSyncCommand.query().whereIn('id', ids).del().execute()
       return
     }
   }

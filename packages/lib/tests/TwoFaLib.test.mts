@@ -1,28 +1,47 @@
 import { describe, it, expect, beforeEach, beforeAll, vi, Mock } from 'vitest'
 
-import { CryptoLib, DeviceType, TwoFaLib } from '../src/main.mjs'
+import {
+  CryptoLib,
+  DeviceType,
+  EncryptedPrivateKey,
+  EncryptedSymmetricKey,
+  TwoFaLib,
+  TwoFaLibEvent,
+  Salt,
+  Passphrase,
+} from '../src/main.mjs'
 
 import {
   clearEntries,
   createTwoFaLibForTests,
   deviceType,
+  deviceId,
 } from './testUtils.mjs'
 
 describe('2falib', () => {
   let cryptoLib: CryptoLib
   let twoFaLib: TwoFaLib
-  let mockPersistentStorageManager: { setChanged: Mock }
+  let mockPersistentStorageManager: { setChanged: Mock; init: Mock }
+  let encryptedPrivateKey: EncryptedPrivateKey
+  let encryptedSymmetricKey: EncryptedSymmetricKey
+  let salt: Salt
+  let passphrase: Passphrase
 
   beforeAll(async () => {
     const result = await createTwoFaLibForTests()
     twoFaLib = result.twoFaLib
     cryptoLib = result.cryptoLib
+    encryptedPrivateKey = result.encryptedPrivateKey
+    encryptedSymmetricKey = result.encryptedSymmetricKey
+    salt = result.salt
+    passphrase = result.passphrase
   })
 
   beforeEach(async () => {
     await clearEntries(twoFaLib)
     mockPersistentStorageManager = {
       setChanged: vi.fn(),
+      init: vi.fn().mockResolvedValue({ publicKey: null, privateKey: null }),
     }
     // @ts-expect-error: Overriding private property for testing
     twoFaLib.mediator.components.persistentStorageManager =
@@ -68,5 +87,23 @@ describe('2falib', () => {
   it('should save the current state when forceSave is called', async () => {
     await twoFaLib.forceSave()
     expect(mockPersistentStorageManager.setChanged).toHaveBeenCalledWith()
+  })
+
+  it('should emit ready event after loading', async () => {
+    const mockReadyFunction = vi.fn()
+    twoFaLib.addEventListener(TwoFaLibEvent.Ready, mockReadyFunction)
+    await twoFaLib.init(
+      encryptedPrivateKey,
+      encryptedSymmetricKey,
+      salt,
+      passphrase,
+      deviceId,
+    )
+
+    // Ceck if the ready event was emitted
+    expect(mockReadyFunction).toHaveBeenCalledTimes(1)
+
+    // Clean up the event listener
+    twoFaLib.removeEventListener(TwoFaLibEvent.Ready, mockReadyFunction)
   })
 })

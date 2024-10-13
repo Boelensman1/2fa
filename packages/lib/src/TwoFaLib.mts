@@ -207,6 +207,10 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
           syncDevices,
         ),
       )
+    } else {
+      // if no syncmanager we're ready now
+      // otherwise the syncmanager is responsible for emitting the ready event
+      this.dispatchLibEvent(TwoFaLibEvent.Ready)
     }
   }
 }

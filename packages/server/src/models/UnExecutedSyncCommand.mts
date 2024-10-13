@@ -9,7 +9,7 @@ class UnExecutedSyncCommand extends Model {
 
   deviceId!: DeviceId
 
-  encryptedCommands!: Encrypted<string>
+  encryptedCommand!: Encrypted<string>
 
   encryptedSymmetricKey!: EncryptedSymmetricKey
 

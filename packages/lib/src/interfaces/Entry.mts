@@ -11,7 +11,6 @@ export interface EntryMeta {
   name: string
   issuer: string
   type: EntryType
-  order: number
   addedAt: number
   updatedAt: number | null
 }
@@ -30,8 +29,5 @@ interface TotpEntry extends EntryMeta {
 
 type Entry = TotpEntry
 
-export type NewEntry = Omit<Entry, 'id' | 'addedAt' | 'updatedAt' | 'order'> & {
-  order?: number
-}
-
+export type NewEntry = Omit<Entry, 'id' | 'addedAt' | 'updatedAt'>
 export default Entry

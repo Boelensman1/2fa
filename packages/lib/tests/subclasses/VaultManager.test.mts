@@ -35,7 +35,6 @@ describe('VaultManager', () => {
         {
           ...totpEntry,
           id: entryId,
-          order: 0,
           addedAt: expect.any(Number) as number,
           updatedAt: null,
         },

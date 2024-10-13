@@ -63,7 +63,7 @@ describe('PersistentStorageManager', () => {
     const entryId = await twoFaLib.vault.addEntry(totpEntry)
 
     const locked = await twoFaLib.persistentStorage.getLockedRepresentation()
-    expect(locked).toHaveLength(345)
+    expect(locked).toHaveLength(325)
 
     const second2faLib = new TwoFaLib(deviceType, cryptoLib, ['test'])
     await second2faLib.init(
@@ -81,7 +81,6 @@ describe('PersistentStorageManager', () => {
         {
           ...totpEntry,
           id: entryId,
-          order: 0,
           addedAt: expect.any(Number) as number,
           updatedAt: null,
         },

@@ -38,6 +38,8 @@ export const generateSchnorrChallenge = (
       'userId is too long. It must be 255 bytes or less when UTF-8 encoded.',
     )
   }
+
+  // These two checks should be superfluous
   if (gxBytes.length > 255) {
     throw new InvalidArgumentError(
       'gxBytes is too long. It must be 255 bytes or less.',

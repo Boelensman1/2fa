@@ -1,7 +1,13 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { JPake, deriveSFromPassword } from '../src/main.mjs'
+import {
+  JPake,
+  deriveSFromPassword,
+  Round1Result,
+  Round2Result,
+} from '../src/main.mjs'
 import { n } from '../src/constants.mjs'
 import { numberToBytesBE } from '@noble/curves/abstract/utils'
+import { secp256k1 } from '@noble/curves/secp256k1'
 
 describe('JPake', () => {
   let alice: JPake
@@ -279,5 +285,94 @@ describe('JPake', () => {
     ).toThrowError(
       'Invalid points received: G1 or G2 is not a valid ProjectivePoint',
     )
+  })
+
+  it('should throw errors when functions are called in the wrong state', () => {
+    const alice = new JPake('Alice')
+    const bob = new JPake('Bob')
+    const s = deriveSFromPassword('password')
+
+    // Attempt to run round2 before round1
+    expect(() => alice.round2({} as Round1Result, s, 'Bob')).toThrowError(
+      'Round 2 can only be executed after Round 1',
+    )
+
+    // Attempt to set round2 result before completing round2
+    expect(() => alice.setRound2ResultFromBob({} as Round2Result)).toThrowError(
+      'Round 2 results can only be set after Round 2 is finished',
+    )
+
+    // Attempt to derive shared key before completing the exchange
+    expect(() => alice.deriveSharedKey()).toThrowError(
+      'Shared key can only be derived after receiving Round 2 results',
+    )
+
+    // Complete round1
+    const aliceRound1 = alice.round1()
+    const bobRound1 = bob.round1()
+
+    // Attempt to run round1 again
+    expect(() => alice.round1()).toThrowError(
+      'Round 1 can only be executed in INITIAL state',
+    )
+
+    // Complete round2
+    alice.round2(bobRound1, s, bob.userId)
+    const bobRound2 = bob.round2(aliceRound1, s, alice.userId)
+
+    // Attempt to run round2 again
+    expect(() => alice.round2(bobRound1, s, bob.userId)).toThrowError(
+      'Round 2 can only be executed after Round 1',
+    )
+
+    // Set round2 result
+    alice.setRound2ResultFromBob(bobRound2)
+
+    // Attempt to set round2 result again
+    expect(() => alice.setRound2ResultFromBob(bobRound2)).toThrowError(
+      'Round 2 results can only be set after Round 2 is finished',
+    )
+
+    // Derive shared key
+    alice.deriveSharedKey()
+
+    // Attempt to derive shared key again
+    expect(() => alice.deriveSharedKey()).toThrowError(
+      'Shared key can only be derived after receiving Round 2 results',
+    )
+  })
+
+  it('should throw errors when data is missing or incorrect', () => {
+    /* eslint-disable @typescript-eslint/dot-notation */
+    const aliceRound1 = alice.round1()
+    const bobRound1 = bob.round1()
+
+    const aliceWithMissingData = new JPake('Alice-with-missing')
+    aliceWithMissingData.round1()
+    delete aliceWithMissingData['x2']
+    expect(() =>
+      aliceWithMissingData.round2(bobRound1, s, bob.userId),
+    ).toThrowError('Missing required data for round 2')
+
+    alice.round2(bobRound1, s, bob.userId)
+
+    expect(() => alice.setRound2ResultFromBob({} as Round2Result)).toThrowError(
+      'Missing required arguments for setRound2ResultFromBob',
+    )
+
+    const bobRound2 = bob.round2(aliceRound1, s, alice.userId)
+    alice.setRound2ResultFromBob(bobRound2)
+    const alicex2 = alice['x2']
+    delete alice['x2']
+    expect(() => alice.deriveSharedKey()).toThrowError(
+      'Missing required data for key derivation',
+    )
+    alice['x2'] = alicex2
+
+    alice['B'] = secp256k1.ProjectivePoint.ZERO
+    expect(() => alice.deriveSharedKey()).toThrowError(
+      'Invalid point: B is the point at infinity',
+    )
+    /* eslint-enable */
   })
 })

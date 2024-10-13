@@ -41,18 +41,25 @@ export enum JPakeState {
  */
 class JPake {
   readonly userId: string
-  state: JPakeState
+  private state: JPakeState
 
-  x1?: Uint8Array
-  x2?: Uint8Array
-  G1?: ProjPointType<bigint>
-  G2?: ProjPointType<bigint>
-  G3?: ProjPointType<bigint>
-  G4?: ProjPointType<bigint>
-  B?: ProjPointType<bigint>
-  x2s?: Uint8Array
-  ZKPx2sBob?: Uint8Array
-  bobUserId?: string
+  private x1?: Uint8Array
+  private x2?: Uint8Array
+  private G1?: ProjPointType<bigint>
+  private G2?: ProjPointType<bigint>
+  private G3?: ProjPointType<bigint>
+  private G4?: ProjPointType<bigint>
+  private B?: ProjPointType<bigint>
+  private x2s?: Uint8Array
+  private ZKPx2sBob?: Uint8Array
+  private bobUserId?: string
+
+  /**
+   * @returns The current state of the J-PAKE transfer.
+   */
+  public getState() {
+    return this.state
+  }
 
   /**
    * Creates a new instance of the JPake protocol.
@@ -311,6 +318,11 @@ class JPake {
       throw new JPakeError('Missing required data for key derivation')
     }
 
+    // Check that B is not a point at infinity
+    if (this.B.equals(secp256k1.ProjectivePoint.ZERO)) {
+      throw new VerificationError('Invalid point: B is the point at infinity')
+    }
+
     // Verify the received ZKP from Bob
     const generator = this.G1.add(this.G3).add(this.G2)
     const isValidZKP = this.verifyPeerProof(
@@ -321,11 +333,6 @@ class JPake {
     )
     if (!isValidZKP) {
       throw new VerificationError('ZKP verification failed')
-    }
-
-    // Check that B is not a point at infinity
-    if (this.B.equals(secp256k1.ProjectivePoint.ZERO)) {
-      throw new VerificationError('Invalid point: B is the point at infinity')
     }
 
     // Ka = (B - (G4 x [x2*s])) x [x2]

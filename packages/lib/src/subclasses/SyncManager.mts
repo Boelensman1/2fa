@@ -87,10 +87,15 @@ class SyncManager {
     deviceId: DeviceId,
     syncDevices = [] as SyncDevice[],
   ) {
-    if (!serverUrl.startsWith('ws://') && !serverUrl.startsWith('wss://')) {
-      throw new InitializationError(
-        'Invalid server URL, protocol must be ws or wss',
-      )
+    if (!serverUrl.startsWith('wss://')) {
+      if (
+        !serverUrl.startsWith('ws://') &&
+        process.env.NODE_ENV === 'testing'
+      ) {
+        throw new InitializationError(
+          'Invalid server URL, protocol must be wss',
+        )
+      }
     }
     this.deviceId = deviceId
     this.syncDevices = syncDevices

@@ -24,7 +24,7 @@ import {
   omit,
   passphrase,
 } from '../testUtils.mjs'
-import { totpEntry } from '../testUtils.mjs'
+import { newTotpEntry } from '../testUtils.mjs'
 import type { DeviceId } from '../../src/interfaces/SyncTypes.mjs'
 import { TwoFaLibEvent } from '../../src/TwoFaLibEvent.mjs'
 
@@ -60,7 +60,7 @@ describe('PersistentStorageManager', () => {
   })
 
   it('should return a locked representation', async () => {
-    const entryId = await twoFaLib.vault.addEntry(totpEntry)
+    const entryId = await twoFaLib.vault.addEntry(newTotpEntry)
 
     const locked = await twoFaLib.persistentStorage.getLockedRepresentation()
     expect(locked).toHaveLength(325)
@@ -79,7 +79,7 @@ describe('PersistentStorageManager', () => {
     expect(retrieved).toEqual(
       omit(
         {
-          ...totpEntry,
+          ...newTotpEntry,
           id: entryId,
           addedAt: expect.any(Number) as number,
           updatedAt: null,
@@ -137,7 +137,7 @@ describe('PersistentStorageManager', () => {
     expect(mockSaveFunction).toHaveBeenCalledTimes(1)
 
     // Add an entry
-    await twoFaLib.vault.addEntry(totpEntry)
+    await twoFaLib.vault.addEntry(newTotpEntry)
 
     // Check if save function was called again
     expect(mockSaveFunction).toHaveBeenCalledTimes(2)

@@ -1,12 +1,10 @@
 import { InvalidCommandError } from '../TwoFALibError.mjs'
 import type TwoFaLibMediator from '../TwoFaLibMediator.mjs'
 
+import commandConstructors from '../Command/commandConstructors.mjs'
 import type Command from '../Command/BaseCommand.mjs'
 import CommandQueue from '../Command/CommandQueue.mjs'
-import {
-  commandConstructors,
-  type SyncCommand,
-} from '../Command/commandTypes.mjs'
+import { type SyncCommand } from '../interfaces/CommandTypes.mjs'
 
 interface CommandConstructor {
   fromJSON(input: unknown): Command

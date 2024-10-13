@@ -225,5 +225,16 @@ describe('Crypto Provider Comparison', () => {
       )
       expect(decrypted).toEqual(testMessage)
     })
+
+    test('Node and Browser createSyncKey produce the same result', async () => {
+      const sharedKey = new Uint8Array([1, 2, 3, 4, 5])
+      const salt = 'testSalt'
+
+      const nodeSyncKey = await nodeCrypto.createSyncKey(sharedKey, salt)
+      const browserSyncKey = await browserCrypto.createSyncKey(sharedKey, salt)
+
+      expect(nodeSyncKey).toBe(browserSyncKey)
+      expect(nodeSyncKey.length).toBeGreaterThan(0)
+    })
   })
 })

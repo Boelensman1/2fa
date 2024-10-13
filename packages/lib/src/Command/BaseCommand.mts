@@ -1,7 +1,7 @@
 import { v4 as uuidv4 } from 'uuid'
-import type InternalVaultManager from '../subclasses/VaultDataManager.mjs'
+import type VaultDataManager from '../subclasses/VaultDataManager.mjs'
 
-import { CommandData } from './commandTypes.mjs'
+import { CommandData } from '../interfaces/CommandTypes.mjs'
 
 /**
  * Abstract base class for commands that interact with the vault.
@@ -41,20 +41,18 @@ abstract class BaseCommand<T extends CommandData = CommandData> {
   }
 
   /**
-   * Executes the command using the provided InternalVaultManager.
-   * @param internalVaultManager - The InternalVaultManager instance to use for execution.
+   * Executes the command using the provided VaultDataManager.
+   * @param VaultDataManager - The VaultDataManager instance to use for execution.
    * @returns A Promise that resolves when the execution is complete.
    */
-  abstract execute(internalVaultManager: InternalVaultManager): Promise<void>
+  abstract execute(VaultDataManager: VaultDataManager): Promise<void>
 
   /**
    * Creates an undo command that, when executed, reverses the effects of this command.
-   * @param internalVaultManager - The InternalVaultManager instance to use for creating the undo command.
+   * @param VaultDataManager - The VaultDataManager instance to use for creating the undo command.
    * @returns A BaseCommand instance that undoes this command.
    */
-  abstract createUndoCommand(
-    internalVaultManager: InternalVaultManager,
-  ): BaseCommand
+  abstract createUndoCommand(VaultDataManager: VaultDataManager): BaseCommand
 
   /**
    * Creates a new instance of the command with the provided data.

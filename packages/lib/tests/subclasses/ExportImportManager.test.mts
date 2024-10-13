@@ -6,8 +6,8 @@ import openpgp from 'openpgp'
 import { TwoFaLib } from '../../src/main.mjs'
 
 import {
-  anotherTotpEntry,
-  totpEntry,
+  anotherNewTotpEntry,
+  newTotpEntry,
   clearEntries,
   createTwoFaLibForTests,
   passphrase,
@@ -31,8 +31,8 @@ describe('ExportImportManager', () => {
 
   describe('exportEntries', () => {
     beforeEach(async () => {
-      await twoFaLib.vault.addEntry(totpEntry)
-      await twoFaLib.vault.addEntry(anotherTotpEntry)
+      await twoFaLib.vault.addEntry(newTotpEntry)
+      await twoFaLib.vault.addEntry(anotherNewTotpEntry)
     })
 
     it('should export entries in text format', async () => {
@@ -119,8 +119,8 @@ describe('ExportImportManager', () => {
     })
 
     it('should throw an error when password is too weak', async () => {
-      await twoFaLib.vault.addEntry(totpEntry)
-      await twoFaLib.vault.addEntry(anotherTotpEntry)
+      await twoFaLib.vault.addEntry(newTotpEntry)
+      await twoFaLib.vault.addEntry(anotherNewTotpEntry)
 
       const weakPassword = 'weak'
 
@@ -139,9 +139,9 @@ describe('ExportImportManager', () => {
 
     expect(importedEntry).toEqual(
       expect.objectContaining({
-        name: totpEntry.name,
-        issuer: totpEntry.issuer,
-        type: totpEntry.type,
+        name: newTotpEntry.name,
+        issuer: newTotpEntry.issuer,
+        type: newTotpEntry.type,
       }),
     )
 
@@ -154,7 +154,7 @@ describe('ExportImportManager', () => {
       validTill: expect.any(Number) as number,
     })
 
-    expect(token.otp).toHaveLength(totpEntry.payload.digits)
+    expect(token.otp).toHaveLength(newTotpEntry.payload.digits)
   })
 
   it('should throw an error when importing an invalid QR code (Uint8Array)', async () => {
@@ -316,8 +316,8 @@ describe('ExportImportManager', () => {
     })
 
     it('should import entries from an encrypted text file', async () => {
-      await twoFaLib.vault.addEntry(totpEntry)
-      await twoFaLib.vault.addEntry(anotherTotpEntry)
+      await twoFaLib.vault.addEntry(newTotpEntry)
+      await twoFaLib.vault.addEntry(anotherNewTotpEntry)
 
       const encryptedContents = await twoFaLib.exportImport.exportEntries(
         'text',

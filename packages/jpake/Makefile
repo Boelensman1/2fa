@@ -17,7 +17,7 @@ test: $(INSTALL_DEPS)
 	npx vitest
 
 coverage: $(INSTALL_DEPS) $(SRC_FILES) $(TEST_FILES)
-	CI=1 npx vitest --coverage --coverage.exclude=build --coverage.exclude=tests
+	CI=1 npx vitest --coverage --coverage.exclude=build --coverage.exclude=tests --coverage.exclude=__mocks__
 
 lint: $(INSTALL_DEPS)
 	npx --no-install prettier --check --ignore-path=../../.gitignore .

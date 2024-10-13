@@ -15,7 +15,6 @@ const getMetaForEntry = (entry: Entry) => ({
   name: entry.name,
   issuer: entry.issuer,
   type: entry.type,
-  order: entry.order,
   addedAt: entry.addedAt,
   updatedAt: entry.updatedAt,
 })
@@ -131,7 +130,6 @@ class VaultManager {
     const newEntry: Entry = {
       ...entry,
       id: newId,
-      order: entry.order ?? 0,
       addedAt: Date.now(),
       updatedAt: null,
     }

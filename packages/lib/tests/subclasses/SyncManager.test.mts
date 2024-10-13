@@ -21,10 +21,10 @@ import {
 } from '../../src/main.mjs'
 
 import {
-  anotherTotpEntry,
+  anotherNewTotpEntry,
   createTwoFaLibForTests,
   passphrase,
-  totpEntry,
+  newTotpEntry,
 } from '../testUtils.mjs'
 import { Client as WsClient } from 'mock-socket'
 import {
@@ -95,7 +95,7 @@ describe('SyncManager', () => {
     await server.connected // only the first server.connected works atm
     await server.nextMessage // wait for the hello message
 
-    await senderTwoFaLib.vault.addEntry(totpEntry)
+    await senderTwoFaLib.vault.addEntry(newTotpEntry)
 
     receiverTwoFaLib = new TwoFaLib('receiver' as DeviceType, cryptoLib, [
       'test',
@@ -227,7 +227,7 @@ describe('SyncManager', () => {
 
     // if we now add an entry to one of the libs, it should also be pushed to the other
     // const addedEntryId = await senderTwoFaLib.vault.addEntry(anotherTotpEntry)
-    await senderTwoFaLib.vault.addEntry(anotherTotpEntry)
+    await senderTwoFaLib.vault.addEntry(anotherNewTotpEntry)
 
     const message = (await server.nextMessage) as { data: unknown[] }
     send(receiverWsInstance, 'syncCommand', message.data[0])

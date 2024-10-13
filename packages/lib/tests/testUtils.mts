@@ -6,9 +6,11 @@ import {
   type NewEntry,
   type Passphrase,
   type TwoFaLib,
+  Entry,
+  EntryId,
 } from '../src/main.mjs'
 
-export const totpEntry: NewEntry = {
+export const newTotpEntry: NewEntry = {
   name: 'Test TOTP',
   issuer: 'Test Issuer',
   type: 'TOTP',
@@ -19,11 +21,23 @@ export const totpEntry: NewEntry = {
     digits: 6,
   },
 }
+export const totpEntry: Entry = {
+  ...newTotpEntry,
+  id: '0000' as EntryId,
+  addedAt: Date.now(),
+  updatedAt: 0,
+}
 
-export const anotherTotpEntry: NewEntry = {
-  ...totpEntry,
+export const anotherNewTotpEntry: NewEntry = {
+  ...newTotpEntry,
   name: 'Another TOTP',
   issuer: 'Another Issuer',
+}
+export const anotherTotpEntry: Entry = {
+  ...newTotpEntry,
+  id: '1111' as EntryId,
+  addedAt: Date.now(),
+  updatedAt: 0,
 }
 
 export const deviceId = 'device-id' as DeviceId

@@ -1,5 +1,5 @@
 import { InvalidCommandError } from '../../TwoFALibError.mjs'
-import type InternalVaultManager from '../../subclasses/VaultDataManager.mjs'
+import type VaultDataManager from '../../subclasses/VaultDataManager.mjs'
 import Command from '../BaseCommand.mjs'
 import type Entry from '../../interfaces/Entry.mjs'
 import { EntryId } from '../../interfaces/Entry.mjs'
@@ -36,10 +36,11 @@ class UpdateEntryCommand extends Command<UpdateEntryData> {
    * @inheritdoc
    * @throws {InvalidCommandError} If the command data is invalid.
    */
-  async execute(vault: InternalVaultManager) {
+  async execute(vault: VaultDataManager) {
     if (!this.validate()) {
       throw new InvalidCommandError('Invalid UpdateEntry command')
     }
+    this.originalEntry = vault.getFullEntry(this.data.entryId)
     await vault.updateEntry(this.data.updatedEntry)
   }
 
@@ -65,8 +66,8 @@ class UpdateEntryCommand extends Command<UpdateEntryData> {
    * @returns True if the command data is valid, false otherwise.
    */
   validate(): boolean {
-    // TODO: write the validate function
-    return true
+    // TODO: write a complete validate function
+    return Boolean(this.data.entryId)
   }
 }
 

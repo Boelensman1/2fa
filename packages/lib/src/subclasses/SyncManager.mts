@@ -32,8 +32,8 @@ import type {
   PublicKey,
   Salt,
 } from '../interfaces/CryptoLib.mjs'
+import type { SyncCommand } from '../interfaces/CommandTypes.mjs'
 import type Command from '../Command/BaseCommand.mjs'
-import type { SyncCommand } from '../Command/commandTypes.mjs'
 
 import type TwoFaLibMediator from '../TwoFaLibMediator.mjs'
 

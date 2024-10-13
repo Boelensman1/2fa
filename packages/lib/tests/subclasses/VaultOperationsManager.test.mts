@@ -8,8 +8,8 @@ import {
 } from '../../src/main.mjs'
 
 import {
-  anotherTotpEntry,
-  totpEntry,
+  anotherNewTotpEntry,
+  newTotpEntry,
   clearEntries,
   createTwoFaLibForTests,
   omit,
@@ -27,13 +27,13 @@ describe('VaultManager', () => {
   })
 
   it('should add and retrieve a Entry', async () => {
-    const entryId = await twoFaLib.vault.addEntry(totpEntry)
+    const entryId = await twoFaLib.vault.addEntry(newTotpEntry)
     const retrieved = twoFaLib.vault.getEntryMeta(entryId)
 
     expect(retrieved).toEqual(
       omit(
         {
-          ...totpEntry,
+          ...newTotpEntry,
           id: entryId,
           addedAt: expect.any(Number) as number,
           updatedAt: null,
@@ -44,23 +44,23 @@ describe('VaultManager', () => {
   })
 
   it('should generate an otp', async () => {
-    const id = await twoFaLib.vault.addEntry(totpEntry)
+    const id = await twoFaLib.vault.addEntry(newTotpEntry)
     const otp = twoFaLib.vault.generateTokenForEntry(id, new Date(0).getTime())
 
     expect(otp).toEqual({
       otp: '810290',
       validFrom: 0,
-      validTill: totpEntry.payload.period * 1000,
+      validTill: newTotpEntry.payload.period * 1000,
     })
   })
 
   it('should get all Entries', async () => {
     const totpEntry2: NewEntry = {
-      ...totpEntry,
-      payload: { ...totpEntry.payload, secret: 'Secret2' },
+      ...newTotpEntry,
+      payload: { ...newTotpEntry.payload, secret: 'Secret2' },
     }
 
-    const id1 = await twoFaLib.vault.addEntry(totpEntry)
+    const id1 = await twoFaLib.vault.addEntry(newTotpEntry)
     const id2 = await twoFaLib.vault.addEntry(totpEntry2)
 
     const allEntries = twoFaLib.vault.listEntries()
@@ -70,7 +70,7 @@ describe('VaultManager', () => {
   })
 
   it('should delete a Entry', async () => {
-    const id = await twoFaLib.vault.addEntry(totpEntry)
+    const id = await twoFaLib.vault.addEntry(newTotpEntry)
     expect(twoFaLib.vault.listEntries()).toHaveLength(1)
 
     await twoFaLib.vault.deleteEntry(id)
@@ -90,9 +90,9 @@ describe('VaultManager', () => {
   })
 
   it('should update an existing entry', async () => {
-    const entryId = await twoFaLib.vault.addEntry(totpEntry)
+    const entryId = await twoFaLib.vault.addEntry(newTotpEntry)
     const updatedEntry = {
-      ...totpEntry,
+      ...newTotpEntry,
       name: 'Updated TOTP',
       issuer: 'Updated Issuer',
     }
@@ -113,13 +113,13 @@ describe('VaultManager', () => {
 
   it('should throw an error when updating a non-existent entry', async () => {
     await expect(
-      twoFaLib.vault.updateEntry('non-existing' as EntryId, totpEntry),
+      twoFaLib.vault.updateEntry('non-existing' as EntryId, newTotpEntry),
     ).rejects.toThrow(EntryNotFoundError)
   })
 
   it('should search for entries', async () => {
-    const id1 = await twoFaLib.vault.addEntry(totpEntry)
-    const id2 = await twoFaLib.vault.addEntry(anotherTotpEntry)
+    const id1 = await twoFaLib.vault.addEntry(newTotpEntry)
+    const id2 = await twoFaLib.vault.addEntry(anotherNewTotpEntry)
 
     const searchResults = twoFaLib.vault.searchEntries('test')
     expect(searchResults).toContain(id1)
@@ -131,8 +131,8 @@ describe('VaultManager', () => {
   })
 
   it('should search for entry metas', async () => {
-    const id1 = await twoFaLib.vault.addEntry(totpEntry)
-    const id2 = await twoFaLib.vault.addEntry(anotherTotpEntry)
+    const id1 = await twoFaLib.vault.addEntry(newTotpEntry)
+    const id2 = await twoFaLib.vault.addEntry(anotherNewTotpEntry)
 
     const searchResults = twoFaLib.vault.searchEntriesMetas('test')
     expect(searchResults).toEqual(
@@ -152,8 +152,8 @@ describe('VaultManager', () => {
   })
 
   it('should list all entry metas', async () => {
-    const id1 = await twoFaLib.vault.addEntry(totpEntry)
-    const id2 = await twoFaLib.vault.addEntry(anotherTotpEntry)
+    const id1 = await twoFaLib.vault.addEntry(newTotpEntry)
+    const id2 = await twoFaLib.vault.addEntry(anotherNewTotpEntry)
 
     const allMetas = twoFaLib.vault.listEntriesMetas()
     expect(allMetas).toHaveLength(2)
@@ -162,7 +162,7 @@ describe('VaultManager', () => {
   })
 
   it('should generate different OTPs for different timestamps', async () => {
-    const entryId = await twoFaLib.vault.addEntry(totpEntry)
+    const entryId = await twoFaLib.vault.addEntry(newTotpEntry)
     const otp1 = twoFaLib.vault.generateTokenForEntry(entryId, 0)
     const otp2 = twoFaLib.vault.generateTokenForEntry(entryId, 30000) // 30 seconds later
 

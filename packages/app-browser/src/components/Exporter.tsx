@@ -115,7 +115,7 @@ const Exporter = () => {
         </div>
       </Show>
       <button
-        onClick={() => void handleExport}
+        onClick={() => void handleExport()}
         disabled={!password() && !acknowledgedWarning()}
         class="bg-blue-500 text-white py-2 px-4 rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
       >

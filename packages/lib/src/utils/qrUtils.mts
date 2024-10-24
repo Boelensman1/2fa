@@ -2,6 +2,7 @@ import type { ImageData } from 'canvas'
 import { isUint8Array } from 'uint8array-extras'
 
 import { TwoFALibError } from '../TwoFALibError.mjs'
+import LibraryLoader from '../subclasses/LibraryLoader.mjs'
 
 /**
  * Gets the ImageData from an image, for browser environments.
@@ -63,4 +64,37 @@ export const getImageDataNode = async (
   const ctx = canvas.getContext('2d')
   ctx.drawImage(image, 0, 0)
   return ctx.getImageData(0, 0, image.width, image.height)
+}
+
+/**
+ * Import an entry from a QR code image.
+ * @param libraryLoader - An instance of LibraryLoader.
+ * @param imageInput - The image containing the QR code
+ * @returns A promise that resolves to the qr data.
+ * @throws {InvalidInputExportImportError} If the QR code is invalid or doesn't contain a valid OTP URI.
+ */
+export const getDataFromQRImage = async (
+  libraryLoader: LibraryLoader,
+  imageInput: string | File | Uint8Array,
+) => {
+  const jsQr = await libraryLoader.getJsQrLib()
+  let imageData: ImageData
+  if (typeof window !== 'undefined') {
+    // Browser environment
+    imageData = await getImageDataBrowser(imageInput as string | File)
+  } else {
+    if (imageInput instanceof File) {
+      throw new TwoFALibError(
+        'Getting data from QR where image type is "File" is not supported in the node environment',
+      )
+    }
+    // Node.js environment
+    const canvasLib = await libraryLoader.getCanvasLib()
+    imageData = await getImageDataNode(canvasLib, imageInput)
+  }
+  const qrCodeResult = jsQr(imageData.data, imageData.width, imageData.height)
+  if (!qrCodeResult) {
+    throw new TwoFALibError("Couldn't read QR code data from image")
+  }
+  return qrCodeResult.data
 }

@@ -1,7 +1,7 @@
 import type { ImageData } from 'canvas'
 import { base64ToString } from 'uint8array-extras'
 
-import { getImageDataBrowser, getImageDataNode } from './getImageData.mjs'
+import { getImageDataBrowser, getImageDataNode } from './qrUtils.mjs'
 import { InitiateAddDeviceFlowResult } from '../interfaces/SyncTypes.mjs'
 import { SyncError } from '../TwoFALibError.mjs'
 

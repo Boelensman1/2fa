@@ -1,4 +1,3 @@
-import type { ImageData } from 'canvas'
 import type { NonEmptyTuple } from 'type-fest'
 
 import {
@@ -9,10 +8,7 @@ import {
   encryptExport,
   decryptExport,
 } from '../utils/exportImportUtils.mjs'
-import {
-  getImageDataBrowser,
-  getImageDataNode,
-} from '../utils/getImageData.mjs'
+import { getDataFromQRImage } from '../utils/qrUtils.mjs'
 import { EntryId } from '../interfaces/Entry.mjs'
 import type { Passphrase } from '../interfaces/CryptoLib.mjs'
 
@@ -151,33 +147,14 @@ class ExportImportManager {
 
   /**
    * Import an entry from a QR code image.
-   * @param imageInput - The image input
+   * @param imageInput - The image containing the QR code
    * @returns A promise that resolves to the newly added EntryId.
    * @throws {InvalidInputExportImportError} If the QR code is invalid or doesn't contain a valid OTP URI.
    */
   async importFromQRCode(
     imageInput: string | File | Uint8Array,
   ): Promise<EntryId> {
-    const jsQr = await this.libraryLoader.getJsQrLib()
-    let imageData: ImageData
-    if (typeof window !== 'undefined') {
-      // Browser environment
-      imageData = await getImageDataBrowser(imageInput as string | File)
-    } else {
-      if (imageInput instanceof File) {
-        throw new ExportImportError(
-          'Imports of type "File" are not supported in the node environment',
-        )
-      }
-      // Node.js environment
-      const canvasLib = await this.libraryLoader.getCanvasLib()
-      imageData = await getImageDataNode(canvasLib, imageInput)
-    }
-    const qrCodeResult = jsQr(imageData.data, imageData.width, imageData.height)
-    if (!qrCodeResult) {
-      throw new ExportImportError('Invalid QR code')
-    }
-    const otpUri = qrCodeResult.data
+    const otpUri = await getDataFromQRImage(this.libraryLoader, imageInput)
     return this.importFromUri(otpUri)
   }
 }

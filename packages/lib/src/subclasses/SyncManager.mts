@@ -45,6 +45,8 @@ import {
 } from '../TwoFALibError.mjs'
 import { EncryptedVaultData } from '../interfaces/Vault.mjs'
 import { SyncCommandFromServer } from '2faserver/ServerMessage'
+const IN_TESTING = process.env.NODE_ENV === 'test'
+const IN_DEV = process.env.NODE_ENV === 'development'
 
 const generateNonCryptographicRandomString = () => {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
@@ -61,12 +63,14 @@ const generateNonCryptographicRandomString = () => {
 class SyncManager {
   private ws?: WebSocket
   private activeAddDeviceFlow?: ActiveAddDeviceFlow
-  private readonly reconnectInterval: number = 5000 // 5 seconds
+  private readonly reconnectInterval: number = IN_TESTING ? 100 : 5000 // 5 seconds
   private readonly serverUrl: string
   syncDevices: SyncDevice[]
   deviceId: DeviceId
 
-  private readySend = false
+  private readyEventEmitted = false
+
+  private commandSendQueue: SyncCommandFromClient[] = []
 
   /**
    * Creates an instance of SyncManager.
@@ -89,10 +93,7 @@ class SyncManager {
     syncDevices = [] as SyncDevice[],
   ) {
     if (!serverUrl.startsWith('wss://')) {
-      if (
-        !serverUrl.startsWith('ws://') &&
-        process.env.NODE_ENV === 'testing'
-      ) {
+      if (!serverUrl.startsWith('ws://') && !(IN_DEV || IN_TESTING)) {
         throw new InitializationError(
           'Invalid server URL, protocol must be wss',
         )

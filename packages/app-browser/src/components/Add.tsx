@@ -1,4 +1,4 @@
-import { createSignal } from 'solid-js'
+import { createSignal, Show } from 'solid-js'
 import useStore from '../store/useStore'
 
 const Add = () => {
@@ -6,6 +6,7 @@ const Add = () => {
   const [secret, setSecret] = createSignal('')
   const [issuer, setIssuer] = createSignal('')
   const [digits, setDigits] = createSignal<6 | 8>(6)
+  const [errorMessage, setErrorMessage] = createSignal<string | null>(null)
 
   const add = async () => {
     if (!name() || !secret() || !issuer()) {
@@ -37,6 +38,49 @@ const Add = () => {
   const handleSubmit = (e: Event) => {
     e.preventDefault()
     void add()
+  }
+
+  const handlePaste = async (event: ClipboardEvent) => {
+    const [state] = useStore()
+    const { twoFaLib } = state
+    if (!twoFaLib) {
+      throw new Error('twoFaLib not loaded')
+    }
+
+    const items = event.clipboardData?.items
+    if (!items) {
+      setErrorMessage('No items found in clipboard.')
+      return
+    }
+
+    if (items.length > 1) {
+      setErrorMessage('Please paste only one image at a time.')
+      return
+    }
+
+    setErrorMessage(null)
+
+    const [item] = items
+    if (!item.type.startsWith('image')) {
+      setErrorMessage('Pasted content is not an image.')
+      return
+    }
+
+    const blob = item.getAsFile()
+    if (!blob) {
+      setErrorMessage('Failed to get image file from clipboard.')
+      return
+    }
+
+    try {
+      await twoFaLib.vault.addEntryFromQRCode(blob)
+    } catch (error) {
+      if (error instanceof Error) {
+        setErrorMessage(`Failed to add entry: ${error.message}`)
+      } else {
+        setErrorMessage('Failed to add entry.')
+      }
+    }
   }
 
   return (
@@ -89,6 +133,19 @@ const Add = () => {
           </select>
         </label>
       </div>
+
+      <div
+        class="border-2 border-dashed border-gray-300 p-8 text-center cursor-pointer mb-4"
+        onPaste={handlePaste}
+        tabIndex={0}
+      >
+        <p>Click here and paste your QR code image (Ctrl+V)</p>
+      </div>
+
+      <Show when={errorMessage()}>
+        <p class="text-red-500 mt-2">{errorMessage()}</p>
+      </Show>
+
       <button
         type="submit"
         class="w-full bg-blue-500 text-white py-2 px-4 rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 transition duration-200"

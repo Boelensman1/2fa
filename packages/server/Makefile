@@ -3,6 +3,7 @@ SRC_FILES:=$(shell find src/)
 
 
 build: $(INSTALL_DEPS) $(SRC_FILES) tsconfig.json tsconfig.build.json
+	rm -rf build *.tsbuildinfo # TODO: find out why this is needed
 	npx tsc --project ./tsconfig.build.json
 	@touch build
 

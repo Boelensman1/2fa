@@ -166,7 +166,7 @@ describe('ExportImportManager', () => {
   })
 
   describe('importFromUri', () => {
-    it('should successfully import a valid OTP URI', async () => {
+    it('should successfully import valid OTP URIs', async () => {
       const otpUri =
         'otpauth://totp/Example:alice@google.com?secret=JBSWY3DPEHPK3PXP&issuer=Example'
 
@@ -231,6 +231,70 @@ describe('ExportImportManager', () => {
 
       const token = twoFaLib.vault.generateTokenForEntry(entryId)
       expect(token.otp).toHaveLength(6) // Default digit length
+    })
+
+    it.only('should successfully import multiple valid OTP URIs', async () => {
+      const testCases = [
+        {
+          uri: 'otpauth://totp/Example:alice@google.com?secret=JBSWY3DPEHPK3PXP&issuer=Example',
+          expected: {
+            name: 'alice@google.com',
+            issuer: 'Example',
+            type: 'TOTP',
+          },
+          digits: 6,
+        },
+        {
+          uri: 'otpauth://totp/Another:bob@example.com?secret=HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ&issuer=Another&digits=8&period=60',
+          expected: {
+            name: 'bob@example.com',
+            issuer: 'Another',
+            type: 'TOTP',
+          },
+          digits: 8,
+        },
+        {
+          // different format where the issuer is an url param
+          uri: 'otpauth://totp/dave?secret=xxxxxxxxxxxxxx&issuer=Test',
+          expected: {
+            name: 'dave',
+            issuer: 'Test',
+            type: 'TOTP',
+          },
+          digits: 6,
+        },
+      ]
+
+      const entryIds = await Promise.all(
+        testCases.map((tc) => twoFaLib.exportImport.importFromUri(tc.uri)),
+      )
+
+      // Verify that entries were added
+      expect(entryIds).toHaveLength(testCases.length)
+      entryIds.forEach((id) => expect(id).toBeDefined())
+
+      // Retrieve the entries and check their properties
+      const entries = entryIds.map((id) => twoFaLib.vault.getEntryMeta(id))
+
+      testCases.forEach((tc, index) => {
+        expect(entries[index]).toEqual(expect.objectContaining(tc.expected))
+      })
+
+      // Generate tokens to ensure the entries are valid
+      const tokens = entryIds.map((id) =>
+        twoFaLib.vault.generateTokenForEntry(id),
+      )
+
+      tokens.forEach((token, index) => {
+        expect(token).toEqual(
+          expect.objectContaining({
+            otp: expect.any(String) as string,
+            validFrom: expect.any(Number) as number,
+            validTill: expect.any(Number) as number,
+          }),
+        )
+        expect(token.otp).toHaveLength(testCases[index].digits)
+      })
     })
   })
 

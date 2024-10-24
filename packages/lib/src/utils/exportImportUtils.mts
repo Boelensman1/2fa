@@ -58,14 +58,24 @@ export const parseOtpUri = (
   // some use /, some use :
   const splitOn = path[0].includes('/') ? '/' : ':'
 
-  // at least ente double encodes its exports
-  const [issuer, name] = decodeURIComponent(decodeURIComponent(path[0])).split(
-    splitOn,
-  )
+  // ente double encodes its exports
+  let [issuer, name]: (string | null)[] = decodeURIComponent(
+    decodeURIComponent(path[0]),
+  ).split(splitOn)
   const secret = searchParams.get('secret')
   const algorithm = parseOtpAlgorithm(searchParams.get('algorithm'))
   const digits = parseInt(searchParams.get('digits') ?? '6', 10)
   const period = parseInt(searchParams.get('period') ?? '30', 10)
+
+  // if searchParams has an issuer, use that
+  if (searchParams.get('issuer')) {
+    if (!name) {
+      name = issuer
+    }
+    issuer = searchParams.get('issuer')
+  }
+
+  // validate
   if (!secret) {
     throw new ExportImportError('Invalid OTP URI: missing secret')
   }
@@ -76,8 +86,8 @@ export const parseOtpUri = (
   }
 
   return {
-    name: name || 'Imported Entry',
-    issuer: issuer || 'Unknown Issuer',
+    name: name && name.length > 0 ? name : 'Imported Entry',
+    issuer: issuer && issuer.length > 0 ? issuer : 'Unknown Issuer',
     type: 'TOTP',
     payload: {
       secret,

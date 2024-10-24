@@ -29,9 +29,6 @@ class VaultManager {
    */
   constructor(private readonly mediator: TwoFaLibMediator) {}
 
-  private get exportImportManager() {
-    return this.mediator.getComponent('exportImportManager')
-  }
   private get vaultDataManager() {
     return this.mediator.getComponent('vaultDataManager')
   }
@@ -140,18 +137,6 @@ class VaultManager {
     await this.commandManager.execute(command)
 
     return newId
-  }
-
-  /**
-   * Add a new entry to the library via qr code. Is identical to calling exportImport.importFromQRCode
-   * @param imageInput - The image containing the QR code
-   * @returns A promise that resolves to the newly generated EntryId.
-   * @throws {InvalidCommandError} If the provided entry data is invalid or incomplete.
-   */
-  async addEntryFromQRCode(
-    imageInput: string | File | Uint8Array,
-  ): Promise<EntryId> {
-    return this.exportImportManager.importFromQRCode(imageInput)
   }
 
   /**

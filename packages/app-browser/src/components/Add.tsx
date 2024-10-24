@@ -73,7 +73,7 @@ const Add = () => {
     }
 
     try {
-      await twoFaLib.vault.addEntryFromQRCode(blob)
+      await twoFaLib.exportImport.importFromQRCode(blob)
     } catch (error) {
       if (error instanceof Error) {
         setErrorMessage(`Failed to add entry: ${error.message}`)

@@ -12,6 +12,11 @@ export { WebSocket as default } from 'mock-socket'
 
 import type ServerMessage from '2faserver/ServerMessage'
 import {
+  ConnectMessage,
+  SyncCommandsExecutedMessage,
+  SyncCommandsMessage,
+} from '2faserver/ClientMessage'
+import {
   CryptoLib,
   EncryptedPrivateKey,
   EncryptedSymmetricKey,
@@ -26,6 +31,8 @@ import {
   passphrase,
   newTotpEntry,
   totpEntry,
+  send,
+  connectDevices,
 } from '../testUtils.mjs'
 import { Client as WsClient } from 'mock-socket'
 import {
@@ -41,12 +48,36 @@ vi.mock('isomorphic-ws')
 const serverPort = 9770
 const serverBaseUrl = 'ws://localhost'
 
-const send = <T extends ServerMessage['type']>(
-  ws: WsClient,
-  type: T,
-  data: unknown = {},
+const handleSyncCommands = async (
+  server: WS,
+  senderWsInstance: WsClient,
+  receiverWsInstance: WsClient,
 ) => {
-  ws.send(JSON.stringify({ type, data }))
+  // Wait for the command to be re-sent
+  const syncCommandsMsg = (await server.nextMessage) as SyncCommandsMessage
+
+  if (syncCommandsMsg.type !== 'syncCommands') {
+    // eslint-disable-next-line no-restricted-globals
+    throw new Error(
+      `Wrong message received:\n ${JSON.stringify(syncCommandsMsg, null, 2)} `,
+    )
+  }
+
+  // Send confirmation of received commands
+  send(senderWsInstance, 'syncCommandsReceived', {
+    commandIds: syncCommandsMsg.data.commands.map((c) => c.commandId),
+  })
+
+  // Send commands to receiver
+  send(receiverWsInstance, 'syncCommands', syncCommandsMsg.data.commands)
+
+  const syncCommandsExecutedMsg =
+    (await server.nextMessage) as SyncCommandsExecutedMessage
+
+  return {
+    syncCommandsMessage: syncCommandsMsg,
+    syncCommandsExecutedMessage: syncCommandsExecutedMsg,
+  }
 }
 
 describe('SyncManager', () => {
@@ -69,16 +100,16 @@ describe('SyncManager', () => {
     salt = result.salt
 
     serverUrl = `${serverBaseUrl}:${serverPort}`
-    server = new WS(serverUrl, { jsonProtocol: true })
   })
 
   beforeEach(async () => {
+    server = new WS(serverUrl, { jsonProtocol: true })
     // server.connected is broken, so we have to use this workaround
     const allConnected = new Promise<void>((resolve) => {
       server.on('connection', (client) => {
         if (!senderWsInstance) {
           senderWsInstance = client
-        } else {
+        } else if (!receiverWsInstance) {
           receiverWsInstance = client
           resolve()
         }
@@ -124,6 +155,13 @@ describe('SyncManager', () => {
     senderWsInstance = null
     // @ts-expect-error we're force resetting
     receiverWsInstance = null
+
+    server.close()
+    // @ts-expect-error we're force resetting
+    server = null
+
+    senderTwoFaLib.sync?.closeServerConnection()
+    receiverTwoFaLib.sync?.closeServerConnection()
   })
 
   it('should initialize server connection', () => {
@@ -236,8 +274,11 @@ describe('SyncManager', () => {
     // const addedEntryId = await senderTwoFaLib.vault.addEntry(anotherTotpEntry)
     await senderTwoFaLib.vault.addEntry(anotherNewTotpEntry)
 
-    const message = (await server.nextMessage) as { data: unknown[] }
-    send(receiverWsInstance, 'syncCommands', [message.data[0]])
+    const { syncCommandsExecutedMessage } = await handleSyncCommands(
+      server,
+      senderWsInstance,
+      receiverWsInstance,
+    )
 
     await vi.waitUntil(() => receiverTwoFaLib.vault.size !== 1, {
       timeout: 1000,
@@ -248,17 +289,17 @@ describe('SyncManager', () => {
     )
 
     // receive the syncCommandsExecuted message
-    expect(await server.nextMessage).toEqual({
+    expect(syncCommandsExecutedMessage).toEqual({
       type: 'syncCommandsExecuted',
-      data: { ids: [expect.any(String)] },
+      data: { commandIds: [expect.any(String)] },
     })
 
     // and the other way around
     const addedEntryId = await receiverTwoFaLib.vault.addEntry(totpEntry)
 
     // mock server
-    const message2 = (await server.nextMessage) as { data: unknown[] }
-    send(senderWsInstance, 'syncCommands', [message2.data[0]])
+    const { syncCommandsExecutedMessage: syncCommandsExecutedMessage1 } =
+      await handleSyncCommands(server, receiverWsInstance, senderWsInstance)
 
     // entry should now be added
     await vi.waitUntil(() => senderTwoFaLib.vault.size !== 2, {
@@ -268,19 +309,17 @@ describe('SyncManager', () => {
     expect(senderTwoFaLib.vault.listEntries()).toEqual(
       receiverTwoFaLib.vault.listEntries(),
     )
-
-    // receive the syncCommandsExecuted message
-    expect(await server.nextMessage).toEqual({
+    // confirmation of execution should be send
+    expect(syncCommandsExecutedMessage1).toEqual({
       type: 'syncCommandsExecuted',
-      data: { ids: [expect.any(String)] },
+      data: { commandIds: [expect.any(String)] },
     })
 
     // if we delete an entry in one of the libs, it should also be deleted in the other
     await senderTwoFaLib.vault.deleteEntry(addedEntryId)
 
     // mock server
-    const message3 = (await server.nextMessage) as { data: unknown[] }
-    send(receiverWsInstance, 'syncCommands', [message3.data[0]])
+    await handleSyncCommands(server, senderWsInstance, receiverWsInstance)
 
     await vi.waitUntil(() => receiverTwoFaLib.vault.size !== 3, {
       timeout: 1000,
@@ -315,5 +354,79 @@ describe('SyncManager', () => {
 
     // syncCommands message has been send, readyPromise should resolve soon
     await expect(readyPromise).resolves.toBeUndefined()
+
+    newTwoFaLib.sync?.closeServerConnection()
   })
+
+  it('should re-send unsent commands when connection is re-established', async () => {
+    if (!senderTwoFaLib.sync) {
+      // eslint-disable-next-line no-restricted-globals
+      throw new Error('Sync manager not initialized')
+    }
+    expect(server.messagesToConsume.pendingItems).toHaveLength(0)
+    await connectDevices({
+      senderTwoFaLib,
+      receiverTwoFaLib,
+      server,
+      senderWsInstance,
+      receiverWsInstance,
+    })
+
+    // Add an entry while connected (should not be resend after the reconnect)
+    await senderTwoFaLib.vault.addEntry(newTotpEntry)
+    await handleSyncCommands(server, senderWsInstance, receiverWsInstance)
+    expect(server.messagesToConsume.pendingItems).toHaveLength(0)
+
+    // Simulate disconnection
+    senderWsInstance.close()
+
+    // Add an entry while disconnected
+    const addedEntryId =
+      await senderTwoFaLib.vault.addEntry(anotherNewTotpEntry)
+    send(senderWsInstance, 'syncCommands', [])
+    expect(server.messagesToConsume.pendingItems).toHaveLength(0)
+
+    // Simulate reconnection
+    // @ts-expect-error Accessing private property for testing
+    senderTwoFaLib.sync.ws.readyState = WebSocket.OPEN
+
+    const connectMessage = (await server.nextMessage) as ConnectMessage
+    expect(connectMessage.type).toBe('connect')
+    send(senderWsInstance, 'syncCommands', [])
+
+    // Wait for the command to be re-sent
+    const { syncCommandsMessage } = await handleSyncCommands(
+      server,
+      senderWsInstance,
+      receiverWsInstance,
+    )
+    expect(syncCommandsMessage).toEqual({
+      type: 'syncCommands',
+      data: {
+        nonce: expect.any(String) as string,
+        commands: [
+          expect.objectContaining({
+            deviceId: expect.any(String) as string,
+            encryptedSymmetricKey: expect.any(String) as string,
+            encryptedCommand: expect.any(String) as string,
+          }) as unknown,
+        ],
+      },
+    })
+
+    // Wait for the receiver to process the command
+    await vi.waitUntil(() => receiverTwoFaLib.vault.size === 3, {
+      timeout: 1000,
+      interval: 20,
+    })
+
+    // Verify that both libraries have the same entries
+    expect(receiverTwoFaLib.vault.listEntries()).toEqual(
+      senderTwoFaLib.vault.listEntries(),
+    )
+
+    // Verify that the added entry exists in both libraries
+    expect(senderTwoFaLib.vault.getEntryMeta(addedEntryId)).toBeTruthy()
+    expect(receiverTwoFaLib.vault.getEntryMeta(addedEntryId)).toBeTruthy()
+  }, 10000) // long running test, the re-connect itself takes 5 seconds
 })

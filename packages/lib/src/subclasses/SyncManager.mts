@@ -45,6 +45,8 @@ import {
 } from '../TwoFALibError.mjs'
 import { EncryptedVaultData } from '../interfaces/Vault.mjs'
 import { SyncCommandFromServer } from '2faserver/ServerMessage'
+import { SyncCommandFromClient } from '2faserver/ClientMessage'
+
 const IN_TESTING = process.env.NODE_ENV === 'test'
 const IN_DEV = process.env.NODE_ENV === 'development'
 
@@ -71,6 +73,9 @@ class SyncManager {
   private readyEventEmitted = false
 
   private commandSendQueue: SyncCommandFromClient[] = []
+
+  private reconnectTimeout?: NodeJS.Timeout
+  private shouldReconnect = true
 
   /**
    * Creates an instance of SyncManager.
@@ -143,17 +148,6 @@ class SyncManager {
     return this.ws?.readyState === WebSocket.OPEN
   }
 
-  /**
-   * @returns Whether commands should be sent based on connection and device state.
-   */
-  get shouldSendCommands(): boolean {
-    return (
-      this.webSocketConnected &&
-      !this.inAddDeviceFlow &&
-      this.syncDevices.length > 0
-    )
-  }
-
   private async getNonce() {
     return uint8ArrayToBase64(await this.cryptoLib.getRandomBytes(16))
   }
@@ -176,7 +170,10 @@ class SyncManager {
 
     // eslint-disable-next-line @typescript-eslint/no-this-alias
     const syncManager = this
-    ws.addEventListener('error', console.error)
+
+    ws.addEventListener('error', (event) => {
+      syncManager.log('warning', `Error in websocket: ${event.error}`)
+    })
 
     ws.addEventListener('message', function message(message: MessageEvent) {
       try {
@@ -205,6 +202,9 @@ class SyncManager {
       this.dispatchLibEvent(TwoFaLibEvent.ConnectionToSyncServerStatusChanged, {
         connected: true,
       })
+
+      // send any commands that were done while offline
+      void this.processCommandSendQueue()
     })
     ws.addEventListener('close', this.handleWebSocketClose.bind(this))
 
@@ -215,7 +215,10 @@ class SyncManager {
     this.dispatchLibEvent(TwoFaLibEvent.ConnectionToSyncServerStatusChanged, {
       connected: false,
     })
-    this.attemptReconnect()
+
+    if (this.shouldReconnect) {
+      this.attemptReconnect()
+    }
   }
 
   private handleServerMessage(message: ServerMessage) {
@@ -273,6 +276,13 @@ class SyncManager {
         )
         break
       }
+      case 'syncCommandsReceived': {
+        const {
+          data: { commandIds },
+        } = message
+        void this.commandsSuccesfullyReceived(commandIds)
+        break
+      }
       case 'syncCommands': {
         const { data: commands } = message
         void this.receiveCommands(commands)
@@ -284,7 +294,7 @@ class SyncManager {
   private attemptReconnect() {
     this.log('info', 'Connection to server lost, attempting to reconnect...')
 
-    setTimeout(() => {
+    this.reconnectTimeout = setTimeout(() => {
       this.initServerConnection()
     }, this.reconnectInterval)
   }
@@ -694,13 +704,9 @@ class SyncManager {
    * @throws {SyncNoServerConnectionError} If there is no server connection.
    */
   async sendCommand(command: Command) {
-    if (!this.ws || !this.webSocketConnected) {
-      throw new SyncNoServerConnectionError()
-    }
-
     const commandJson = command.toJSON()
 
-    const data = await Promise.all(
+    await Promise.all(
       this.syncDevices.map(async (device) => {
         const symmetricKey = await this.cryptoLib.createSymmetricKey()
         const encryptedSymmetricKey = await this.cryptoLib.encrypt(
@@ -711,18 +717,59 @@ class SyncManager {
           symmetricKey,
           JSON.stringify({
             ...commandJson,
+            id: undefined,
             padding: generateNonCryptographicRandomString(), // make it harder to guess the length
           }),
         )
-        return {
+
+        this.commandSendQueue.push({
+          commandId: command.id,
           deviceId: device.deviceId,
           encryptedSymmetricKey,
           encryptedCommand,
-        }
+        })
       }),
     )
 
-    this.sendToServer('syncCommands', data)
+    await this.processCommandSendQueue()
+  }
+
+  private async processCommandSendQueue() {
+    if (this.syncDevices.length === 0) {
+      // no devices to sync with, no need to send anything
+      this.commandSendQueue = []
+      return
+    }
+
+    if (!this.ws || !this.webSocketConnected) {
+      // not possible to process commands at this point
+      this.log(
+        'warning',
+        'Could not sync commands, no server connection, will retry later.',
+      )
+      return
+    }
+
+    if (this.commandSendQueue.length === 0) {
+      // no commands to sync
+      return
+    }
+
+    this.sendToServer('syncCommands', {
+      nonce: await this.getNonce(),
+      commands: this.commandSendQueue,
+    })
+  }
+
+  /**
+   * Handles the confirmation that the sever succesfully received (some) send commands
+   * @param commandIds - The ids of the received commands
+   */
+  private commandsSuccesfullyReceived(commandIds: string[]) {
+    // remove all succesfully received commands frm the queue
+    this.commandSendQueue = this.commandSendQueue.filter(
+      (command) => !commandIds.includes(command.commandId),
+    )
   }
 
   /**
@@ -743,9 +790,12 @@ class SyncManager {
             symmetricKey,
             data.encryptedCommand,
           ),
-        ) as SyncCommand
+        ) as Omit<SyncCommand, 'id'>
 
-        this.commandManager.receiveRemoteCommand(command)
+        this.commandManager.receiveRemoteCommand({
+          ...command,
+          id: data.commandId,
+        } as SyncCommand)
       }),
     )
 
@@ -754,12 +804,31 @@ class SyncManager {
 
     // if this was the first time we received commands,
     // we can signal that we're done loading after the commands where processed
-    if (!this.readySend) {
-      this.readySend = true
+    if (!this.readyEventEmitted) {
+      this.readyEventEmitted = true
       this.dispatchLibEvent(TwoFaLibEvent.Ready)
     }
 
-    this.sendToServer('syncCommandsExecuted', { ids: commandsExecutedIds })
+    if (commandsExecutedIds.length > 0) {
+      this.sendToServer('syncCommandsExecuted', {
+        commandIds: commandsExecutedIds,
+      })
+    }
+  }
+
+  /**
+   * Function to call when the server connection should be closed
+   */
+  public closeServerConnection() {
+    this.shouldReconnect = false
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout)
+      this.reconnectTimeout = undefined
+    }
+    if (this.ws) {
+      this.ws.close()
+      this.ws = undefined
+    }
   }
 }
 

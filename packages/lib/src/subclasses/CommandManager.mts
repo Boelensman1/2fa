@@ -133,7 +133,7 @@ class CommandManager {
   }
 
   private async sendCommandToOtherInstances(command: Command): Promise<void> {
-    if (!this.syncManager?.shouldSendCommands) {
+    if (!this.syncManager) {
       return Promise.resolve()
     }
 

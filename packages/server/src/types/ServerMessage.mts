@@ -20,13 +20,17 @@ export type VaultMessage = VaultServerMessage
 export type AddSyncDeviceCancelledMessage = AddSyncDeviceCancelledServerMessage
 
 export interface SyncCommandFromServer {
-  id: number
+  commandId: string
   encryptedCommand: Encrypted<string>
   encryptedSymmetricKey: EncryptedSymmetricKey
 }
-export interface SyncCommandMessage {
+export interface SyncCommandsMessage {
   type: 'syncCommands'
   data: SyncCommandFromServer[]
+}
+export interface SyncCommandReceivedMessage {
+  type: 'syncCommandsReceived'
+  data: { commandIds: string[] }
 }
 
 type OutgoingMessage =
@@ -35,7 +39,8 @@ type OutgoingMessage =
   | JPAKEPass3Message
   | PublicKeyMessage
   | VaultMessage
-  | SyncCommandMessage
+  | SyncCommandsMessage
   | AddSyncDeviceCancelledMessage
+  | SyncCommandReceivedMessage
 
 export default OutgoingMessage

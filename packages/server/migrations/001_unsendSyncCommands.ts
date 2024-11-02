@@ -1,11 +1,9 @@
 /* eslint-disable jsdoc/require-jsdoc */
 import type { Knex } from 'knex'
 
-import createIdColumn from './util/createIdColumn.mjs'
-
 export const up = async (knex: Knex) => {
   await knex.schema.createTable('unExecutedSyncCommands', (table): void => {
-    createIdColumn(table)
+    table.uuid('commandId').notNullable().primary()
     table.string('deviceId').notNullable()
     table.text('encryptedCommand').notNullable().unique()
     table.text('encryptedSymmetricKey')

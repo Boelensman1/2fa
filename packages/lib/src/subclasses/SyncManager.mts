@@ -198,6 +198,7 @@ class SyncManager {
     })
 
     ws.addEventListener('open', () => {
+      this.log('info', 'Connected to server.')
       this.sendToServer('connect', { deviceId: syncManager.deviceId })
       this.dispatchLibEvent(TwoFaLibEvent.ConnectionToSyncServerStatusChanged, {
         connected: true,

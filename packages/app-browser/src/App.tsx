@@ -48,6 +48,17 @@ const App: Component = () => {
       syncStoreWithLib(twoFaLib)
     })
 
+    twoFaLib.addEventListener(TwoFaLibEvent.Log, (event) => {
+      switch (event.detail.severity) {
+        case 'info':
+          console.log(event.detail.message)
+          break
+        case 'warning':
+          console.warn(event.detail.message)
+          break
+      }
+    })
+
     dispatch(actions.initialize(twoFaLib))
   }
 

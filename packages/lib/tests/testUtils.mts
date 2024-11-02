@@ -58,9 +58,7 @@ export const createTwoFaLibForTests = async () => {
   const { createNewTwoFaLibVault } = getTwoFaLibVaultCreationUtils(cryptoLib)
   const result = await createNewTwoFaLibVault(deviceType, passphrase, ['test'])
 
-  result.twoFaLib.addEventListener(TwoFaLibEvent.Log, (event) =>
-    console.log(event.detail),
-  )
+  addTestLogEventListener(result.twoFaLib)
 
   return { cryptoLib, passphrase, ...result }
 }
@@ -172,4 +170,16 @@ export const send = <T extends ServerMessage['type']>(
   data: unknown = {},
 ) => {
   ws.send(JSON.stringify({ type, data }))
+}
+
+/**
+ * Adds an event listener to relay warning logs
+ * @param lib - The TwoFaLib to add the event listener to
+ */
+export const addTestLogEventListener = (lib: TwoFaLib) => {
+  lib.addEventListener(TwoFaLibEvent.Log, (event) => {
+    if (event.detail.severity !== 'info') {
+      console.log(event.detail.message)
+    }
+  })
 }

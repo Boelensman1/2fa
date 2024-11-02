@@ -40,13 +40,25 @@ const Add = () => {
     void add()
   }
 
-  const handlePaste = async (event: ClipboardEvent) => {
+  const importFromQRCode = async (blob: File) => {
     const [state] = useStore()
     const { twoFaLib } = state
     if (!twoFaLib) {
       throw new Error('twoFaLib not loaded')
     }
 
+    try {
+      await twoFaLib.exportImport.importFromQRCode(blob)
+    } catch (error) {
+      if (error instanceof Error) {
+        setErrorMessage(`Failed to add entry: ${error.message}`)
+      } else {
+        setErrorMessage('Failed to add entry.')
+      }
+    }
+  }
+
+  const handlePaste = (event: ClipboardEvent) => {
     const items = event.clipboardData?.items
     if (!items) {
       setErrorMessage('No items found in clipboard.')
@@ -72,15 +84,7 @@ const Add = () => {
       return
     }
 
-    try {
-      await twoFaLib.exportImport.importFromQRCode(blob)
-    } catch (error) {
-      if (error instanceof Error) {
-        setErrorMessage(`Failed to add entry: ${error.message}`)
-      } else {
-        setErrorMessage('Failed to add entry.')
-      }
-    }
+    void importFromQRCode(blob)
   }
 
   return (

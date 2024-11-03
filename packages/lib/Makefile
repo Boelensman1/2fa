@@ -1,4 +1,4 @@
-INSTALL_DEPS:=node_modules ../jpake/build
+INSTALL_DEPS:=node_modules ../jpake/build ../server/build
 SRC_FILES:=$(shell find src/)
 TEST_FILES:=$(shell find tests/)
 
@@ -9,6 +9,9 @@ build: $(INSTALL_DEPS) $(SRC_FILES) tsconfig.json tsconfig.build.json
 
 ../jpake/build:
 	$(MAKE) -C ../jpake build
+
+../server/build:
+	$(MAKE) -C ../server build
 
 node_modules: package.json ../../package-lock.json
 	$(MAKE) -C ../.. node_modules

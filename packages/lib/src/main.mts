@@ -25,11 +25,10 @@ import type {
   DeviceId,
   DeviceType,
 } from './interfaces/SyncTypes.mjs'
-import type { EncryptedVaultData } from './interfaces/Vault.mjs'
 import type {
-  ChangedEventData,
-  ChangedEventWasChangedSinceLastEvent,
-} from './interfaces/Events.mjs'
+  EncryptedVaultStateString,
+  LockedRepresentationString,
+} from './interfaces/Vault.mjs'
 
 import {
   TwoFALibError,
@@ -59,7 +58,8 @@ export type {
   EntryMeta,
   EntryType,
   TotpPayload,
-  EncryptedVaultData,
+  EncryptedVaultStateString,
+  LockedRepresentationString,
   CryptoLib,
   Encrypted,
   EncryptedPrivateKey,
@@ -72,7 +72,5 @@ export type {
   Salt,
   DeviceId,
   DeviceType,
-  ChangedEventWasChangedSinceLastEvent,
-  ChangedEventData,
   SyncDevice,
 }

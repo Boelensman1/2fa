@@ -14,6 +14,7 @@ import {
   TwoFaLibEvent,
 } from '../src/main.mjs'
 import type { Client as WsClient } from 'mock-socket'
+import { PassphraseExtraDict } from '../src/interfaces/PassphraseExtraDict.js'
 
 export const newTotpEntry: NewEntry = {
   name: 'Test TOTP',
@@ -49,18 +50,30 @@ export const deviceId = 'device-id' as DeviceId
 export const deviceType = 'test-device' as DeviceType
 export const passphrase = 'w!22M@#GdRKqp#58#9&e' as Passphrase
 
+export const passphraseExtraDict: PassphraseExtraDict = ['test']
+
 /**
  * Creates a TwoFaLib instance that can be used for testing.
  * @returns A promise that resolves to the TwoFaLib instance.
  */
 export const createTwoFaLibForTests = async () => {
   const cryptoLib = new NodeCryptoProvider()
-  const { createNewTwoFaLibVault } = getTwoFaLibVaultCreationUtils(cryptoLib)
-  const result = await createNewTwoFaLibVault(deviceType, passphrase, ['test'])
+  const { createNewTwoFaLibVault } = getTwoFaLibVaultCreationUtils(
+    cryptoLib,
+    deviceType,
+    passphraseExtraDict,
+  )
+  const result = await createNewTwoFaLibVault(passphrase)
+  const keys = await cryptoLib.decryptKeys(
+    result.encryptedPrivateKey,
+    result.encryptedSymmetricKey,
+    result.salt,
+    passphrase,
+  )
 
   addTestLogEventListener(result.twoFaLib)
 
-  return { cryptoLib, passphrase, ...result }
+  return { cryptoLib, passphrase, ...result, ...keys }
 }
 
 /**

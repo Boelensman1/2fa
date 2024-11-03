@@ -1,27 +1,9 @@
 import type { EmptyObject } from 'type-fest'
-import type {
-  EncryptedPrivateKey,
-  EncryptedSymmetricKey,
-  Salt,
-} from '../interfaces/CryptoLib.mjs'
-import { TwoFaLibEvent } from '../TwoFaLibEvent.mjs'
-import type { DeviceId } from './SyncTypes.mjs'
+import type { TwoFaLibEvent } from '../TwoFaLibEvent.mjs'
+import type { LockedRepresentationString } from './Vault.mjs'
 
-export interface ChangedEventData {
-  lockedRepresentation: string
-  encryptedPrivateKey: EncryptedPrivateKey
-  encryptedSymmetricKey: EncryptedSymmetricKey
-  salt: Salt
-  deviceId: DeviceId
-  syncDevices: string
-}
-export type ChangedEventWasChangedSinceLastEvent = Record<
-  keyof ChangedEventData,
-  boolean
->
 export interface ChangedEvent {
-  changed: ChangedEventWasChangedSinceLastEvent
-  data: ChangedEventData
+  newLockedRepresentationString: LockedRepresentationString
 }
 export interface TwoFaLibEventMap {
   [TwoFaLibEvent.Changed]: ChangedEvent

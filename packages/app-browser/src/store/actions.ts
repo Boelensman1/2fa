@@ -6,10 +6,10 @@ import State from './types/State'
 
 export const types = {
   SET_ENTRIES: 'SET_ENTRIES' as const,
-  SET_AUTHENTICATED: 'SET_AUTHENTICATED' as const,
   INITIALIZE: 'INITIALIZE' as const,
   SET_SETTINGS: 'SET_SETTINGS' as const,
   SET_CONNECTING_TO_EXISTING_VAULT: 'SET_CONNECTING_TO_EXISTING_VAULT' as const,
+  SET_VAULT_EXISTS: 'SET_VAULT_EXISTS' as const,
 }
 
 const actions = {
@@ -17,21 +17,13 @@ const actions = {
     type: types.SET_ENTRIES,
     payload: entries,
   }),
-  setAuthenticated: (authenticated: boolean): Action => ({
-    type: types.SET_AUTHENTICATED,
-    payload: authenticated,
-  }),
   setConnectingToExistingVault: (connecting: boolean): Action => ({
     type: types.SET_CONNECTING_TO_EXISTING_VAULT,
     payload: connecting,
   }),
-  initialize: (twoFaLib: TwoFaLib | null): Action => ({
+  initialize: (twoFaLib: TwoFaLib): Action => ({
     type: types.INITIALIZE,
-    payload: twoFaLib
-      ? {
-          twoFaLib,
-        }
-      : null,
+    payload: twoFaLib,
   }),
   setSettings: (settings: State['settings']): Action => {
     // Update localStorage
@@ -41,6 +33,9 @@ const actions = {
       type: types.SET_SETTINGS,
       payload: settings,
     }
+  },
+  setVaultExists: (vaultExists: boolean): Action => {
+    return { type: types.SET_VAULT_EXISTS, payload: vaultExists }
   },
 }
 

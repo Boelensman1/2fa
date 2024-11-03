@@ -43,7 +43,7 @@ import {
   SyncNoServerConnectionError,
   TwoFALibError,
 } from '../TwoFALibError.mjs'
-import { EncryptedVaultData } from '../interfaces/Vault.mjs'
+import { VaultState, EncryptedVaultStateString } from '../interfaces/Vault.mjs'
 import { SyncCommandFromServer } from '2faserver/ServerMessage'
 import { SyncCommandFromClient } from '2faserver/ClientMessage'
 
@@ -271,7 +271,7 @@ class SyncManager {
       case 'vault': {
         const { data } = message
         const { encryptedVaultData, initiatorEncryptedPublicKey } = data
-        void this.importInitialVaultData(
+        void this.importInitialVaultState(
           encryptedVaultData,
           initiatorEncryptedPublicKey as EncryptedPublicKey,
         )
@@ -615,7 +615,7 @@ class SyncManager {
 
     // get the vault data (encrypted with the sync key)
     const encryptedVaultData =
-      await this.persistentStorageManager.getLockedRepresentation(syncKey)
+      await this.persistentStorageManager.getEncryptedVaultState(syncKey)
     const initiatorEncryptedPublicKey = await this.cryptoLib.encryptSymmetric(
       syncKey,
       this.publicKey,
@@ -634,14 +634,14 @@ class SyncManager {
       deviceType: this.activeAddDeviceFlow.responderDeviceType,
       publicKey: decryptedPublicKey as PublicKey,
     })
-    await this.persistentStorageManager.setChanged(['syncDevices'])
+    await this.persistentStorageManager.save()
 
     // all done
     this.activeAddDeviceFlow = undefined
   }
 
-  private async importInitialVaultData(
-    encryptedVaultData: EncryptedVaultData,
+  private async importInitialVaultState(
+    encryptedVaultState: EncryptedVaultStateString,
     encryptedPublicKey: EncryptedPublicKey,
   ) {
     if (this.activeAddDeviceFlow?.state !== 'responder:syncKeyCreated') {
@@ -658,11 +658,20 @@ class SyncManager {
       encryptedPublicKey,
     )
 
-    // Import the encrypted vault data using the ExportImportManager
-    await this.persistentStorageManager.loadFromLockedRepresentation(
-      encryptedVaultData,
-      syncKey,
-    )
+    const vaultState = JSON.parse(
+      await this.cryptoLib.decryptSymmetric(syncKey, encryptedVaultState),
+    ) as VaultState
+
+    if (vaultState.deviceId !== this.activeAddDeviceFlow.initiatorDeviceId) {
+      throw new SyncError(
+        `DeviceId mismatch when importing, expected ${this.activeAddDeviceFlow.initiatorDeviceId} got ${vaultState.deviceId}`,
+      )
+    }
+
+    this.syncDevices = vaultState.syncDevices
+    this.mediator
+      .getComponent('vaultDataManager')
+      .replaceVault(vaultState.vault)
 
     // Update the sync devices list with the initiator's information
     this.syncDevices.push({
@@ -670,7 +679,7 @@ class SyncManager {
       deviceType: this.activeAddDeviceFlow.initiatorDeviceType,
       publicKey: decryptedPublicKey as PublicKey,
     })
-    await this.persistentStorageManager.setChanged(['syncDevices'])
+    await this.persistentStorageManager.save()
 
     // Reset the active add device flow
     this.activeAddDeviceFlow = undefined

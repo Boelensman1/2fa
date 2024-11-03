@@ -1,9 +1,9 @@
 import { createSignal, Show, createEffect } from 'solid-js'
 import useStore from '../store/useStore'
 import PasswordStrengthMeter from './PasswordStrengthMeter'
-import { getTwoFaLibVaultCreationUtils, type Passphrase } from '2falib'
-import BrowserCryptoProvider from '2falib/cryptoProviders/browser'
+import type { Passphrase } from '2falib'
 import type { ZxcvbnResult } from '@zxcvbn-ts/core'
+import creationUtils from '../utils/creationUtils'
 
 const Exporter = () => {
   const [state] = useStore()
@@ -12,10 +12,6 @@ const Exporter = () => {
   const [acknowledgedWarning, setAcknowledgedWarning] = createSignal(false)
   const [passwordStrength, setPasswordStrength] =
     createSignal<ZxcvbnResult | null>(null)
-
-  const creationUtils = getTwoFaLibVaultCreationUtils(
-    new BrowserCryptoProvider(),
-  )
 
   createEffect(() => {
     if (password()) {

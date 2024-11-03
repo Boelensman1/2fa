@@ -1,5 +1,3 @@
-import type { NonEmptyTuple } from 'type-fest'
-
 import {
   parseOtpUri,
   generateHtmlExport,
@@ -11,6 +9,7 @@ import {
 import { getDataFromQRImage } from '../utils/qrUtils.mjs'
 import { EntryId } from '../interfaces/Entry.mjs'
 import type { Passphrase } from '../interfaces/CryptoLib.mjs'
+import type { PassphraseExtraDict } from '../interfaces/PassphraseExtraDict.js'
 
 import type TwoFaLibMediator from '../TwoFaLibMediator.mjs'
 import { ExportImportError } from '../TwoFALibError.mjs'
@@ -27,7 +26,7 @@ class ExportImportManager {
    */
   constructor(
     private readonly mediator: TwoFaLibMediator,
-    private readonly passphraseExtraDict: NonEmptyTuple<string>,
+    private readonly passphraseExtraDict: PassphraseExtraDict,
   ) {}
 
   private get libraryLoader() {
@@ -126,7 +125,7 @@ class ExportImportManager {
     )
 
     // force save to make sure we're not caught in a race condition
-    await this.persistentStorageManager.setChanged(['lockedRepresentation'])
+    await this.persistentStorageManager.save()
 
     return result
   }

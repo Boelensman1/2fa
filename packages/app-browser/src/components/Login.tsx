@@ -1,17 +1,15 @@
 import { type Component, createSignal } from 'solid-js'
+import {
+  TwoFaLibEvent,
+  type LockedRepresentationString,
+  type Passphrase,
+} from '2falib'
 import useStore from '../store/useStore'
 import actions from '../store/actions'
 import useSyncStoreWithLib from '../utils/useSyncStoreWithLib'
-import type {
-  EncryptedPrivateKey,
-  EncryptedSymmetricKey,
-  Passphrase,
-  Salt,
-  DeviceId,
-  SyncDevice,
-  EncryptedVaultData,
-} from '2falib'
-import { syncServerUrl, version } from '../parameters'
+import { version } from '../parameters'
+import saveFunction from '../utils/saveFunction'
+import creationUtils from '../utils/creationUtils'
 
 const Login: Component = () => {
   const [, dispatch] = useStore()
@@ -19,42 +17,34 @@ const Login: Component = () => {
   const syncStoreWithLib = useSyncStoreWithLib()
 
   const login = async () => {
-    const [state] = useStore()
-    const { twoFaLib } = state
-    if (!twoFaLib) {
-      throw new Error('twoFaLib not loaded')
-    }
-
     const lockedRepresentation = localStorage.getItem('lockedRepresentation')
-    const encryptedPrivateKey = localStorage.getItem('encryptedPrivateKey')
-    const encryptedSymmetricKey = localStorage.getItem('encryptedSymmetricKey')
-    const salt = localStorage.getItem('salt')
-    const syncDevices = localStorage.getItem('syncDevices')
-    const deviceId = localStorage.getItem('deviceId')
-
-    if (
-      !lockedRepresentation ||
-      !encryptedPrivateKey ||
-      !encryptedSymmetricKey ||
-      !salt ||
-      !deviceId
-    ) {
+    if (!lockedRepresentation) {
       throw new Error('localStorage is not complete')
     }
 
-    await twoFaLib.init(
-      encryptedPrivateKey as EncryptedPrivateKey,
-      encryptedSymmetricKey as EncryptedSymmetricKey,
-      salt as Salt,
+    const twoFaLib = await creationUtils.loadTwoFaLibFromLockedRepesentation(
+      lockedRepresentation as LockedRepresentationString,
       password() as Passphrase,
-      deviceId as DeviceId,
-      lockedRepresentation as EncryptedVaultData,
-      syncServerUrl,
-      syncDevices ? (JSON.parse(syncDevices) as SyncDevice[]) : undefined,
     )
 
+    twoFaLib.addEventListener(TwoFaLibEvent.Changed, (event) => {
+      saveFunction(event.detail.newLockedRepresentationString)
+      syncStoreWithLib(twoFaLib)
+    })
+
+    twoFaLib.addEventListener(TwoFaLibEvent.Log, (event) => {
+      switch (event.detail.severity) {
+        case 'info':
+          console.log(event.detail.message)
+          break
+        case 'warning':
+          console.warn(event.detail.message)
+          break
+      }
+    })
+
     syncStoreWithLib(twoFaLib)
-    dispatch(actions.setAuthenticated(true))
+    dispatch(actions.initialize(twoFaLib))
   }
 
   const onSubmit = (e: Event) => {

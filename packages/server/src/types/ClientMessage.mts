@@ -4,7 +4,7 @@ import type {
   Encrypted,
   EncryptedPublicKey,
   EncryptedSymmetricKey,
-  EncryptedVaultData,
+  EncryptedVaultStateString,
 } from '2falib'
 import type JsonifiedUint8Array from './JsonifiedUint8Array.mjs'
 
@@ -71,7 +71,7 @@ export interface VaultMessage {
     nonce: string
     initiatorDeviceId: DeviceId
     initiatorEncryptedPublicKey: EncryptedPublicKey
-    encryptedVaultData: EncryptedVaultData
+    encryptedVaultData: EncryptedVaultStateString
   }
 }
 

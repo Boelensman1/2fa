@@ -6,11 +6,6 @@ interface SetEntriesAction {
   payload: EntryMeta[]
 }
 
-interface SetAuthenticatedAction {
-  type: typeof types.SET_AUTHENTICATED
-  payload: boolean
-}
-
 interface SetConnectingToExistingVault {
   type: typeof types.SET_CONNECTING_TO_EXISTING_VAULT
   payload: boolean
@@ -18,9 +13,7 @@ interface SetConnectingToExistingVault {
 
 interface InitializeAction {
   type: typeof types.INITIALIZE
-  payload: null | {
-    twoFaLib: TwoFaLib
-  }
+  payload: TwoFaLib
 }
 
 interface SetSettingsAction {
@@ -30,11 +23,16 @@ interface SetSettingsAction {
   }
 }
 
+interface SetVaultExistsAction {
+  type: typeof types.SET_VAULT_EXISTS
+  payload: boolean
+}
+
 type Action =
   | SetConnectingToExistingVault
   | SetEntriesAction
-  | SetAuthenticatedAction
   | InitializeAction
   | SetSettingsAction
+  | SetVaultExistsAction
 
 export default Action

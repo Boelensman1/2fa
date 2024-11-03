@@ -71,12 +71,22 @@ class NodeCryptoLib implements CryptoLib {
       })
 
     // Create and encrypt symmetric key with public key
+    const symmetricKey = await this.createSymmetricKey()
     const encryptedSymmetricKey = await this.encrypt(
       publicKey as PublicKey,
-      await this.createSymmetricKey(),
+      symmetricKey,
+    )
+
+    const { privateKey } = await this.decryptKeys(
+      encryptedPrivateKey as EncryptedPrivateKey,
+      encryptedSymmetricKey,
+      salt,
+      passphrase,
     )
 
     return {
+      privateKey: privateKey,
+      symmetricKey,
       publicKey: publicKey as PublicKey,
       salt: salt,
       encryptedPrivateKey: encryptedPrivateKey as EncryptedPrivateKey,

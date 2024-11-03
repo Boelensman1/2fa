@@ -23,12 +23,14 @@ import {
   Salt,
   TwoFaLib,
   DeviceType,
+  PrivateKey,
+  SymmetricKey,
+  PublicKey,
 } from '../../src/main.mjs'
 
 import {
   anotherNewTotpEntry,
   createTwoFaLibForTests,
-  passphrase,
   newTotpEntry,
   totpEntry,
   send,
@@ -83,6 +85,9 @@ const handleSyncCommands = async (
 describe('SyncManager', () => {
   let serverUrl: string
   let cryptoLib: CryptoLib
+  let privateKey: PrivateKey
+  let symmetricKey: SymmetricKey
+  let publicKey: PublicKey
   let encryptedPrivateKey: EncryptedPrivateKey
   let encryptedSymmetricKey: EncryptedSymmetricKey
   let salt: Salt
@@ -97,6 +102,9 @@ describe('SyncManager', () => {
     cryptoLib = result.cryptoLib
     encryptedPrivateKey = result.encryptedPrivateKey
     encryptedSymmetricKey = result.encryptedSymmetricKey
+    privateKey = result.privateKey
+    symmetricKey = result.symmetricKey
+    publicKey = result.publicKey
     salt = result.salt
 
     serverUrl = `${serverBaseUrl}:${serverPort}`
@@ -116,38 +124,41 @@ describe('SyncManager', () => {
       })
     })
 
-    senderTwoFaLib = new TwoFaLib('sender' as DeviceType, cryptoLib, ['test'])
-    const senderInitPromise = senderTwoFaLib.init(
+    senderTwoFaLib = new TwoFaLib(
+      'sender' as DeviceType,
+      cryptoLib,
+      ['test'],
+      privateKey,
+      symmetricKey,
       encryptedPrivateKey,
       encryptedSymmetricKey,
       salt,
-      passphrase,
+      publicKey,
       'senderDeviceId' as DeviceId,
-      undefined,
+      [],
       serverUrl,
     )
     await server.connected
     await server.nextMessage // wait for the hello message
-    await senderInitPromise
 
     await senderTwoFaLib.vault.addEntry(newTotpEntry)
 
-    receiverTwoFaLib = new TwoFaLib('receiver' as DeviceType, cryptoLib, [
-      'test',
-    ])
-    const receiverInitPromise = receiverTwoFaLib.init(
+    receiverTwoFaLib = new TwoFaLib(
+      'receiver' as DeviceType,
+      cryptoLib,
+      ['test'],
+      privateKey,
+      symmetricKey,
       encryptedPrivateKey,
       encryptedSymmetricKey,
       salt,
-      passphrase,
+      publicKey,
       'receiverDeviceId' as DeviceId,
-      undefined,
+      [],
       serverUrl,
     )
-
     await allConnected
     await server.nextMessage // wait for the hello message
-    await receiverInitPromise
   })
 
   afterEach(() => {
@@ -177,20 +188,22 @@ describe('SyncManager', () => {
   it('should throw an error when initiating add device flow without server connection', async () => {
     const temporaryServerUrl = `${serverBaseUrl}:${serverPort + 1}`
     const temporaryServer = new WS(temporaryServerUrl)
+
     const disconnectedTwoFaLib = new TwoFaLib(
       'disconnected' as DeviceType,
       cryptoLib,
       ['test'],
-    )
-    await disconnectedTwoFaLib.init(
+      privateKey,
+      symmetricKey,
       encryptedPrivateKey,
       encryptedSymmetricKey,
       salt,
-      passphrase,
-      'tempDeviceId' as DeviceId,
-      undefined,
+      publicKey,
+      'disconnectedDeviceId' as DeviceId,
+      [],
       temporaryServerUrl,
     )
+
     // await temporaryServer.connected
     temporaryServer.close()
 
@@ -336,16 +349,18 @@ describe('SyncManager', () => {
       senderTwoFaLib.addEventListener(TwoFaLibEvent.Ready, () => resolve())
     })
 
-    const newTwoFaLib = new TwoFaLib('newSender' as DeviceType, cryptoLib, [
-      'test',
-    ])
-    await newTwoFaLib.init(
+    const newTwoFaLib = new TwoFaLib(
+      'newSender' as DeviceType,
+      cryptoLib,
+      ['test'],
+      privateKey,
+      symmetricKey,
       encryptedPrivateKey,
       encryptedSymmetricKey,
       salt,
-      passphrase,
+      publicKey,
       'newSenderDeviceId' as DeviceId,
-      undefined,
+      [],
       serverUrl,
     )
 

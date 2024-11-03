@@ -76,12 +76,14 @@ class BrowserCryptoLib implements CryptoLib {
     // create passwordHash
     const passphraseHash = await generatePassphraseHash(salt, passphrase)
 
-    const { encryptedPrivateKey, publicKey } =
+    const { privateKey, encryptedPrivateKey, publicKey } =
       await this.createKeyPair(passphraseHash)
     const symmetricKey = await this.createSymmetricKey()
     const encryptedSymmetricKey = await this.encrypt(publicKey, symmetricKey)
 
     return {
+      privateKey,
+      symmetricKey,
       encryptedPrivateKey,
       encryptedSymmetricKey: encryptedSymmetricKey as EncryptedSymmetricKey,
       salt,
@@ -294,6 +296,7 @@ class BrowserCryptoLib implements CryptoLib {
   }
 
   private async createKeyPair(passphrase: string): Promise<{
+    privateKey: PrivateKey
     encryptedPrivateKey: EncryptedPrivateKey
     publicKey: PublicKey
   }> {
@@ -303,6 +306,7 @@ class BrowserCryptoLib implements CryptoLib {
           reject(err)
         } else {
           const publicKey = forge.pki.publicKeyToPem(keyPair.publicKey)
+          const privateKey = forge.pki.privateKeyToPem(keyPair.privateKey)
           const encryptedPrivateKey = forge.pki.encryptRsaPrivateKey(
             keyPair.privateKey,
             passphrase,
@@ -310,9 +314,11 @@ class BrowserCryptoLib implements CryptoLib {
               algorithm: 'aes256',
             },
           ) as EncryptedPrivateKey
+
           resolve({
-            encryptedPrivateKey,
+            privateKey: normalizeLineEndings(privateKey) as PrivateKey,
             publicKey: normalizeLineEndings(publicKey) as PublicKey,
+            encryptedPrivateKey,
           })
         }
       })

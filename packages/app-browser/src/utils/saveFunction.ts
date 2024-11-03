@@ -1,14 +1,9 @@
-import { ChangedEventWasChangedSinceLastEvent, ChangedEventData } from '2falib'
+import type { LockedRepresentationString } from '2falib'
 
 const saveFunction = (
-  changed: ChangedEventWasChangedSinceLastEvent,
-  data: ChangedEventData,
+  newLockedRepresentationString: LockedRepresentationString,
 ) => {
-  Object.entries(changed).forEach(([key, isChanged]) => {
-    if (isChanged) {
-      localStorage.setItem(key, data[key as keyof typeof changed])
-    }
-  })
+  localStorage.setItem('lockedRepresentation', newLockedRepresentationString)
 }
 
 export default saveFunction

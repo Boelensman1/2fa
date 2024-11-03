@@ -6,9 +6,11 @@ import {
   EncryptedPrivateKey,
   EncryptedSymmetricKey,
   TwoFaLib,
-  TwoFaLibEvent,
   Salt,
-  Passphrase,
+  PrivateKey,
+  SymmetricKey,
+  PublicKey,
+  TwoFaLibEvent,
 } from '../src/main.mjs'
 
 import {
@@ -21,11 +23,13 @@ import {
 describe('2falib', () => {
   let cryptoLib: CryptoLib
   let twoFaLib: TwoFaLib
-  let mockPersistentStorageManager: { setChanged: Mock; init: Mock }
+  let mockPersistentStorageManager: { save: Mock; init: Mock }
+  let privateKey: PrivateKey
+  let symmetricKey: SymmetricKey
+  let publicKey: PublicKey
   let encryptedPrivateKey: EncryptedPrivateKey
   let encryptedSymmetricKey: EncryptedSymmetricKey
   let salt: Salt
-  let passphrase: Passphrase
 
   beforeAll(async () => {
     const result = await createTwoFaLibForTests()
@@ -33,14 +37,16 @@ describe('2falib', () => {
     cryptoLib = result.cryptoLib
     encryptedPrivateKey = result.encryptedPrivateKey
     encryptedSymmetricKey = result.encryptedSymmetricKey
+    privateKey = result.privateKey
+    symmetricKey = result.symmetricKey
+    publicKey = result.publicKey
     salt = result.salt
-    passphrase = result.passphrase
   })
 
   beforeEach(async () => {
     await clearEntries(twoFaLib)
     mockPersistentStorageManager = {
-      setChanged: vi.fn(),
+      save: vi.fn(),
       init: vi.fn().mockResolvedValue({ publicKey: null, privateKey: null }),
     }
     // @ts-expect-error: Overriding private property for testing
@@ -49,36 +55,100 @@ describe('2falib', () => {
   })
 
   describe('TwoFaLib constructor', () => {
-    it('should throw an error if device identifier is not provided', () => {
-      expect(() => new TwoFaLib('' as DeviceType, cryptoLib, ['test'])).toThrow(
-        'Device identifier is required',
-      )
+    it('should throw an error if device type is not provided', () => {
+      expect(
+        () =>
+          new TwoFaLib(
+            '' as DeviceType,
+            cryptoLib,
+            ['test'],
+            privateKey,
+            symmetricKey,
+            encryptedPrivateKey,
+            encryptedSymmetricKey,
+            salt,
+            publicKey,
+            deviceId,
+            [],
+          ),
+      ).toThrow('Device type is required')
     })
 
-    it('should throw an error if device identifier is too long', () => {
+    it('should throw an error if device type is too long', () => {
       const longDeviceIdentifier = 'a'.repeat(257)
       expect(
         () =>
-          new TwoFaLib(longDeviceIdentifier as DeviceType, cryptoLib, ['test']),
-      ).toThrow('Device identifier is too long, max 256 characters')
+          new TwoFaLib(
+            longDeviceIdentifier as DeviceType,
+            cryptoLib,
+            ['test'],
+            privateKey,
+            symmetricKey,
+            encryptedPrivateKey,
+            encryptedSymmetricKey,
+            salt,
+            publicKey,
+            deviceId,
+            [],
+          ),
+      ).toThrow('Device type is too long, max 256 characters')
     })
 
     it('should throw an error if CryptoLib is not provided', () => {
-      // @ts-expect-error null is not a valid argument for TwoFaLib
-      expect(() => new TwoFaLib(deviceType, null)).toThrow(
-        'CryptoLib is required',
-      )
+      expect(
+        () =>
+          new TwoFaLib(
+            deviceType,
+            // @ts-expect-error null is not a valid argument for TwoFaLib
+            null,
+            ['test'],
+            privateKey,
+            symmetricKey,
+            encryptedPrivateKey,
+            encryptedSymmetricKey,
+            salt,
+            publicKey,
+            deviceId,
+            [],
+          ),
+      ).toThrow('CryptoLib is required')
     })
 
     it('should throw an error if passphrase extra dictionary is not provided', () => {
-      // @ts-expect-error empty array is not a valid argument
-      expect(() => new TwoFaLib(deviceType, cryptoLib, [])).toThrow(
-        'Passphrase extra dictionary is required',
-      )
+      expect(
+        () =>
+          new TwoFaLib(
+            deviceType,
+            cryptoLib,
+            // @ts-expect-error empty array is not a valid argument
+            [],
+            privateKey,
+            symmetricKey,
+            encryptedPrivateKey,
+            encryptedSymmetricKey,
+            salt,
+            publicKey,
+            deviceId,
+            [],
+          ),
+      ).toThrow('Passphrase extra dictionary is required')
     })
 
     it('should create a TwoFaLib instance with valid parameters', () => {
-      const twoFaLib = new TwoFaLib(deviceType, cryptoLib, ['test'])
+      const twoFaLib = new TwoFaLib(
+        deviceType,
+        cryptoLib,
+        ['test'],
+        privateKey,
+        symmetricKey,
+        encryptedPrivateKey,
+        encryptedSymmetricKey,
+        salt,
+        publicKey,
+        deviceId,
+        [],
+      )
+
       expect(twoFaLib).toBeInstanceOf(TwoFaLib)
       expect(twoFaLib.deviceType).toBe(deviceType)
     })
@@ -86,22 +156,32 @@ describe('2falib', () => {
 
   it('should save the current state when forceSave is called', async () => {
     await twoFaLib.forceSave()
-    expect(mockPersistentStorageManager.setChanged).toHaveBeenCalledWith()
+    expect(mockPersistentStorageManager.save).toHaveBeenCalledWith()
   })
 
   it('should emit ready event after loading', async () => {
-    const mockReadyFunction = vi.fn()
-    twoFaLib.addEventListener(TwoFaLibEvent.Ready, mockReadyFunction)
-    await twoFaLib.init(
+    const twoFaLib = new TwoFaLib(
+      deviceType,
+      cryptoLib,
+      ['test'],
+      privateKey,
+      symmetricKey,
       encryptedPrivateKey,
       encryptedSymmetricKey,
       salt,
-      passphrase,
+      publicKey,
       deviceId,
+      [],
     )
 
+    const mockReadyFunction = vi.fn()
+    twoFaLib.addEventListener(TwoFaLibEvent.Ready, mockReadyFunction)
+
     // Ceck if the ready event was emitted
-    expect(mockReadyFunction).toHaveBeenCalledTimes(1)
+    await vi.waitUntil(() => mockReadyFunction.mock.calls.length === 1, {
+      timeout: 200,
+      interval: 5,
+    })
 
     // Clean up the event listener
     twoFaLib.removeEventListener(TwoFaLibEvent.Ready, mockReadyFunction)

@@ -1,24 +1,13 @@
-import {
-  type Component,
-  createSignal,
-  createMemo,
-  createEffect,
-} from 'solid-js'
-import {
-  getTwoFaLibVaultCreationUtils,
-  Passphrase,
-  TwoFaLibEvent,
-} from '2falib'
-import BrowserCryptoProvider from '2falib/cryptoProviders/browser'
+import { type Component, createSignal, createEffect } from 'solid-js'
+import { Passphrase, TwoFaLibEvent } from '2falib'
 import type { ZxcvbnResult } from '@zxcvbn-ts/core'
-
-import { deviceType, passphraseExtraDict, syncServerUrl } from '../parameters'
 
 import useStore from '../store/useStore'
 import actions from '../store/actions'
 import saveFunction from '../utils/saveFunction'
 import useSyncStoreWithLib from '../utils/useSyncStoreWithLib'
 import PasswordStrengthMeter from './PasswordStrengthMeter'
+import creationUtils from '../utils/creationUtils'
 
 const CreateVault: Component = () => {
   const [, dispatch] = useStore()
@@ -28,21 +17,12 @@ const CreateVault: Component = () => {
   const [passwordStrength, setPasswordStrength] =
     createSignal<ZxcvbnResult | null>(null)
 
-  const creationUtils = createMemo(() =>
-    getTwoFaLibVaultCreationUtils(new BrowserCryptoProvider()),
-  )
-
   const createVault = async () => {
     const passphrase = password()
-    const { twoFaLib } = await creationUtils().createNewTwoFaLibVault(
-      deviceType,
-      passphrase,
-      passphraseExtraDict,
-      syncServerUrl,
-    )
+    const { twoFaLib } = await creationUtils.createNewTwoFaLibVault(passphrase)
 
     twoFaLib.addEventListener(TwoFaLibEvent.Changed, (event) => {
-      saveFunction(event.detail.changed, event.detail.data)
+      saveFunction(event.detail.newLockedRepresentationString)
       syncStoreWithLib(twoFaLib)
     })
     twoFaLib.addEventListener(
@@ -55,7 +35,6 @@ const CreateVault: Component = () => {
       void twoFaLib.forceSave()
     }
 
-    dispatch(actions.setAuthenticated(true))
     dispatch(actions.setConnectingToExistingVault(mode() === 'connect'))
     dispatch(actions.initialize(twoFaLib))
   }
@@ -68,7 +47,7 @@ const CreateVault: Component = () => {
   const calculatePasswordStrength = async (
     passphrase: Passphrase,
   ): Promise<ZxcvbnResult> => {
-    return await creationUtils().getPassphraseStrength(passphrase, ['browser'])
+    return await creationUtils.getPassphraseStrength(passphrase, ['browser'])
   }
 
   createEffect(() => {

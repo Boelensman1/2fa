@@ -53,6 +53,8 @@ interface CryptoLib {
    * @returns A promise that resolves to an object containing the encrypted private key, encrypted symmetric key and public key
    */
   createKeys: (passphrase: Passphrase) => Promise<{
+    privateKey: PrivateKey
+    symmetricKey: SymmetricKey
     encryptedPrivateKey: EncryptedPrivateKey
     encryptedSymmetricKey: EncryptedSymmetricKey
     publicKey: PublicKey

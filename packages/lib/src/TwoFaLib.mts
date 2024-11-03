@@ -1,12 +1,14 @@
 import { TypedEventTarget } from 'typescript-event-target'
-import type { NonEmptyTuple } from 'type-fest'
 
 import type CryptoLib from './interfaces/CryptoLib.mjs'
 import type {
   EncryptedPrivateKey,
   EncryptedSymmetricKey,
   Passphrase,
+  PrivateKey,
+  PublicKey,
   Salt,
+  SymmetricKey,
 } from './interfaces/CryptoLib.mjs'
 import type {
   SyncDevice,
@@ -17,6 +19,8 @@ import type {
   TwoFaLibEventMap,
   TwoFaLibEventMapEvents,
 } from './interfaces/Events.mjs'
+import type { PassphraseExtraDict } from './interfaces/PassphraseExtraDict.js'
+import type { Vault } from './interfaces/Vault.mjs'
 
 import TwoFaLibMediator from './TwoFaLibMediator.mjs'
 import { TwoFaLibEvent } from './TwoFaLibEvent.mjs'
@@ -29,36 +33,63 @@ import PersistentStorageManager from './subclasses/PersistentStorageManager.mjs'
 import VaultDataManager from './subclasses/VaultDataManager.mjs'
 import VaultOperationsManager from './subclasses/VaultOperationsManager.mjs'
 import CommandManager from './subclasses/CommandManager.mjs'
-import { EncryptedVaultData } from './main.mjs'
 
 /**
  * The Two-Factor Library, this is the main entry point.
  */
 class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
-  public readonly deviceType: DeviceType
+  // TOOD: load this from package.json
+  public static readonly version = '0.0.1'
+
   public readonly deviceId?: DeviceId
+  public readonly deviceType: DeviceType
 
   private mediator: TwoFaLibMediator
 
   /**
-   * Constructs a new instance of TwoFaLib.
+   * Constructs a new instance of TwoFaLib. If a serverUrl is provided, the library will use it for its sync operations.
    * @param deviceType - A unique identifier for this device type (e.g. 2fa-cli).
    * @param cryptoLib - An instance of CryptoLib that is compatible with the environment.
    * @param passphraseExtraDict - Additional words to be used for passphrase strength evaluation.
-   * @throws {InitializationError} If the device identifier is invalid.
+   * @param privateKey - The private key used for cryptographic operations.
+   * @param symmetricKey - The symmetric key used for cryptographic operations.
+   * @param encryptedPrivateKey - The encrypted private key
+   * @param encryptedSymmetricKey - The encrypted symmetric key
+   * @param salt - The salt used for key derivation.
+   * @param publicKey - The public key of the device.
+   * @param deviceId - A unique identifier for this device.
+   * @param vault - The vault data (entries)
+   * @param serverUrl - The server URL for syncing.
+   * @param syncDevices - The devices to sync with.
+   * @returns A promise that resolves when initialization is complete.
+   * @throws {InitializationError} If some parameter has an invalid value
+   * @throws {AuthenticationError} If the provided passphrase is incorrect.
    */
   constructor(
     deviceType: DeviceType,
     cryptoLib: CryptoLib,
-    passphraseExtraDict: NonEmptyTuple<string>,
+    passphraseExtraDict: PassphraseExtraDict,
+    privateKey: PrivateKey,
+    symmetricKey: SymmetricKey,
+    encryptedPrivateKey: EncryptedPrivateKey,
+    encryptedSymmetricKey: EncryptedSymmetricKey,
+    salt: Salt,
+    publicKey: PublicKey,
+    deviceId: DeviceId,
+    vault?: Vault,
+    serverUrl?: string,
+    syncDevices?: SyncDevice[],
   ) {
     super()
     if (!deviceType) {
-      throw new InitializationError('Device identifier is required')
+      throw new InitializationError('Device type is required')
+    }
+    if (!deviceId) {
+      throw new InitializationError('Device id is required')
     }
     if (deviceType.length > 256) {
       throw new InitializationError(
-        'Device identifier is too long, max 256 characters',
+        'Device type is too long, max 256 characters',
       )
     }
     if (passphraseExtraDict?.length === 0) {
@@ -67,13 +98,23 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
       )
     }
     this.deviceType = deviceType
+    this.deviceId = deviceId
 
     this.mediator = new TwoFaLibMediator()
     this.mediator.registerComponents([
       ['libraryLoader', new LibraryLoader(cryptoLib)],
       [
         'persistentStorageManager',
-        new PersistentStorageManager(this.mediator, passphraseExtraDict),
+        new PersistentStorageManager(
+          this.mediator,
+          passphraseExtraDict,
+          deviceId,
+          privateKey,
+          symmetricKey,
+          encryptedPrivateKey,
+          encryptedSymmetricKey,
+          salt,
+        ),
       ],
       ['vaultDataManager', new VaultDataManager(this.mediator)],
       ['commandManager', new CommandManager(this.mediator)],
@@ -85,6 +126,29 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
       ['dispatchLibEvent', this.dispatchLibEvent.bind(this)],
       ['log', this.log.bind(this)],
     ])
+
+    if (vault) {
+      this.mediator.getComponent('vaultDataManager').replaceVault(vault)
+    }
+
+    if (serverUrl) {
+      this.mediator.registerComponent(
+        'syncManager',
+        new SyncManager(
+          this.mediator,
+          this.deviceType,
+          publicKey,
+          privateKey,
+          serverUrl,
+          deviceId,
+          syncDevices,
+        ),
+      )
+    } else {
+      // If no syncmanager we're ready now, otherwise the syncmanager is responsible for emitting the ready event
+      // We do this with a delay of 1, so that there is time to add event listeners
+      setTimeout(() => this.dispatchLibEvent(TwoFaLibEvent.Ready), 1)
+    }
   }
 
   /**
@@ -125,7 +189,21 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
    * Forces a save of the persistent storage.
    */
   async forceSave() {
-    await this.persistentStorage.setChanged()
+    await this.persistentStorage.save()
+  }
+
+  /**
+   * Changes the library's passphrase.
+   * @param oldPassphrase - The current passphrase.
+   * @param newPassphrase - The new passphrase to set.
+   * @returns A promise that resolves when the passphrase change is complete.
+   * @throws {AuthenticationError} If the provided old passphrase is incorrect.
+   */
+  async changePassphrase(
+    oldPassphrase: Passphrase,
+    newPassphrase: Passphrase,
+  ): Promise<void> {
+    return this.persistentStorage.changePassphrase(oldPassphrase, newPassphrase)
   }
 
   /**
@@ -150,68 +228,6 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
    */
   private log(severity: 'info' | 'warning', message: string) {
     this.dispatchLibEvent(TwoFaLibEvent.Log, { severity, message })
-  }
-
-  /**
-   * Initialize the library, must be called before any other method. If no
-   * encryptedPrivateKey and passphrase have been created yet, use the createNewTwoFaLibVault
-   * method. If a serverUrl is provided, the library will use it for its sync operations.
-   * @param encryptedPrivateKey - The encrypted private key used for cryptographic operations.
-   * @param encryptedSymmetricKey - The encrypted symmetric key used for cryptographic operations.
-   * @param salt - The salt used for key derivation from the passphrase.
-   * @param passphrase - The passphrase to decrypt the private key.
-   * @param deviceId - A unique identifier for this device.
-   * @param lockedRepresentation - The locked representation of the vault to use for initialization.
-   * @param serverUrl - The server URL for syncing.
-   * @param syncDevices - The devices to sync with.
-   * @returns A promise that resolves when initialization is complete.
-   * @throws {InitializationError} If initialization fails due to technical issues.
-   * @throws {AuthenticationError} If the provided passphrase is incorrect.
-   */
-  async init(
-    encryptedPrivateKey: EncryptedPrivateKey,
-    encryptedSymmetricKey: EncryptedSymmetricKey,
-    salt: Salt,
-    passphrase: Passphrase,
-    deviceId: DeviceId,
-    lockedRepresentation?: EncryptedVaultData,
-    serverUrl?: string,
-    syncDevices?: SyncDevice[],
-  ): Promise<void> {
-    // @ts-expect-error deviceId is readonly but we can't set it in the constructor
-    this.deviceId = deviceId
-
-    const { publicKey, privateKey } = await this.persistentStorage.init(
-      deviceId,
-      encryptedPrivateKey,
-      encryptedSymmetricKey,
-      salt,
-      passphrase,
-    )
-    if (lockedRepresentation) {
-      await this.persistentStorage.loadFromLockedRepresentation(
-        lockedRepresentation,
-      )
-    }
-
-    if (serverUrl) {
-      this.mediator.registerComponent(
-        'syncManager',
-        new SyncManager(
-          this.mediator,
-          this.deviceType,
-          publicKey,
-          privateKey,
-          serverUrl,
-          deviceId,
-          syncDevices,
-        ),
-      )
-    } else {
-      // if no syncmanager we're ready now
-      // otherwise the syncmanager is responsible for emitting the ready event
-      this.dispatchLibEvent(TwoFaLibEvent.Ready)
-    }
   }
 }
 export default TwoFaLib

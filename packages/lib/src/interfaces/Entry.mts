@@ -31,3 +31,11 @@ type Entry = TotpEntry
 
 export type NewEntry = Omit<Entry, 'id' | 'addedAt' | 'updatedAt'>
 export default Entry
+
+export interface Token {
+  validFrom: number
+  validTill: number
+  otp: string
+}
+
+export type EntryMetaWithToken = EntryMeta & { token: Token }

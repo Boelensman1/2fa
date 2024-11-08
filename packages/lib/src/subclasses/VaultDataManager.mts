@@ -1,7 +1,7 @@
 import { TOTP } from 'totp-generator'
 
 import type Entry from '../interfaces/Entry.mjs'
-import type { EntryId } from '../interfaces/Entry.mjs'
+import type { EntryId, Token } from '../interfaces/Entry.mjs'
 
 import type TwoFaLibMediator from '../TwoFaLibMediator.mjs'
 import { EntryNotFoundError, TokenGenerationError } from '../TwoFALibError.mjs'
@@ -65,10 +65,7 @@ class VaultDataManager {
    * @throws {EntryNotFoundError} If no entry exists with the given ID.
    * @throws {TokenGenerationError} If token generation fails due to invalid entry data or technical issues.
    */
-  generateTokenForEntry(
-    id: EntryId,
-    timestamp?: number,
-  ): { validFrom: number; validTill: number; otp: string } {
+  generateTokenForEntry(id: EntryId, timestamp?: number): Token {
     const entry = this.vault.find((e) => e.id === id)
     if (!entry || entry.type !== 'TOTP') {
       throw new EntryNotFoundError('TOTP entry not found')

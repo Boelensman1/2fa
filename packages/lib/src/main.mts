@@ -7,6 +7,8 @@ import type {
   EntryMeta,
   EntryType,
   TotpPayload,
+  Token,
+  EntryMetaWithToken,
 } from './interfaces/Entry.mjs'
 import type CryptoLib from './interfaces/CryptoLib.mjs'
 import type {
@@ -56,8 +58,10 @@ export type {
   EntryId,
   NewEntry,
   EntryMeta,
+  EntryMetaWithToken,
   EntryType,
   TotpPayload,
+  Token,
   EncryptedVaultStateString,
   LockedRepresentationString,
   CryptoLib,

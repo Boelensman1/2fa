@@ -1,7 +1,13 @@
 import { v4 as genUuidV4 } from 'uuid'
 
 import type Entry from '../interfaces/Entry.mjs'
-import type { EntryId, EntryMeta, NewEntry } from '../interfaces/Entry.mjs'
+import type {
+  EntryId,
+  EntryMeta,
+  EntryMetaWithToken,
+  NewEntry,
+  Token,
+} from '../interfaces/Entry.mjs'
 
 import type TwoFaLibMediator from '../TwoFaLibMediator.mjs'
 
@@ -73,9 +79,21 @@ class VaultManager {
   /**
    * Search for entries matching the provided query.
    * @param query - The search query string.
-   * @returns An array of matching entry metas.
+   * @param includeTokens - When true, includes current tokens with the metas.
+   * @returns An array of matching entry metas, optionally with tokens.
    */
-  searchEntriesMetas(query: string): EntryMeta[] {
+  searchEntriesMetas(query: string, includeTokens: true): EntryMetaWithToken[]
+  /**
+   * @inheritdoc
+   */
+  searchEntriesMetas(query: string, includeTokens?: false): EntryMeta[]
+  /**
+   * @inheritdoc
+   */
+  searchEntriesMetas(
+    query: string,
+    includeTokens?: boolean,
+  ): (EntryMeta & { token?: Token })[] {
     const lowercaseQuery = query.toLowerCase()
     const entries = this.vaultDataManager.getAllEntries()
     return entries
@@ -84,7 +102,16 @@ class VaultManager {
           entry.name.toLowerCase().includes(lowercaseQuery) ||
           entry.issuer.toLowerCase().includes(lowercaseQuery),
       )
-      .map((entry) => getMetaForEntry(entry))
+      .map((entry) => {
+        const meta = getMetaForEntry(entry)
+        if (includeTokens) {
+          return {
+            ...meta,
+            token: this.generateTokenForEntry(entry.id),
+          }
+        }
+        return meta
+      })
   }
 
   /**
@@ -97,11 +124,29 @@ class VaultManager {
 
   /**
    * Retrieve a list of all entry metas in the library.
-   * @returns An array of all entry metas.
+   * @param includeTokens - When true, includes current tokens with the metas.
+   * @returns An array of all entry metas, optionally with tokens.
    */
-  listEntriesMetas(): EntryMeta[] {
+  listEntriesMetas(includeTokens: true): EntryMetaWithToken[]
+  /**
+   * @inheritdoc
+   */
+  listEntriesMetas(includeTokens?: false): EntryMeta[]
+  /**
+   * @inheritdoc
+   */
+  listEntriesMetas(includeTokens?: boolean): (EntryMeta & { token?: Token })[] {
     const entries = this.vaultDataManager.getAllEntries()
-    return entries.map((entry) => getMetaForEntry(entry))
+    return entries.map((entry) => {
+      const meta = getMetaForEntry(entry)
+      if (includeTokens) {
+        return {
+          ...meta,
+          token: this.generateTokenForEntry(entry.id),
+        }
+      }
+      return meta
+    })
   }
 
   /**
@@ -112,10 +157,7 @@ class VaultManager {
    * @throws {EntryNotFoundError} If no entry exists with the given ID.
    * @throws {TokenGenerationError} If token generation fails due to invalid entry data or technical issues.
    */
-  generateTokenForEntry(
-    id: EntryId,
-    timestamp?: number,
-  ): { validFrom: number; validTill: number; otp: string } {
+  generateTokenForEntry(id: EntryId, timestamp?: number): Token {
     return this.vaultDataManager.generateTokenForEntry(id, timestamp)
   }
 

@@ -1,4 +1,4 @@
-import { Tagged } from 'type-fest'
+import type { Tagged } from 'type-fest'
 import type { JPakeThreePass, Round1Result } from 'jpake'
 import { PublicKey, SyncKey } from './CryptoLib.mjs'
 

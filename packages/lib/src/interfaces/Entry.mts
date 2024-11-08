@@ -1,6 +1,4 @@
-import { LiteralUnion } from 'type-fest'
-
-import { Tagged } from 'type-fest'
+import type { LiteralUnion, Tagged } from 'type-fest'
 
 export type EntryId = Tagged<string, 'TotpId'>
 

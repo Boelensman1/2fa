@@ -10,17 +10,17 @@ import type {
   Salt,
   SymmetricKey,
 } from './interfaces/CryptoLib.mjs'
-import type {
-  SyncDevice,
-  DeviceId,
-  DeviceType,
-} from './interfaces/SyncTypes.mjs'
+import type { DeviceId, DeviceType } from './interfaces/SyncTypes.mjs'
 import type {
   TwoFaLibEventMap,
   TwoFaLibEventMapEvents,
 } from './interfaces/Events.mjs'
 import type { PassphraseExtraDict } from './interfaces/PassphraseExtraDict.js'
-import type { Vault } from './interfaces/Vault.mjs'
+import type {
+  Vault,
+  VaultSyncState,
+  VaultSyncStateWithServerUrl,
+} from './interfaces/Vault.mjs'
 
 import TwoFaLibMediator from './TwoFaLibMediator.mjs'
 import { TwoFaLibEvent } from './TwoFaLibEvent.mjs'
@@ -59,8 +59,7 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
    * @param publicKey - The public key of the device.
    * @param deviceId - A unique identifier for this device.
    * @param vault - The vault data (entries)
-   * @param serverUrl - The server URL for syncing.
-   * @param syncDevices - The devices to sync with.
+   * @param syncState - The state of the sync, includes the serverUrl
    * @returns A promise that resolves when initialization is complete.
    * @throws {InitializationError} If some parameter has an invalid value
    * @throws {AuthenticationError} If the provided passphrase is incorrect.
@@ -77,8 +76,7 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
     publicKey: PublicKey,
     deviceId: DeviceId,
     vault?: Vault,
-    serverUrl?: string,
-    syncDevices?: SyncDevice[],
+    syncState?: VaultSyncState,
   ) {
     super()
     if (!deviceType) {
@@ -131,7 +129,7 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
       this.mediator.getComponent('vaultDataManager').replaceVault(vault)
     }
 
-    if (serverUrl) {
+    if (syncState?.serverUrl) {
       this.mediator.registerComponent(
         'syncManager',
         new SyncManager(
@@ -139,9 +137,8 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
           this.deviceType,
           publicKey,
           privateKey,
-          serverUrl,
+          syncState as VaultSyncStateWithServerUrl,
           deviceId,
-          syncDevices,
         ),
       )
     } else {

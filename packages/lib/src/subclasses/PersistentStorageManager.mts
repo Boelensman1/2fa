@@ -81,8 +81,12 @@ class PersistentStorageManager {
 
     const vaultState: VaultState = {
       vault,
-      syncDevices: this.syncManager?.syncDevices ?? [],
       deviceId: this.deviceId,
+      sync: {
+        devices: this.syncManager?.syncDevices ?? [],
+        serverUrl: this.syncManager?.serverUrl,
+        commandSendQueue: this.syncManager?.getCommandSendQueue() ?? [],
+      },
     }
 
     return await this.cryptoLib.encryptSymmetric(

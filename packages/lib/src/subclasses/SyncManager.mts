@@ -43,7 +43,11 @@ import {
   SyncNoServerConnectionError,
   TwoFALibError,
 } from '../TwoFALibError.mjs'
-import { VaultState, EncryptedVaultStateString } from '../interfaces/Vault.mjs'
+import {
+  VaultState,
+  EncryptedVaultStateString,
+  VaultSyncStateWithServerUrl,
+} from '../interfaces/Vault.mjs'
 import { SyncCommandFromServer } from '2faserver/ServerMessage'
 import { SyncCommandFromClient } from '2faserver/ClientMessage'
 
@@ -66,7 +70,7 @@ class SyncManager {
   private ws?: WebSocket
   private activeAddDeviceFlow?: ActiveAddDeviceFlow
   private readonly reconnectInterval: number = IN_TESTING ? 100 : 5000 // 5 seconds
-  private readonly serverUrl: string
+  readonly serverUrl: string
   syncDevices: SyncDevice[]
   deviceId: DeviceId
 
@@ -78,14 +82,21 @@ class SyncManager {
   private shouldReconnect = true
 
   /**
+   * Public getter for the command send queue.
+   * @returns The command send queue.
+   */
+  public getCommandSendQueue() {
+    return this.commandSendQueue
+  }
+
+  /**
    * Creates an instance of SyncManager.
    * @param mediator - The mediator for accessing other components.
    * @param deviceType - The type of the device.
    * @param publicKey - The public key of the device.
    * @param privateKey - The private key of the device.
-   * @param serverUrl - The WebSocket server URL.
+   * @param syncState - The state of the sync.
    * @param deviceId - The unique identifier of the device.
-   * @param syncDevices - An array of devices to synchronize with.
    * @throws {InitializationError} If initialization fails (e.g., if the server URL is invalid).
    */
   constructor(
@@ -93,10 +104,11 @@ class SyncManager {
     private readonly deviceType: DeviceType,
     private readonly publicKey: PublicKey,
     private readonly privateKey: PrivateKey,
-    serverUrl: string,
+    syncState: VaultSyncStateWithServerUrl,
     deviceId: DeviceId,
-    syncDevices = [] as SyncDevice[],
   ) {
+    const { serverUrl, devices, commandSendQueue } = syncState
+
     if (!serverUrl.startsWith('wss://')) {
       if (!serverUrl.startsWith('ws://') && !(IN_DEV || IN_TESTING)) {
         throw new InitializationError(
@@ -105,7 +117,8 @@ class SyncManager {
       }
     }
     this.deviceId = deviceId
-    this.syncDevices = syncDevices
+    this.syncDevices = devices
+    this.commandSendQueue = commandSendQueue
     this.serverUrl = serverUrl
     this.initServerConnection()
   }
@@ -668,7 +681,7 @@ class SyncManager {
       )
     }
 
-    this.syncDevices = vaultState.syncDevices
+    this.syncDevices = vaultState.sync.devices
     this.mediator
       .getComponent('vaultDataManager')
       .replaceVault(vaultState.vault)

@@ -25,6 +25,14 @@ class TwoFaLibMediator {
   } = {}
 
   /**
+   * Unregister a component with the mediator. Is used in testing
+   * @param key - The key representing the component type.
+   */
+  unRegisterComponent<T extends keyof typeof this.components>(key: T) {
+    this.components[key] = undefined
+  }
+
+  /**
    * Registers a single component with the mediator.
    * @param key - The key representing the component type.
    * @param component - The component instance to register.

@@ -14,6 +14,8 @@ import {
   type Passphrase,
   type CryptoLib,
   type Salt,
+  EncryptedPrivateKey,
+  EncryptedSymmetricKey,
 } from '../../src/main.mjs'
 import {
   clearEntries,
@@ -23,6 +25,11 @@ import {
 import { newTotpEntry } from '../testUtils.mjs'
 import { TwoFaLibEvent } from '../../src/TwoFaLibEvent.mjs'
 import type PersistentStorageManager from '../../src/subclasses/PersistentStorageManager.mjs'
+import type {
+  LockedRepresentation,
+  VaultState,
+} from '../../src/interfaces/Vault.mjs'
+import type SyncManager from '../../src/subclasses/SyncManager.mjs'
 
 const getNthCallTypeAndDetail = (mockFn: Mock, n: number) => {
   const call = mockFn.mock.calls[n][0] as {
@@ -41,6 +48,8 @@ describe('PersistentStorageManager', () => {
   let persistentStorageManager: PersistentStorageManager
   let passphrase: Passphrase
   let salt: Salt
+  let encryptedPrivateKey: EncryptedPrivateKey
+  let encryptedSymmetricKey: EncryptedSymmetricKey
 
   beforeAll(async () => {
     const result = await createTwoFaLibForTests()
@@ -48,6 +57,8 @@ describe('PersistentStorageManager', () => {
     twoFaLib = result.twoFaLib
     passphrase = result.passphrase
     salt = result.salt
+    encryptedPrivateKey = result.encryptedPrivateKey
+    encryptedSymmetricKey = result.encryptedSymmetricKey
 
     // eslint-disable-next-line @typescript-eslint/dot-notation
     persistentStorageManager = twoFaLib['persistentStorage']
@@ -59,8 +70,78 @@ describe('PersistentStorageManager', () => {
 
   it('should return a locked representation', async () => {
     await twoFaLib.vault.addEntry(newTotpEntry)
+
+    // Store original implementations
+    const originalEncryptSymmetric = cryptoLib.encryptSymmetric
+
+    // mockEncryptSymmetric for easier testing
+    const mockEncryptSymmetric = vi
+      .fn()
+      .mockImplementation((_key: string, vaultState: string) => {
+        return vaultState
+      })
+    // Override the implementation
+    cryptoLib.encryptSymmetric = mockEncryptSymmetric
+
+    // @ts-expect-error: Using private property for testing
+    const mediator = persistentStorageManager.mediator
+    const mockedSyncManager = {
+      syncDevices: 'syncDevicesFromMock',
+      serverUrl: 'serverUrlFromMock',
+      getCommandSendQueue: () => 'syncCommandSendQueueFromMock',
+    } as unknown as SyncManager
+    mediator.registerComponent('syncManager', mockedSyncManager)
+
     const locked = await persistentStorageManager.getLockedRepresentation()
-    expect(locked).toHaveLength(4757)
+
+    expect(mockEncryptSymmetric).toHaveBeenCalledOnce()
+
+    // should be json
+    expect(locked).toMatch(/^{/)
+
+    const parsed = JSON.parse(locked) as LockedRepresentation
+
+    expect(parsed).toEqual({
+      libVersion: TwoFaLib.version,
+      storageVersion: expect.any(Number) as number,
+      encryptedPrivateKey,
+      encryptedSymmetricKey,
+      salt,
+      encryptedVaultState: expect.any(String) as string,
+    })
+
+    expect(parsed.encryptedVaultState).toMatch(/^{/)
+    const parsedVaultState = JSON.parse(
+      parsed.encryptedVaultState,
+    ) as VaultState
+    expect(parsedVaultState).toEqual({
+      deviceId: twoFaLib.deviceId,
+      sync: {
+        devices: 'syncDevicesFromMock',
+        serverUrl: 'serverUrlFromMock',
+        commandSendQueue: 'syncCommandSendQueueFromMock',
+      },
+      vault: [
+        {
+          id: expect.any(String) as string,
+          name: 'Test TOTP',
+          issuer: 'Test Issuer',
+          type: 'TOTP',
+          addedAt: expect.any(Number) as number,
+          updatedAt: null,
+          payload: {
+            secret: 'TESTSECRET',
+            period: 30,
+            algorithm: 'SHA-1',
+            digits: 6,
+          },
+        },
+      ],
+    })
+
+    // Restore original implementations
+    cryptoLib.encryptSymmetric = originalEncryptSymmetric
+    mediator.unRegisterComponent('syncManager')
   })
 
   it('should emit changed event when data is changed', async () => {
@@ -72,7 +153,7 @@ describe('PersistentStorageManager', () => {
     expect(mockChangedFunction).toHaveBeenCalledTimes(1)
   })
 
-  it('Should emit save event when seave is called', async () => {
+  it('Should emit save event when save is called', async () => {
     const mockSaveFunction = vi.fn()
     twoFaLib.addEventListener(TwoFaLibEvent.Changed, mockSaveFunction)
     await persistentStorageManager.save()

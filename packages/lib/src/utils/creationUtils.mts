@@ -123,8 +123,11 @@ const createNewTwoFaLibVault = async (
     publicKey,
     deviceId,
     [],
-    serverUrl,
-    [],
+    {
+      serverUrl,
+      devices: [],
+      commandSendQueue: [],
+    },
   )
 
   return {
@@ -140,7 +143,6 @@ const createNewTwoFaLibVault = async (
  * Loads the library state from a previously locked representation.
  * @param libraryLoader - An instance of LibraryLoader.
  * @param deviceType - A unique identifier for this device type (e.g. 2fa-cli).
- * @param serverUrl - The server URL for syncing.
  * @param passphraseExtraDict - Additional words to be used for passphrase strength evaluation.
  * @param lockedRepresentationString - The string representation of the locked library state representation.
  * @param passphrase - The passphrase for decrypting the keys.
@@ -150,7 +152,6 @@ const createNewTwoFaLibVault = async (
 const loadTwoFaLibFromLockedRepesentation = async (
   libraryLoader: LibraryLoader,
   deviceType: DeviceType,
-  serverUrl: string | undefined,
   passphraseExtraDict: PassphraseExtraDict,
   lockedRepresentationString: LockedRepresentationString,
   passphrase: Passphrase,
@@ -186,7 +187,12 @@ const loadTwoFaLibFromLockedRepesentation = async (
     ),
   ) as VaultState
 
-  if (!vaultState || !vaultState.deviceId || !vaultState.syncDevices) {
+  if (
+    !vaultState ||
+    !vaultState.deviceId ||
+    !vaultState.sync?.commandSendQueue ||
+    !vaultState.sync?.devices
+  ) {
     throw new InitializationError(
       'encryptedVaultState is incomplete or corrupted',
     )
@@ -204,8 +210,7 @@ const loadTwoFaLibFromLockedRepesentation = async (
     publicKey,
     vaultState.deviceId,
     vaultState.vault,
-    serverUrl,
-    vaultState.syncDevices,
+    vaultState.sync,
   )
 }
 
@@ -239,7 +244,6 @@ export const getTwoFaLibVaultCreationUtils = (
         null,
         libraryLoader,
         deviceType,
-        serverUrl,
         passphraseExtraDict,
       ),
   }

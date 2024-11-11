@@ -136,7 +136,7 @@ describe('SyncManager', () => {
       publicKey,
       'senderDeviceId' as DeviceId,
       [],
-      serverUrl,
+      { serverUrl, devices: [], commandSendQueue: [] },
     )
     await server.connected
     await server.nextMessage // wait for the hello message
@@ -155,7 +155,7 @@ describe('SyncManager', () => {
       publicKey,
       'receiverDeviceId' as DeviceId,
       [],
-      serverUrl,
+      { serverUrl, devices: [], commandSendQueue: [] },
     )
     await allConnected
     await server.nextMessage // wait for the hello message
@@ -201,7 +201,7 @@ describe('SyncManager', () => {
       publicKey,
       'disconnectedDeviceId' as DeviceId,
       [],
-      temporaryServerUrl,
+      { serverUrl: temporaryServerUrl, devices: [], commandSendQueue: [] },
     )
 
     // await temporaryServer.connected
@@ -361,7 +361,7 @@ describe('SyncManager', () => {
       publicKey,
       'newSenderDeviceId' as DeviceId,
       [],
-      serverUrl,
+      { serverUrl, devices: [], commandSendQueue: [] },
     )
 
     await server.nextMessage // wait for the connect message

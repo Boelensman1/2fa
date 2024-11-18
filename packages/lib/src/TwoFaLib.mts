@@ -41,10 +41,15 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
   // TOOD: load this from package.json
   public static readonly version = '0.0.1'
 
-  public readonly deviceId?: DeviceId
+  public readonly deviceId: DeviceId
   public readonly deviceType: DeviceType
 
   private mediator: TwoFaLibMediator
+
+  private readonly publicKey: PublicKey
+  private readonly privateKey: PrivateKey
+
+  public readonly ready: Promise<unknown>
 
   /**
    * Constructs a new instance of TwoFaLib. If a serverUrl is provided, the library will use it for its sync operations.
@@ -97,6 +102,8 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
     }
     this.deviceType = deviceType
     this.deviceId = deviceId
+    this.publicKey = publicKey
+    this.privateKey = privateKey
 
     this.mediator = new TwoFaLibMediator()
     this.mediator.registerComponents([
@@ -130,22 +137,25 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
     }
 
     if (syncState?.serverUrl) {
-      this.mediator.registerComponent(
-        'syncManager',
-        new SyncManager(
-          this.mediator,
-          this.deviceType,
-          publicKey,
-          privateKey,
-          syncState as VaultSyncStateWithServerUrl,
-          deviceId,
-        ),
-      )
+      this.setSyncState(syncState as VaultSyncStateWithServerUrl)
     } else {
       // If no syncmanager we're ready now, otherwise the syncmanager is responsible for emitting the ready event
       // We do this with a delay of 1, so that there is time to add event listeners
       setTimeout(() => this.dispatchLibEvent(TwoFaLibEvent.Ready), 1)
     }
+
+    // populate the ready property
+    let setReady: () => void
+    this.ready = new Promise<void>((resolve) => {
+      setReady = resolve
+    })
+
+    const handleReadyEvent = () => {
+      setReady()
+      this.removeEventListener(TwoFaLibEvent.Ready, handleReadyEvent)
+    }
+
+    this.addEventListener(TwoFaLibEvent.Ready, handleReadyEvent)
   }
 
   /**
@@ -201,6 +211,43 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
     newPassphrase: Passphrase,
   ): Promise<void> {
     return this.persistentStorage.changePassphrase(oldPassphrase, newPassphrase)
+  }
+
+  /**
+   * Sets a server url, this will allow syncing with the server.
+   * @param serverUrl - The server url.
+   */
+  async setSyncServerUrl(serverUrl: string) {
+    if (this.sync) {
+      this.sync.closeServerConnection()
+      this.mediator.unRegisterComponent('syncManager')
+    }
+
+    const newSyncState: VaultSyncStateWithServerUrl = {
+      serverUrl,
+      devices: [],
+      commandSendQueue: [],
+    }
+    this.setSyncState(newSyncState)
+    await this.forceSave()
+  }
+
+  /**
+   * Sets the sync state, this will initiate the sync manager instance.
+   * @param syncState - The state of the sync.
+   */
+  private setSyncState(syncState: VaultSyncStateWithServerUrl) {
+    this.mediator.registerComponent(
+      'syncManager',
+      new SyncManager(
+        this.mediator,
+        this.deviceType,
+        this.publicKey,
+        this.privateKey,
+        syncState,
+        this.deviceId,
+      ),
+    )
   }
 
   /**

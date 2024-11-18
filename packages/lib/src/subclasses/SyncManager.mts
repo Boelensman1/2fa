@@ -225,12 +225,13 @@ class SyncManager {
     this.ws = ws
   }
   private handleWebSocketClose(event: CloseEvent) {
-    this.log('warning', `WebSocket closed: ${event.code} ${event.reason}`)
     this.dispatchLibEvent(TwoFaLibEvent.ConnectionToSyncServerStatusChanged, {
       connected: false,
     })
 
     if (this.shouldReconnect) {
+      // if we shouldn't reconnect, this closing is expected
+      this.log('warning', `WebSocket closed: ${event.code} ${event.reason}`)
       this.attemptReconnect()
     }
   }
@@ -849,8 +850,11 @@ class SyncManager {
       this.reconnectTimeout = undefined
     }
     if (this.ws) {
-      this.ws.close()
+      const ws = this.ws
       this.ws = undefined
+
+      ws.close()
+      setTimeout(() => ws.terminate(), 1000)
     }
   }
 }

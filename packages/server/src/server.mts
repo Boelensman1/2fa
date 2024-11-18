@@ -166,7 +166,7 @@ const handleMessage = (ws: WebSocket, message: ClientMessage) => {
           // find matching connection
           const deviceWs = connectedDevices.getWs(deviceId)
           if (!deviceWs) {
-            console.error('Request not found')
+            console.error('Connection not found')
             return
           }
           send(deviceWs, 'syncCommands', [

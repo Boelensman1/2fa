@@ -1,4 +1,4 @@
-import { Tagged } from 'type-fest'
+import type { Tagged } from 'type-fest'
 
 // `Encrypted<T>` tags the original string type to denote that is encrypted
 export type Encrypted<T extends string> = Tagged<T, 'Encrypted'>

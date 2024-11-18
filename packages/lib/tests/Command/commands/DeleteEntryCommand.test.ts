@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { EntryId } from '../../../src/main.mjs'
+import type TwoFaLibMediator from '../../../src/TwoFaLibMediator.mjs'
 import DeleteEntryCommand from '../../../src/Command/commands/DeleteEntryCommand.mjs'
 import AddEntryCommand from '../../../src/Command/commands/AddEntryCommand.mjs'
 import { InvalidCommandError } from '../../../src/TwoFALibError.mjs'
@@ -14,6 +15,9 @@ describe('DeleteEntryCommand', () => {
     deleteEntry,
     getFullEntry,
   } as unknown as VaultDataManager
+  const mockTwoFaLibMediator = {
+    getComponent: () => mockVaultManager,
+  } as unknown as TwoFaLibMediator
 
   it('should create a DeleteEntryCommand instance', () => {
     const command = new DeleteEntryCommand({ entryId: totpEntry.id })
@@ -24,13 +28,13 @@ describe('DeleteEntryCommand', () => {
 
   it('should execute the command', async () => {
     const command = new DeleteEntryCommand({ entryId: totpEntry.id })
-    await command.execute(mockVaultManager)
+    await command.execute(mockTwoFaLibMediator)
     expect(deleteEntry).toHaveBeenCalledWith(totpEntry.id)
   })
 
   it('should create an undo command', async () => {
     const command = new DeleteEntryCommand({ entryId: totpEntry.id })
-    await command.execute(mockVaultManager)
+    await command.execute(mockTwoFaLibMediator)
     const undoCommand = command.createUndoCommand()
     expect(undoCommand).toBeInstanceOf(AddEntryCommand)
     expect((undoCommand as AddEntryCommand).data).toEqual(totpEntry)
@@ -50,7 +54,7 @@ describe('DeleteEntryCommand', () => {
     const invalidCommand = new DeleteEntryCommand({
       entryId: undefined as unknown as EntryId,
     })
-    await expect(invalidCommand.execute(mockVaultManager)).rejects.toThrow(
+    await expect(invalidCommand.execute(mockTwoFaLibMediator)).rejects.toThrow(
       InvalidCommandError,
     )
   })
@@ -59,7 +63,7 @@ describe('DeleteEntryCommand', () => {
     const nonExistentEntryId = '9999' as EntryId
     const command = new DeleteEntryCommand({ entryId: nonExistentEntryId })
     getFullEntry.mockReturnValueOnce(undefined)
-    await expect(command.execute(mockVaultManager)).rejects.toThrow(
+    await expect(command.execute(mockTwoFaLibMediator)).rejects.toThrow(
       InvalidCommandError,
     )
   })

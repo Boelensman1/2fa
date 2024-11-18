@@ -50,6 +50,8 @@ import {
 } from '../interfaces/Vault.mjs'
 import { SyncCommandFromServer } from '2faserver/ServerMessage'
 import { SyncCommandFromClient } from '2faserver/ClientMessage'
+import type { AddSyncDeviceData } from '../Command/commands/AddSyncDeviceCommand.mjs'
+import AddSyncDeviceCommand from '../Command/commands/AddSyncDeviceCommand.mjs'
 
 const IN_TESTING = process.env.NODE_ENV === 'test'
 const IN_DEV = process.env.NODE_ENV === 'development'
@@ -643,12 +645,14 @@ class SyncManager {
       initiatorEncryptedPublicKey,
     })
 
-    this.syncDevices.push({
+    // save the added the sync device, done via command so this is synced to
+    // all the other (already existing) sync devices
+    const command = AddSyncDeviceCommand.create({
       deviceId: this.activeAddDeviceFlow.responderDeviceId,
       deviceType: this.activeAddDeviceFlow.responderDeviceType,
       publicKey: decryptedPublicKey as PublicKey,
     })
-    await this.persistentStorageManager.save()
+    await this.commandManager.execute(command)
 
     // all done
     this.activeAddDeviceFlow = undefined
@@ -688,12 +692,12 @@ class SyncManager {
       .replaceVault(vaultState.vault)
 
     // Update the sync devices list with the initiator's information
-    this.syncDevices.push({
+    // Not done as a command as all other devices already have the senders info
+    await this.addSyncDevice({
       deviceId: this.activeAddDeviceFlow.initiatorDeviceId,
       deviceType: this.activeAddDeviceFlow.initiatorDeviceType,
       publicKey: decryptedPublicKey as PublicKey,
     })
-    await this.persistentStorageManager.save()
 
     // Reset the active add device flow
     this.activeAddDeviceFlow = undefined
@@ -841,6 +845,25 @@ class SyncManager {
   }
 
   /**
+   * Add a sync device
+   * @param deviceInfo - The info about the device
+   */
+  async addSyncDevice(deviceInfo: AddSyncDeviceData) {
+    if (deviceInfo.deviceId === this.deviceId) {
+      // This is the command that adds this device to all sync devices
+      // besides the sender after the device add flow. We don't want to
+      // add ourselves to our syncDevices
+      return
+    }
+    this.log(
+      'info',
+      `Adding syncdevice ${deviceInfo.deviceId} to ${this.deviceId}`,
+    )
+    this.syncDevices.push(deviceInfo)
+    await this.persistentStorageManager.save()
+  }
+
+  /**
    * Function to call when the server connection should be closed
    */
   public closeServerConnection() {
@@ -854,7 +877,10 @@ class SyncManager {
       this.ws = undefined
 
       ws.close()
-      setTimeout(() => ws.terminate(), 1000)
+
+      // force terminate the connection after 5 seconds
+      // ws.terminate is not defined in the test enviroment, which is the reason for the &&
+      setTimeout(() => ws.terminate && ws.terminate(), 5000)
     }
   }
 }

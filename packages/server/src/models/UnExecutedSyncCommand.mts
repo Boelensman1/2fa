@@ -4,7 +4,9 @@ import type { DeviceId, Encrypted, EncryptedSymmetricKey } from '2falib'
 
 class UnExecutedSyncCommand extends Model {
   static readonly tableName = 'unExecutedSyncCommands'
-  static readonly idColumn = 'commandId'
+  static readonly idColumn = 'id'
+
+  id!: number
 
   commandId!: string
 

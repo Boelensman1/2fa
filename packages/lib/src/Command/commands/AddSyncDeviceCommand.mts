@@ -1,28 +1,32 @@
-import { InvalidCommandError } from '../../TwoFALibError.mjs'
+import { InvalidCommandError, TwoFALibError } from '../../TwoFALibError.mjs'
 import type TwoFaLibMediator from '../../TwoFaLibMediator.mjs'
 import Command from '../BaseCommand.mjs'
-import type Entry from '../../interfaces/Entry.mjs'
-import DeleteEntryCommand from './DeleteEntryCommand.mjs'
+import type { DeviceId, DeviceType } from '../../interfaces/SyncTypes.mjs'
+import type { PublicKey } from '../../interfaces/CryptoLib.mjs'
 
-export type AddEntryData = Entry
+export interface AddSyncDeviceData {
+  deviceId: DeviceId
+  deviceType: DeviceType
+  publicKey: PublicKey
+}
 
 /**
  * Represents a command that when executed add an entry to the vault.
  */
-class AddEntryCommand extends Command<AddEntryData> {
+class AddSyncDeviceCommand extends Command<AddSyncDeviceData> {
   /**
    * Creates a new AddEntryCommand instance.
    * @inheritdoc
    * @param data - The data of the entry to be added.
    */
   constructor(
-    data: AddEntryData,
+    data: AddSyncDeviceData,
     id?: string,
     timestamp?: number,
     version?: string,
     fromRemote = false,
   ) {
-    super('AddEntry', data, id, timestamp, version, fromRemote)
+    super('AddSyncDevice', data, id, timestamp, version, fromRemote)
   }
 
   /**
@@ -31,18 +35,18 @@ class AddEntryCommand extends Command<AddEntryData> {
    * @throws {InvalidCommandError} If the command data is invalid.
    */
   async execute(mediator: TwoFaLibMediator) {
-    const vault = mediator.getComponent('vaultDataManager')
+    const syncManager = mediator.getComponent('syncManager')
     if (!this.validate()) {
       throw new InvalidCommandError('Invalid AddEntry command')
     }
-    await vault.addEntry(this.data)
+    await syncManager.addSyncDevice(this.data)
   }
 
   /**
    * @inheritdoc
    */
   createUndoCommand(): Command {
-    return DeleteEntryCommand.create({ entryId: this.data.id })
+    throw new TwoFALibError('Not implemented yet')
   }
 
   /**
@@ -51,8 +55,8 @@ class AddEntryCommand extends Command<AddEntryData> {
    */
   validate(): boolean {
     // TODO: actually validate
-    return this.data.id !== undefined
+    return true
   }
 }
 
-export default AddEntryCommand
+export default AddSyncDeviceCommand

@@ -25,10 +25,6 @@ class CommandManager {
    */
   constructor(private readonly mediator: TwoFaLibMediator) {}
 
-  private get vaultDataManager() {
-    return this.mediator.getComponent('vaultDataManager')
-  }
-
   private get syncManager() {
     if (!this.mediator.componentIsInitialised('syncManager')) {
       return null
@@ -50,7 +46,7 @@ class CommandManager {
       return
     }
 
-    await command.execute(this.vaultDataManager)
+    await command.execute(this.mediator)
     this.processedCommandIds.add(command.id)
     if (!command.fromRemote) {
       this.executedCommands.push(command)
@@ -65,8 +61,8 @@ class CommandManager {
   async undo(): Promise<void> {
     const command = this.executedCommands.pop()
     if (command) {
-      const undoCommand = command.createUndoCommand(this.vaultDataManager)
-      await undoCommand.execute(this.vaultDataManager)
+      const undoCommand = command.createUndoCommand(this.mediator)
+      await undoCommand.execute(this.mediator)
       this.undoneCommands.push(command)
     }
   }
@@ -77,7 +73,7 @@ class CommandManager {
   async redo(): Promise<void> {
     const command = this.undoneCommands.pop()
     if (command) {
-      await command.execute(this.vaultDataManager)
+      await command.execute(this.mediator)
       this.executedCommands.push(command)
     }
   }

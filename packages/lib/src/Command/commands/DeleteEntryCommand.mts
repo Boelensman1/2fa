@@ -1,6 +1,6 @@
 import { InvalidCommandError } from '../../TwoFALibError.mjs'
 import Command from '../BaseCommand.mjs'
-import type VaultDataManager from '../../subclasses/VaultDataManager.mjs'
+import type TwoFaLibMediator from '../../TwoFaLibMediator.mjs'
 import type { EntryId } from '../../interfaces/Entry.mjs'
 
 import AddEntryCommand from './AddEntryCommand.mjs'
@@ -36,10 +36,11 @@ class DeleteEntryCommand extends Command<DeleteEntryData> {
    * @inheritdoc
    * @throws {InvalidCommandError} If the command data is invalid or the entry doesn't exist.
    */
-  async execute(vault: VaultDataManager) {
+  async execute(mediator: TwoFaLibMediator) {
     if (!this.validate()) {
       throw new InvalidCommandError('Invalid DeleteEntry command')
     }
+    const vault = mediator.getComponent('vaultDataManager')
     this.deletedEntry = vault.getFullEntry(this.data.entryId)
     if (this.deletedEntry === undefined) {
       throw new InvalidCommandError(

@@ -1,5 +1,5 @@
 import { InvalidCommandError } from '../../TwoFALibError.mjs'
-import type VaultDataManager from '../../subclasses/VaultDataManager.mjs'
+import type TwoFaLibMediator from '../../TwoFaLibMediator.mjs'
 import Command from '../BaseCommand.mjs'
 import type Entry from '../../interfaces/Entry.mjs'
 import { EntryId } from '../../interfaces/Entry.mjs'
@@ -36,10 +36,11 @@ class UpdateEntryCommand extends Command<UpdateEntryData> {
    * @inheritdoc
    * @throws {InvalidCommandError} If the command data is invalid.
    */
-  async execute(vault: VaultDataManager) {
+  async execute(mediator: TwoFaLibMediator) {
     if (!this.validate()) {
       throw new InvalidCommandError('Invalid UpdateEntry command')
     }
+    const vault = mediator.getComponent('vaultDataManager')
     this.originalEntry = vault.getFullEntry(this.data.entryId)
     await vault.updateEntry(this.data.updatedEntry)
   }

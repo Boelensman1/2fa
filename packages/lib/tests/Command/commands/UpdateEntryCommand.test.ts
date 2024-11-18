@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { EntryId } from '../../../src/main.mjs'
+import type TwoFaLibMediator from '../../../src/TwoFaLibMediator.mjs'
 import UpdateEntryCommand from '../../../src/Command/commands/UpdateEntryCommand.mjs'
 import { InvalidCommandError } from '../../../src/TwoFALibError.mjs'
 import type VaultDataManager from '../../../src/subclasses/VaultDataManager.mjs'
@@ -13,6 +14,9 @@ describe('UpdateEntryCommand', () => {
     updateEntry,
     getFullEntry,
   } as unknown as VaultDataManager
+  const mockTwoFaLibMediator = {
+    getComponent: () => mockVaultManager,
+  } as unknown as TwoFaLibMediator
 
   const updateData = {
     entryId: totpEntry.id,
@@ -29,13 +33,13 @@ describe('UpdateEntryCommand', () => {
 
   it('should execute the command', async () => {
     const command = new UpdateEntryCommand(updateData)
-    await command.execute(mockVaultManager)
+    await command.execute(mockTwoFaLibMediator)
     expect(updateEntry).toHaveBeenCalledWith(updateData.updatedEntry)
   })
 
   it('should create an undo command', async () => {
     const command = new UpdateEntryCommand(updateData)
-    await command.execute(mockVaultManager)
+    await command.execute(mockTwoFaLibMediator)
     const undoCommand = command.createUndoCommand()
     expect(undoCommand).toBeInstanceOf(UpdateEntryCommand)
     expect((undoCommand as UpdateEntryCommand).data).toEqual({
@@ -61,7 +65,7 @@ describe('UpdateEntryCommand', () => {
       ...updateData,
       entryId: undefined as unknown as EntryId,
     })
-    await expect(invalidCommand.execute(mockVaultManager)).rejects.toThrow(
+    await expect(invalidCommand.execute(mockTwoFaLibMediator)).rejects.toThrow(
       InvalidCommandError,
     )
   })

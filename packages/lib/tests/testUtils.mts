@@ -1,3 +1,4 @@
+/* eslint-disable no-restricted-globals */
 import { vi } from 'vitest'
 import NodeCryptoProvider from '../src/CryptoProviders/node/index.mjs'
 import type ServerMessage from '2faserver/ServerMessage'
@@ -15,6 +16,10 @@ import {
 } from '../src/main.mjs'
 import type { Client as WsClient } from 'mock-socket'
 import { PassphraseExtraDict } from '../src/interfaces/PassphraseExtraDict.js'
+import type {
+  SyncCommandsMessage,
+  SyncCommandsExecutedMessage,
+} from '2faserver/ClientMessage'
 
 export const newTotpEntry: NewEntry = {
   name: 'Test TOTP',
@@ -111,18 +116,23 @@ export async function connectDevices({
   senderTwoFaLib,
   receiverTwoFaLib,
   server,
-  senderWsInstance,
-  receiverWsInstance,
+  wsInstancesMap,
 }: {
   senderTwoFaLib: TwoFaLib
   receiverTwoFaLib: TwoFaLib
   server: WS
-  senderWsInstance: WsClient
-  receiverWsInstance: WsClient
+  wsInstancesMap: Map<DeviceId, WsClient>
 }) {
   if (!senderTwoFaLib.sync || !receiverTwoFaLib.sync) {
-    // eslint-disable-next-line no-restricted-globals
     throw new Error('Sync manager not initialized')
+  }
+
+  const senderWsInstance = wsInstancesMap.get(senderTwoFaLib.deviceId)
+  const receiverWsInstance = wsInstancesMap.get(receiverTwoFaLib.deviceId)
+
+  if (!senderWsInstance || !receiverWsInstance) {
+    // eslint-disable-next-line no-restricted-globals
+    throw new Error('Sender/receiver ws instance not found')
   }
 
   // Initiate add device flow
@@ -166,9 +176,10 @@ export async function connectDevices({
     senderTwoFaLib.sync.inAddDeviceFlow ||
     receiverTwoFaLib.sync.inAddDeviceFlow
   ) {
-    // eslint-disable-next-line no-restricted-globals
     throw new Error('Device connection failed')
   }
+
+  await handleSyncCommands(server, senderTwoFaLib.deviceId, wsInstancesMap)
 }
 
 /**
@@ -195,4 +206,67 @@ export const addTestLogEventListener = (lib: TwoFaLib) => {
       console.log(event.detail.message)
     }
   })
+}
+
+/**
+ * Mocks the responses to the sync commands flow by the server
+ * @param server - The WebSocket mock server
+ * @param senderDeviceId - The device ID of the sender
+ * @param wsInstancesMap - The map of client ids to WebSocket clients
+ * @returns The sync commands message and the executed messages
+ */
+export const handleSyncCommands = async (
+  server: WS,
+  senderDeviceId: DeviceId,
+  wsInstancesMap: Map<DeviceId, WsClient>,
+) => {
+  const senderWsInstance = wsInstancesMap.get(senderDeviceId)
+  if (!senderWsInstance) {
+    // eslint-disable-next-line no-restricted-globals
+    throw new Error('Could not find sender ws instance')
+  }
+
+  // Wait for the command to be re-sent
+  const syncCommandsMsg = (await server.nextMessage) as SyncCommandsMessage
+
+  if (syncCommandsMsg.type !== 'syncCommands') {
+    // eslint-disable-next-line no-restricted-globals
+    throw new Error(
+      `Wrong message received:\n ${JSON.stringify(syncCommandsMsg, null, 2)} `,
+    )
+  }
+
+  // Send confirmation of received commands
+  send(senderWsInstance, 'syncCommandsReceived', {
+    commandIds: syncCommandsMsg.data.commands.map((c) => c.commandId),
+  })
+
+  const syncCommandsExecutedMsgs = new Map<
+    DeviceId,
+    SyncCommandsExecutedMessage
+  >()
+
+  for (const command of syncCommandsMsg.data.commands) {
+    const receiverWsInstance = wsInstancesMap.get(command.deviceId)
+    if (!receiverWsInstance) {
+      throw new Error(`Could not find receiverWsInstance ${command.deviceId}`)
+    }
+
+    // Send commands to receiver
+    send(receiverWsInstance, 'syncCommands', syncCommandsMsg.data.commands)
+
+    const executedMsg =
+      (await server.nextMessage) as SyncCommandsExecutedMessage
+    if (executedMsg.type !== 'syncCommandsExecuted') {
+      throw new Error(
+        `Expected "syncCommandsExecuted" type but got "${executedMsg.type as string}"`,
+      )
+    }
+    syncCommandsExecutedMsgs.set(command.deviceId, executedMsg)
+  }
+
+  return {
+    syncCommandsMessage: syncCommandsMsg,
+    syncCommandsExecutedMessages: syncCommandsExecutedMsgs,
+  }
 }

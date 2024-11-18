@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { EntryId } from '../../../src/main.mjs'
+import type TwoFaLibMediator from '../../../src/TwoFaLibMediator.mjs'
 import AddEntryCommand from '../../../src/Command/commands/AddEntryCommand.mjs'
 import DeleteEntryCommand from '../../../src/Command/commands/DeleteEntryCommand.mjs'
 import { InvalidCommandError } from '../../../src/TwoFALibError.mjs'
@@ -12,6 +13,9 @@ describe('AddEntryCommand', () => {
   const mockVaultManager: VaultDataManager = {
     addEntry,
   } as unknown as VaultDataManager
+  const mockTwoFaLibMediator = {
+    getComponent: () => mockVaultManager,
+  } as unknown as TwoFaLibMediator
 
   it('should create an AddEntryCommand instance', () => {
     const command = new AddEntryCommand(totpEntry)
@@ -22,7 +26,7 @@ describe('AddEntryCommand', () => {
 
   it('should execute the command', async () => {
     const command = new AddEntryCommand(totpEntry)
-    await command.execute(mockVaultManager)
+    await command.execute(mockTwoFaLibMediator)
     expect(addEntry).toHaveBeenCalledWith(totpEntry)
   })
 
@@ -49,7 +53,7 @@ describe('AddEntryCommand', () => {
       ...totpEntry,
       id: undefined as unknown as EntryId,
     })
-    await expect(invalidCommand.execute(mockVaultManager)).rejects.toThrow(
+    await expect(invalidCommand.execute(mockTwoFaLibMediator)).rejects.toThrow(
       InvalidCommandError,
     )
   })

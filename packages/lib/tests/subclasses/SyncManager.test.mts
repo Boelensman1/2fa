@@ -11,11 +11,7 @@ import WS from 'vitest-websocket-mock'
 export { WebSocket as default } from 'mock-socket'
 
 import type ServerMessage from '2faserver/ServerMessage'
-import {
-  ConnectMessage,
-  SyncCommandsExecutedMessage,
-  SyncCommandsMessage,
-} from '2faserver/ClientMessage'
+import { ConnectMessage } from '2faserver/ClientMessage'
 import {
   CryptoLib,
   EncryptedPrivateKey,
@@ -35,6 +31,7 @@ import {
   totpEntry,
   send,
   connectDevices,
+  handleSyncCommands,
 } from '../testUtils.mjs'
 import { Client as WsClient } from 'mock-socket'
 import {
@@ -49,38 +46,6 @@ vi.mock('isomorphic-ws')
 
 const serverPort = 9770
 const serverBaseUrl = 'ws://localhost'
-
-const handleSyncCommands = async (
-  server: WS,
-  senderWsInstance: WsClient,
-  receiverWsInstance: WsClient,
-) => {
-  // Wait for the command to be re-sent
-  const syncCommandsMsg = (await server.nextMessage) as SyncCommandsMessage
-
-  if (syncCommandsMsg.type !== 'syncCommands') {
-    // eslint-disable-next-line no-restricted-globals
-    throw new Error(
-      `Wrong message received:\n ${JSON.stringify(syncCommandsMsg, null, 2)} `,
-    )
-  }
-
-  // Send confirmation of received commands
-  send(senderWsInstance, 'syncCommandsReceived', {
-    commandIds: syncCommandsMsg.data.commands.map((c) => c.commandId),
-  })
-
-  // Send commands to receiver
-  send(receiverWsInstance, 'syncCommands', syncCommandsMsg.data.commands)
-
-  const syncCommandsExecutedMsg =
-    (await server.nextMessage) as SyncCommandsExecutedMessage
-
-  return {
-    syncCommandsMessage: syncCommandsMsg,
-    syncCommandsExecutedMessage: syncCommandsExecutedMsg,
-  }
-}
 
 describe('SyncManager', () => {
   let serverUrl: string
@@ -235,6 +200,11 @@ describe('SyncManager', () => {
       throw new Error('Sync manager not initialized')
     }
 
+    const wsInstancesMap = new Map([
+      [senderTwoFaLib.deviceId, senderWsInstance],
+      [receiverTwoFaLib.deviceId, receiverWsInstance],
+    ])
+
     // initiate the add device flow
     const initiateResultPromise = senderTwoFaLib.sync.initiateAddDeviceFlow({
       qr: false,
@@ -283,15 +253,54 @@ describe('SyncManager', () => {
     const nonces = messageDatas.map((d) => (d as { nonce: string }).nonce)
     expect(new Set(nonces).size).toEqual(nonces.length)
 
+    // receive the messages about adding the syncDevices
+    const { syncCommandsExecutedMessages } = await handleSyncCommands(
+      server,
+      senderTwoFaLib.deviceId,
+      wsInstancesMap,
+    )
+
+    // received the syncCommandsExecuted message
+    const syncCommandsExecutedMessage = syncCommandsExecutedMessages.get(
+      receiverTwoFaLib.deviceId,
+    )
+    expect(syncCommandsExecutedMessage).toEqual({
+      type: 'syncCommandsExecuted',
+      data: { commandIds: [expect.any(String)] },
+    })
+  })
+
+  it('Connected devices should sync', async () => {
+    const wsInstancesMap = new Map([
+      [senderTwoFaLib.deviceId, senderWsInstance],
+      [receiverTwoFaLib.deviceId, receiverWsInstance],
+    ])
+
+    await connectDevices({
+      senderTwoFaLib,
+      receiverTwoFaLib,
+      server,
+      wsInstancesMap,
+    })
+
     // if we now add an entry to one of the libs, it should also be pushed to the other
     // const addedEntryId = await senderTwoFaLib.vault.addEntry(anotherTotpEntry)
     await senderTwoFaLib.vault.addEntry(anotherNewTotpEntry)
 
-    const { syncCommandsExecutedMessage } = await handleSyncCommands(
+    const { syncCommandsExecutedMessages } = await handleSyncCommands(
       server,
-      senderWsInstance,
-      receiverWsInstance,
+      senderTwoFaLib.deviceId,
+      wsInstancesMap,
     )
+
+    // received the syncCommandsExecuted message
+    const syncCommandsExecutedMessage = syncCommandsExecutedMessages.get(
+      receiverTwoFaLib.deviceId,
+    )
+    expect(syncCommandsExecutedMessage).toEqual({
+      type: 'syncCommandsExecuted',
+      data: { commandIds: [expect.any(String)] },
+    })
 
     await vi.waitUntil(() => receiverTwoFaLib.vault.size !== 1, {
       timeout: 1000,
@@ -301,18 +310,19 @@ describe('SyncManager', () => {
       senderTwoFaLib.vault.listEntries(),
     )
 
-    // receive the syncCommandsExecuted message
-    expect(syncCommandsExecutedMessage).toEqual({
-      type: 'syncCommandsExecuted',
-      data: { commandIds: [expect.any(String)] },
-    })
-
     // and the other way around
     const addedEntryId = await receiverTwoFaLib.vault.addEntry(totpEntry)
 
     // mock server
-    const { syncCommandsExecutedMessage: syncCommandsExecutedMessage1 } =
-      await handleSyncCommands(server, receiverWsInstance, senderWsInstance)
+    const { syncCommandsExecutedMessages: syncCommandsExecutedMessages1 } =
+      await handleSyncCommands(
+        server,
+        receiverTwoFaLib.deviceId,
+        wsInstancesMap,
+      )
+    const syncCommandsExecutedMessage1 = syncCommandsExecutedMessages1.get(
+      senderTwoFaLib.deviceId,
+    )
 
     // entry should now be added
     await vi.waitUntil(() => senderTwoFaLib.vault.size !== 2, {
@@ -332,7 +342,7 @@ describe('SyncManager', () => {
     await senderTwoFaLib.vault.deleteEntry(addedEntryId)
 
     // mock server
-    await handleSyncCommands(server, senderWsInstance, receiverWsInstance)
+    await handleSyncCommands(server, senderTwoFaLib.deviceId, wsInstancesMap)
 
     await vi.waitUntil(() => receiverTwoFaLib.vault.size !== 3, {
       timeout: 1000,
@@ -378,18 +388,23 @@ describe('SyncManager', () => {
       // eslint-disable-next-line no-restricted-globals
       throw new Error('Sync manager not initialized')
     }
+
+    const wsInstancesMap = new Map([
+      [senderTwoFaLib.deviceId, senderWsInstance],
+      [receiverTwoFaLib.deviceId, receiverWsInstance],
+    ])
+
     expect(server.messagesToConsume.pendingItems).toHaveLength(0)
     await connectDevices({
       senderTwoFaLib,
       receiverTwoFaLib,
       server,
-      senderWsInstance,
-      receiverWsInstance,
+      wsInstancesMap,
     })
 
     // Add an entry while connected (should not be resend after the reconnect)
     await senderTwoFaLib.vault.addEntry(newTotpEntry)
-    await handleSyncCommands(server, senderWsInstance, receiverWsInstance)
+    await handleSyncCommands(server, senderTwoFaLib.deviceId, wsInstancesMap)
     expect(server.messagesToConsume.pendingItems).toHaveLength(0)
 
     // Simulate disconnection
@@ -412,8 +427,8 @@ describe('SyncManager', () => {
     // Wait for the command to be re-sent
     const { syncCommandsMessage } = await handleSyncCommands(
       server,
-      senderWsInstance,
-      receiverWsInstance,
+      senderTwoFaLib.deviceId,
+      wsInstancesMap,
     )
     expect(syncCommandsMessage).toEqual({
       type: 'syncCommands',
@@ -444,4 +459,80 @@ describe('SyncManager', () => {
     expect(senderTwoFaLib.vault.getEntryMeta(addedEntryId)).toBeTruthy()
     expect(receiverTwoFaLib.vault.getEntryMeta(addedEntryId)).toBeTruthy()
   }, 10000) // long running test, the re-connect itself takes 5 seconds
+
+  it('should work with >2 devices', async () => {
+    let otherReceiverWsInstance: WsClient
+    const connectionPromise = new Promise<void>((resolve) => {
+      server.on('connection', (client) => {
+        otherReceiverWsInstance = client
+        resolve()
+      })
+    })
+
+    const otherReceiverTwoFaLib = new TwoFaLib(
+      'otherReceiver' as DeviceType,
+      cryptoLib,
+      ['test'],
+      privateKey,
+      symmetricKey,
+      encryptedPrivateKey,
+      encryptedSymmetricKey,
+      salt,
+      publicKey,
+      'otherReceiverDeviceId' as DeviceId,
+      [],
+      { serverUrl, devices: [], commandSendQueue: [] },
+    )
+
+    await connectionPromise
+
+    await server.nextMessage // wait for the hello message
+
+    const wsInstancesMap = new Map([
+      [senderTwoFaLib.deviceId, senderWsInstance],
+      [receiverTwoFaLib.deviceId, receiverWsInstance],
+      [otherReceiverTwoFaLib.deviceId, otherReceiverWsInstance!],
+    ])
+
+    // connect first two
+    await connectDevices({
+      senderTwoFaLib,
+      receiverTwoFaLib,
+      server,
+      wsInstancesMap,
+    })
+
+    // connect the 3rd
+    await connectDevices({
+      senderTwoFaLib,
+      receiverTwoFaLib: otherReceiverTwoFaLib,
+      server,
+      wsInstancesMap,
+    })
+
+    expect(senderTwoFaLib.sync?.syncDevices).toHaveLength(2)
+    expect(receiverTwoFaLib.sync?.syncDevices).toHaveLength(2)
+    expect(otherReceiverTwoFaLib.sync?.syncDevices).toHaveLength(2)
+
+    const addedEntryId =
+      await receiverTwoFaLib.vault.addEntry(anotherNewTotpEntry)
+
+    await handleSyncCommands(server, senderTwoFaLib.deviceId, wsInstancesMap)
+
+    // Wait for all to process the command
+    await vi.waitUntil(
+      () =>
+        senderTwoFaLib.vault.size === 2 &&
+        receiverTwoFaLib.vault.size === 2 &&
+        otherReceiverTwoFaLib.vault.size === 2,
+      {
+        timeout: 1000,
+        interval: 20,
+      },
+    )
+
+    expect(senderTwoFaLib.vault.getEntryMeta(addedEntryId)).toBeTruthy()
+    expect(receiverTwoFaLib.vault.getEntryMeta(addedEntryId)).toBeTruthy()
+    expect(otherReceiverTwoFaLib.vault.getEntryMeta(addedEntryId)).toBeTruthy()
+  })
 })

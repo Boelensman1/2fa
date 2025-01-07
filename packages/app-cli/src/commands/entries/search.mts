@@ -34,7 +34,7 @@ class EntriesSearchCommand extends BaseCommand {
 
     const out = generateEntriesTable(filteredEntries)
     this.output(out)
-    return filteredEntries as unknown as JsonArray
+    return Promise.resolve(filteredEntries as unknown as JsonArray)
   }
 }
 

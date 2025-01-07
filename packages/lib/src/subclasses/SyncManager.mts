@@ -11,9 +11,9 @@ import {
   JPakeThreePass,
   Pass2Result,
   Pass3Result,
-} from 'jpake'
-import type ServerMessage from '2faserver/ServerMessage'
-import type ClientMessage from '2faserver/ClientMessage'
+} from 'jpake-ts'
+import type ServerMessage from 'favaserver/ServerMessage'
+import type ClientMessage from 'favaserver/ClientMessage'
 
 import { TwoFaLibEvent } from '../TwoFaLibEvent.mjs'
 import {
@@ -48,8 +48,8 @@ import {
   EncryptedVaultStateString,
   VaultSyncStateWithServerUrl,
 } from '../interfaces/Vault.mjs'
-import { SyncCommandFromServer } from '2faserver/ServerMessage'
-import { SyncCommandFromClient } from '2faserver/ClientMessage'
+import { SyncCommandFromServer } from 'favaserver/ServerMessage'
+import { SyncCommandFromClient } from 'favaserver/ClientMessage'
 import type { AddSyncDeviceData } from '../Command/commands/AddSyncDeviceCommand.mjs'
 import AddSyncDeviceCommand from '../Command/commands/AddSyncDeviceCommand.mjs'
 

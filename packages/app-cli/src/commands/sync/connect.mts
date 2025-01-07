@@ -1,6 +1,6 @@
 import { input } from '@inquirer/prompts'
 import BaseCommand from '../../BaseCommand.mjs'
-import { TwoFaLibEvent } from '2falib'
+import { TwoFaLibEvent } from 'favalib'
 
 class ConnectCommand extends BaseCommand {
   static override paths = [['sync', 'connect']]

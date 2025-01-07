@@ -1,4 +1,4 @@
-INSTALL_DEPS:=node_modules ../jpake/build ../server/build
+INSTALL_DEPS:=node_modules ../server/build
 SRC_FILES:=$(shell find src/)
 TEST_FILES:=$(shell find tests/)
 
@@ -6,9 +6,6 @@ build: $(INSTALL_DEPS) $(SRC_FILES) tsconfig.json tsconfig.build.json
 	rm -rf build *.tsbuildinfo # TODO: find out why this is needed
 	npx --no-install tsc --project ./tsconfig.build.json
 	@if [ -e node_modules ]; then touch node_modules; fi
-
-../jpake/build:
-	$(MAKE) -C ../jpake build
 
 ../server/build:
 	$(MAKE) -C ../server build

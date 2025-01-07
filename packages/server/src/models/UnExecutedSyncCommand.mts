@@ -1,6 +1,6 @@
 import { Model } from 'objection'
 
-import type { DeviceId, Encrypted, EncryptedSymmetricKey } from '2falib'
+import type { DeviceId, Encrypted, EncryptedSymmetricKey } from 'favalib'
 
 class UnExecutedSyncCommand extends Model {
   static readonly tableName = 'unExecutedSyncCommands'

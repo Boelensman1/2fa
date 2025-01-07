@@ -77,4 +77,11 @@ export default [
       },
     },
   },
+  {
+    files: ['packages/app-cli/**'],
+    rules: {
+      'no-restricted-globals': ['off'],
+      'jsdoc/require-jsdoc': ['off'],
+    },
+  },
 ]

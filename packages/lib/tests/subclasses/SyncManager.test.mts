@@ -10,8 +10,8 @@ import {
 import WS from 'vitest-websocket-mock'
 export { WebSocket as default } from 'mock-socket'
 
-import type ServerMessage from '2faserver/ServerMessage'
-import { ConnectMessage } from '2faserver/ClientMessage'
+import type ServerMessage from 'favaserver/ServerMessage'
+import { ConnectMessage } from 'favaserver/ClientMessage'
 import {
   CryptoLib,
   EncryptedPrivateKey,

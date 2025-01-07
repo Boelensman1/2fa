@@ -1,5 +1,5 @@
 import Table from 'tty-table'
-import type { EntryMeta, EntryMetaWithToken } from '2falib'
+import type { EntryMeta, EntryMetaWithToken } from 'favalib'
 
 const generateEntriesTable = (
   entries: EntryMeta[] | EntryMetaWithToken[],

@@ -7,7 +7,7 @@ import type {
 } from './CryptoLib.mjs'
 import type Entry from './Entry.mjs'
 import { DeviceId, SyncDevice } from './SyncTypes.mjs'
-import { SyncCommandFromClient } from '2faserver/ClientMessage'
+import { SyncCommandFromClient } from 'favaserver/ClientMessage'
 
 export type Vault = Entry[]
 

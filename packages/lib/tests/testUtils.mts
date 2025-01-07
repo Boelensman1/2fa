@@ -1,7 +1,6 @@
 /* eslint-disable no-restricted-globals */
 import { vi } from 'vitest'
 import NodeCryptoProvider from '../src/CryptoProviders/node/index.mjs'
-import type ServerMessage from '2faserver/ServerMessage'
 import type WS from 'vitest-websocket-mock'
 import {
   getTwoFaLibVaultCreationUtils,
@@ -16,10 +15,12 @@ import {
 } from '../src/main.mjs'
 import type { Client as WsClient } from 'mock-socket'
 import { PassphraseExtraDict } from '../src/interfaces/PassphraseExtraDict.js'
+
+import type ServerMessage from 'favaserver/ServerMessage'
 import type {
   SyncCommandsMessage,
   SyncCommandsExecutedMessage,
-} from '2faserver/ClientMessage'
+} from 'favaserver/ClientMessage'
 
 export const newTotpEntry: NewEntry = {
   name: 'Test TOTP',
@@ -131,7 +132,6 @@ export async function connectDevices({
   const receiverWsInstance = wsInstancesMap.get(receiverTwoFaLib.deviceId)
 
   if (!senderWsInstance || !receiverWsInstance) {
-    // eslint-disable-next-line no-restricted-globals
     throw new Error('Sender/receiver ws instance not found')
   }
 
@@ -222,7 +222,6 @@ export const handleSyncCommands = async (
 ) => {
   const senderWsInstance = wsInstancesMap.get(senderDeviceId)
   if (!senderWsInstance) {
-    // eslint-disable-next-line no-restricted-globals
     throw new Error('Could not find sender ws instance')
   }
 
@@ -230,7 +229,6 @@ export const handleSyncCommands = async (
   const syncCommandsMsg = (await server.nextMessage) as SyncCommandsMessage
 
   if (syncCommandsMsg.type !== 'syncCommands') {
-    // eslint-disable-next-line no-restricted-globals
     throw new Error(
       `Wrong message received:\n ${JSON.stringify(syncCommandsMsg, null, 2)} `,
     )

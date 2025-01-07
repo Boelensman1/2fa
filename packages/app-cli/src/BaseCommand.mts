@@ -1,6 +1,6 @@
 import { Command, Option } from 'clipanion'
 import type { Jsonifiable } from 'type-fest'
-import type { LockedRepresentationString, TwoFaLib } from '2falib'
+import type { LockedRepresentationString, TwoFaLib } from 'favalib'
 
 import loadVault from './utils/loadVault.mjs'
 import init, { Settings } from './utils/init.mjs'

@@ -8,8 +8,8 @@ import {
   getTwoFaLibVaultCreationUtils,
   Passphrase,
   TwoFaLibEvent,
-} from '2falib'
-import NodeCryptoProvider from '2falib/cryptoProviders/node'
+} from 'favalib'
+import NodeCryptoProvider from 'favalib/cryptoProviders/node'
 import { password } from '@inquirer/prompts'
 
 const cryptoLib = new NodeCryptoProvider()

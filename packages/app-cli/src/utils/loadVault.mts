@@ -7,8 +7,8 @@ import {
   type LockedRepresentationString,
   Passphrase,
   TwoFaLibEvent,
-} from '2falib'
-import NodeCryptoProvider from '2falib/cryptoProviders/node'
+} from 'favalib'
+import NodeCryptoProvider from 'favalib/cryptoProviders/node'
 
 const cryptoLib = new NodeCryptoProvider()
 const twoFaLibVaultCreationUtils = getTwoFaLibVaultCreationUtils(

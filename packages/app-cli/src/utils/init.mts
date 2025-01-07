@@ -1,5 +1,5 @@
 import fs from 'node:fs/promises'
-import type { LockedRepresentationString } from '2falib'
+import type { LockedRepresentationString } from 'favalib'
 import type { EmptyObject } from 'type-fest'
 
 export type Settings = EmptyObject

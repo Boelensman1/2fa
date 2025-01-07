@@ -5,7 +5,7 @@ import type {
   EncryptedPublicKey,
   EncryptedSymmetricKey,
   EncryptedVaultStateString,
-} from '2falib'
+} from 'favalib'
 import type JsonifiedUint8Array from './JsonifiedUint8Array.mjs'
 
 export interface ConnectMessage {

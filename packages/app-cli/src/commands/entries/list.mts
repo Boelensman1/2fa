@@ -27,7 +27,7 @@ class EntriesListCommand extends BaseCommand {
     }
 
     this.output(generateEntriesTable(entries))
-    return entries as unknown as JsonArray
+    return Promise.resolve(entries as unknown as JsonArray)
   }
 }
 

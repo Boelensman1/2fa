@@ -1,5 +1,8 @@
 node_modules
 build
+dist
 *.tsbuildinfo
 knexfile.json
 coverage
+vault.json
+settings.json

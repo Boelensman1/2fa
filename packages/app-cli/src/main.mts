@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { Cli } from 'clipanion'
+import { Cli, Builtins } from 'clipanion'
 
 import VaultCreateCommand from './commands/vault/create.mjs'
 import EntriesAddCommand from './commands/entries/add.mjs'
@@ -14,17 +14,25 @@ if (nodeRuntimeMajorVersion < 20) {
   throw new Error('Node.js version must be 20 or higher')
 }
 
-const [node, app, ...args] = process.argv
+const [...args] = process.argv
 
 const cli = new Cli({
-  binaryLabel: `My Application`,
-  binaryName: `${node} ${app}`,
-  binaryVersion: `1.0.0`,
+  binaryLabel: 'FavaCli',
+  binaryName: `favacli`,
+  binaryVersion: '0.0.7',
 })
+
 cli.register(VaultCreateCommand)
 cli.register(EntriesAddCommand)
 cli.register(EntriesListCommand)
 cli.register(EntriesSearchCommand)
 cli.register(SyncSetServerUrlCommand)
 cli.register(SyncConnect)
+cli.register(Builtins.HelpCommand)
+
+if (args[0].endsWith('node')) {
+  args.splice(0, 1)
+  args.splice(0, 1)
+}
+
 void cli.runExit(args)

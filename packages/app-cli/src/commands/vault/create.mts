@@ -24,6 +24,18 @@ class VaultCreateCommand extends BaseCommand {
 
   requireTwoFaLib = false
 
+  static usage = BaseCommand.Usage({
+    category: 'Vault',
+    description: 'Create a new encrypted vault',
+    details: `
+      This command creates a new encrypted vault file to store your 2FA entries.
+      
+      You will be prompted to enter a passphrase that will be used to encrypt the vault.
+      The passphrase will be securely stored in your system's keychain.
+    `,
+    examples: [['Create a new vault', 'vault create']],
+  })
+
   async exec() {
     const passphrase = (await password({
       message: 'Enter your vault passphrase:',

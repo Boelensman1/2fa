@@ -5,6 +5,26 @@ import BaseCommand from '../../BaseCommand.mjs'
 class EntriesAddCommand extends BaseCommand {
   static override paths = [['entries', 'add']]
 
+  static usage = BaseCommand.Usage({
+    category: 'Entries',
+    description: 'Add a new TOTP entry to the vault',
+    details: `
+      This command adds a new time-based one-time password (TOTP) entry to your vault.
+
+      The secret must be provided in base32 format.
+    `,
+    examples: [
+      [
+        'Add a basic TOTP entry',
+        'entries add --name "My Account" --issuer "Example.com" --secret JBSWY3DPEHPK3PXP',
+      ],
+      [
+        'Add a TOTP entry with custom period and digits',
+        'entries add --name "Custom Account" --issuer "Example.com" --secret AAAAAAAA --period 60 --digits 8',
+      ],
+    ],
+  })
+
   requireTwoFaLib = true
 
   name = Option.String('--name', { required: true })

@@ -1,18 +1,16 @@
 import { Option } from 'clipanion'
-import type { JsonArray } from 'type-fest'
 
-import BaseCommand from '../../BaseCommand.mjs'
-import generateEntriesTable from '../../utils/generateEntriesTable.mjs'
+import BaseListOutputCommand from '../../BaseListOutputCommand.mjs'
 
-class EntriesListCommand extends BaseCommand {
+class EntriesListCommand extends BaseListOutputCommand {
   static override paths = [['entries', 'list']]
 
-  static usage = BaseCommand.Usage({
+  static usage = BaseListOutputCommand.Usage({
     category: 'Entries',
     description: 'List all stored 2FA entries',
     details: `
       This command displays a table of all stored two-factor authentication entries.
-      
+
       When used with --withTokens, it will also show the current TOTP codes for each entry.
     `,
     examples: [
@@ -27,7 +25,7 @@ class EntriesListCommand extends BaseCommand {
     description: 'Include current TOTP tokens in the output',
   })
 
-  async exec() {
+  getList() {
     let entries
     if (this.withTokens) {
       entries = this.twoFaLib.vault.listEntriesMetas(true)
@@ -35,13 +33,7 @@ class EntriesListCommand extends BaseCommand {
       entries = this.twoFaLib.vault.listEntriesMetas(false)
     }
 
-    if (entries.length === 0) {
-      this.context.stdout.write('No entries\n')
-      return 0
-    }
-
-    this.output(generateEntriesTable(entries))
-    return Promise.resolve(entries as unknown as JsonArray)
+    return entries
   }
 }
 

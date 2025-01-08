@@ -1,19 +1,16 @@
 import { Option } from 'clipanion'
-import type { JsonArray } from 'type-fest'
 
-import BaseCommand from '../../BaseCommand.mjs'
+import BaseListOutputCommand from '../../BaseListOutputCommand.mjs'
 
-import generateEntriesTable from '../../utils/generateEntriesTable.mjs'
-
-class EntriesSearchCommand extends BaseCommand {
+class EntriesSearchCommand extends BaseListOutputCommand {
   static override paths = [['entries', 'search']]
 
-  static usage = BaseCommand.Usage({
+  static usage = BaseListOutputCommand.Usage({
     category: 'Entries',
     description: 'Search for stored 2FA entries',
     details: `
       This command searches through all stored two-factor authentication entries.
-      
+
       The search query will match against entry names and issuers.
       When used with --withTokens, it will also show the current TOTP codes for matching entries.
     `,
@@ -34,7 +31,7 @@ class EntriesSearchCommand extends BaseCommand {
 
   query = Option.String({ required: true })
 
-  async exec() {
+  getList() {
     let filteredEntries
     if (this.withTokens) {
       filteredEntries = this.twoFaLib.vault.searchEntriesMetas(this.query, true)
@@ -45,14 +42,7 @@ class EntriesSearchCommand extends BaseCommand {
       )
     }
 
-    if (filteredEntries.length === 0) {
-      this.output('No matching entries found.\n')
-      return []
-    }
-
-    const out = generateEntriesTable(filteredEntries)
-    this.output(out)
-    return Promise.resolve(filteredEntries as unknown as JsonArray)
+    return filteredEntries
   }
 }
 

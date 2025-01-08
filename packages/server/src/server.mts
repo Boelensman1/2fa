@@ -206,6 +206,7 @@ wss.on('connection', function connection(ws) {
   })
 
   ws.on('close', function close() {
+    console.log('Connection closed!')
     // find matching connected device
     connectedDevices.removeDeviceByWs(this)
 

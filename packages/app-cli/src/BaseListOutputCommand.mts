@@ -5,13 +5,13 @@ import BaseCommand from './BaseCommand.mjs'
 
 import generateEntriesTable from './utils/generateEntriesTable.mjs'
 import formatters from './formatters/index.mjs'
-import { JsonArray } from 'type-fest'
+import { Jsonifiable, JsonArray } from 'type-fest'
 
 const formattersMap = new Map(formatters.map((f) => [f.name, f.formatter]))
 
 export type Formatter = (
   entries: (EntryMeta | EntryMetaWithToken)[],
-) => JsonArray
+) => Jsonifiable
 
 abstract class BaseListOutputCommand extends BaseCommand {
   abstract getList(): EntryMeta[] | EntryMetaWithToken[]

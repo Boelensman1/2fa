@@ -2,6 +2,7 @@
 import { Cli, Builtins } from 'clipanion'
 
 import VaultCreateCommand from './commands/vault/create.mjs'
+import VaultDeleteCommand from './commands/vault/delete.mjs'
 import EntriesAddCommand from './commands/entries/add.mjs'
 import EntriesListCommand from './commands/entries/list.mjs'
 import EntriesSearchCommand from './commands/entries/search.mjs'
@@ -23,6 +24,7 @@ const cli = new Cli({
 })
 
 cli.register(VaultCreateCommand)
+cli.register(VaultDeleteCommand)
 cli.register(EntriesAddCommand)
 cli.register(EntriesListCommand)
 cli.register(EntriesSearchCommand)

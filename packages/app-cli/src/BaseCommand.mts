@@ -32,11 +32,15 @@ abstract class BaseCommand extends Command {
 
     this.settings = settings
 
-    if (lockedRepresentationString) {
-      this.twoFaLib = await loadVault(lockedRepresentationString, this.verbose)
+    if (lockedRepresentationString && this.requireTwoFaLib) {
+      this.twoFaLib = await loadVault(
+        lockedRepresentationString,
+        settings,
+        this.verbose,
+      )
     } else {
       if (this.requireTwoFaLib) {
-        throw new Error('TwoFaLib is required')
+        throw new Error('No vault loaded, was it created?')
       }
     }
 

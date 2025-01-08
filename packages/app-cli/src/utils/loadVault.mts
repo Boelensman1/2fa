@@ -24,7 +24,7 @@ const loadVault = async (
   verbose = false,
 ) => {
   const passphrase = (await keytar.getPassword(
-    '2falib',
+    'favacli',
     'vault-passphrase',
   )) as Passphrase
 

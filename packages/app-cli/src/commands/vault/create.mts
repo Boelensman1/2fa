@@ -29,7 +29,7 @@ class VaultCreateCommand extends BaseCommand {
     description: 'Create a new encrypted vault',
     details: `
       This command creates a new encrypted vault file to store your 2FA entries.
-      
+
       You will be prompted to enter a passphrase that will be used to encrypt the vault.
       The passphrase will be securely stored in your system's keychain.
     `,
@@ -52,7 +52,7 @@ class VaultCreateCommand extends BaseCommand {
     })
     await Promise.all([
       twoFaLib.forceSave(),
-      keytar.setPassword('2falib', 'vault-passphrase', passphrase),
+      keytar.setPassword('favacli', 'vault-passphrase', passphrase),
     ])
     return { success: true }
   }

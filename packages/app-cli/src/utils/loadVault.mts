@@ -34,7 +34,6 @@ const loadVault = async (
       passphrase,
     )
   twoFaLib.addEventListener(TwoFaLibEvent.Changed, (ev) => {
-    console.log(settings.vaultLocation)
     return fs.writeFile(
       settings.vaultLocation,
       ev.detail.newLockedRepresentationString,

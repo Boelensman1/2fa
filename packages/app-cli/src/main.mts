@@ -15,7 +15,7 @@ if (nodeRuntimeMajorVersion < 20) {
   throw new Error('Node.js version must be 20 or higher')
 }
 
-const [...args] = process.argv
+const [, , ...args] = process.argv
 
 const cli = new Cli({
   binaryLabel: 'FavaCli',
@@ -31,10 +31,5 @@ cli.register(EntriesSearchCommand)
 cli.register(SyncSetServerUrlCommand)
 cli.register(SyncConnect)
 cli.register(Builtins.HelpCommand)
-
-if (args[0].endsWith('node')) {
-  args.splice(0, 1)
-  args.splice(0, 1)
-}
 
 void cli.runExit(args)

@@ -9,6 +9,7 @@ import {
   TwoFaLibEvent,
 } from 'favalib'
 import NodeCryptoProvider from 'favalib/cryptoProviders/node'
+import { Settings } from './init.mjs'
 
 const cryptoLib = new NodeCryptoProvider()
 const twoFaLibVaultCreationUtils = getTwoFaLibVaultCreationUtils(
@@ -19,6 +20,7 @@ const twoFaLibVaultCreationUtils = getTwoFaLibVaultCreationUtils(
 
 const loadVault = async (
   vaultData: LockedRepresentationString,
+  settings: Settings,
   verbose = false,
 ) => {
   const passphrase = (await keytar.getPassword(
@@ -32,7 +34,11 @@ const loadVault = async (
       passphrase,
     )
   twoFaLib.addEventListener(TwoFaLibEvent.Changed, (ev) => {
-    return fs.writeFile('vault.json', ev.detail.newLockedRepresentationString)
+    console.log(settings.vaultLocation)
+    return fs.writeFile(
+      settings.vaultLocation,
+      ev.detail.newLockedRepresentationString,
+    )
   })
   twoFaLib.addEventListener(TwoFaLibEvent.Log, (ev) => {
     if (ev.detail.severity !== 'info' || verbose) {

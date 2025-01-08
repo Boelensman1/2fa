@@ -45,7 +45,10 @@ class VaultCreateCommand extends BaseCommand {
       await twoFaLibVaultCreationUtils.createNewTwoFaLibVault(passphrase)
 
     twoFaLib.addEventListener(TwoFaLibEvent.Changed, (ev) => {
-      return fs.writeFile('vault.json', ev.detail.newLockedRepresentationString)
+      return fs.writeFile(
+        this.settings.vaultLocation,
+        ev.detail.newLockedRepresentationString,
+      )
     })
     await Promise.all([
       twoFaLib.forceSave(),

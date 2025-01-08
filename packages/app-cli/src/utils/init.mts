@@ -1,10 +1,16 @@
 import fs from 'node:fs/promises'
+import path from 'node:path'
+
+import envPaths from 'env-paths'
 import type { LockedRepresentationString } from 'favalib'
-import type { EmptyObject } from 'type-fest'
 
-export type Settings = EmptyObject
+export interface Settings {
+  vaultLocation: string
+}
 
-const defaultSettings: Settings = {}
+const getDefaultSettings = (): Settings => ({
+  vaultLocation: path.join(envPaths('favacli').data, 'vault.json'),
+})
 
 const readFile = async (path: string): Promise<string | null> => {
   try {
@@ -25,15 +31,28 @@ const readJSONFile = async <T,>(path: string): Promise<T | null> => {
   return JSON.parse(contents) as T
 }
 
+const ensureDirectoriesExists = async (...paths: string[]) => {
+  for (const p of paths) {
+    const directory = path.dirname(p)
+    await fs.mkdir(directory, { recursive: true })
+  }
+}
+
 const init = async () => {
-  let settings = await readJSONFile<Settings>('settings.json')
+  const settingsLocation = path.join(
+    envPaths('favacli').config,
+    'settings.json',
+  )
+
+  let settings = await readJSONFile<Settings>(settingsLocation)
   if (!settings) {
-    settings = defaultSettings
-    await fs.writeFile('settings.json', JSON.stringify(settings, null, 2))
+    settings = getDefaultSettings()
+    await ensureDirectoriesExists(settingsLocation, settings.vaultLocation)
+    await fs.writeFile(settingsLocation, JSON.stringify(settings, null, 2))
   }
 
   const lockedRepresentationString = (await readFile(
-    'vault.json',
+    settings.vaultLocation,
   )) as LockedRepresentationString
 
   return { settings, lockedRepresentationString }

@@ -1,7 +1,7 @@
 import { createSignal, Show, createEffect } from 'solid-js'
 import useStore from '../store/useStore'
 import PasswordStrengthMeter from './PasswordStrengthMeter'
-import type { Passphrase } from '2falib'
+import type { Passphrase } from 'favalib'
 import type { ZxcvbnResult } from '@zxcvbn-ts/core'
 import creationUtils from '../utils/creationUtils'
 

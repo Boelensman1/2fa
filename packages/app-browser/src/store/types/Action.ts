@@ -1,5 +1,5 @@
 import type { types } from '../actions'
-import type { TwoFaLib, EntryMeta } from '2falib'
+import type { TwoFaLib, EntryMeta } from 'favalib'
 
 interface SetEntriesAction {
   type: typeof types.SET_ENTRIES

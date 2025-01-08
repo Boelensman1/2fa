@@ -1,5 +1,5 @@
-import { getTwoFaLibVaultCreationUtils } from '2falib'
-import BrowserCryptoProvider from '2falib/cryptoProviders/browser'
+import { getTwoFaLibVaultCreationUtils } from 'favalib'
+import BrowserCryptoProvider from 'favalib/cryptoProviders/browser'
 
 import { deviceType, passphraseExtraDict, syncServerUrl } from '../parameters'
 

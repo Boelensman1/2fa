@@ -3,7 +3,7 @@ import {
   TwoFaLibEvent,
   type LockedRepresentationString,
   type Passphrase,
-} from '2falib'
+} from 'favalib'
 import useStore from '../store/useStore'
 import actions from '../store/actions'
 import useSyncStoreWithLib from '../utils/useSyncStoreWithLib'

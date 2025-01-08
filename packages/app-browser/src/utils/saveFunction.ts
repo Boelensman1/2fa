@@ -1,4 +1,4 @@
-import type { LockedRepresentationString } from '2falib'
+import type { LockedRepresentationString } from 'favalib'
 
 const saveFunction = (
   newLockedRepresentationString: LockedRepresentationString,

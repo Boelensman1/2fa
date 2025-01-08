@@ -1,7 +1,7 @@
 import { Accessor, createMemo, createSignal } from 'solid-js'
 import useStore from '../store/useStore'
 import useSyncStoreWithLib from '../utils/useSyncStoreWithLib'
-import type { EntryMeta, EntryId } from '2falib'
+import type { EntryMeta, EntryId } from 'favalib'
 
 const EntryComponent = (props: {
   entry: EntryMeta

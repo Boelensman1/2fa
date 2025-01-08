@@ -1,6 +1,6 @@
 import { Component, For } from 'solid-js'
 import type { ZxcvbnResult } from '@zxcvbn-ts/core'
-import { Passphrase } from '2falib'
+import { Passphrase } from 'favalib'
 
 const passphraseGuessesToPercentage = (guessesLog10: number) => {
   return Math.min(100, Math.round(Math.max(0, guessesLog10 - 1)) * 10)

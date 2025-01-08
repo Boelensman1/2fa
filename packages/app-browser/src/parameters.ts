@@ -1,4 +1,4 @@
-import type { DeviceType } from '2falib'
+import type { DeviceType } from 'favalib'
 
 export const syncServerUrl =
   import.meta.env.VITE_SYNCSERVERURL ?? 'ws://localhost:8080'

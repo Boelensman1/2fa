@@ -1,7 +1,7 @@
 import { useContext } from 'solid-js'
 import context from '../store/Context'
 import actions from '../store/actions'
-import type { TwoFaLib } from '2falib'
+import type { TwoFaLib } from 'favalib'
 
 const useSyncStoreWithLib = () => {
   const [, dispatch] = useContext(context)

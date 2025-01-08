@@ -1,5 +1,5 @@
 import { type Component, createSignal, createEffect } from 'solid-js'
-import { Passphrase, TwoFaLibEvent } from '2falib'
+import { Passphrase, TwoFaLibEvent } from 'favalib'
 import type { ZxcvbnResult } from '@zxcvbn-ts/core'
 
 import useStore from '../store/useStore'

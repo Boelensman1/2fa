@@ -31,4 +31,7 @@ lint: $(INSTALL_DEPS)
 	npx --no-install tsc --noEmit
 	npx --no-install eslint
 
-.PHONY: clean lint test test-debug all
+publish: build
+	npm publish
+
+.PHONY: clean lint test test-debug all publish

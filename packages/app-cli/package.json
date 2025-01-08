@@ -1,6 +1,6 @@
 {
   "name": "favacli",
-  "version": "0.0.1",
+  "version": "0.0.6",
   "description": "",
   "type": "module",
   "author": "",
@@ -9,23 +9,24 @@
     "@inquirer/prompts": "^7.0.1",
     "bufferutil": "^4.0.8",
     "clipanion": "^4.0.0-rc.4",
+    "favalib": "^0.0.1",
     "keytar": "^7.9.0",
-    "nexe": "^4.0.0-rc.6",
     "node-loader": "^2.0.0",
     "ts-loader": "^9.5.1",
     "tty-table": "^4.2.3",
-    "typanion": "^3.14.0",
-    "utf-8-validate": "^6.0.5",
-    "webpack": "^5.96.1"
+    "typanion": "^3.14.0"
   },
   "devDependencies": {
     "type-fest": "^4.26.1",
     "webpack-cli": "^5.1.4"
   },
   "bin": {
-    "favacli": "bundle.js"
+    "favacli": "build/main.mjs"
   },
   "files": [
-    "dist/**"
-  ]
+    "/build"
+  ],
+  "engines": {
+    "node": ">=20"
+  }
 }

@@ -81,6 +81,7 @@ class SyncManager {
   private commandSendQueue: SyncCommandFromClient[] = []
 
   private reconnectTimeout?: NodeJS.Timeout
+  private terminateTimeout?: NodeJS.Timeout
   private shouldReconnect = true
 
   /**
@@ -235,6 +236,11 @@ class SyncManager {
       // if we shouldn't reconnect, this closing is expected
       this.log('warning', `WebSocket closed: ${event.code} ${event.reason}`)
       this.attemptReconnect()
+    } else {
+      // Connection closed, no need to force terminate
+      if (this.terminateTimeout) {
+        clearTimeout(this.terminateTimeout)
+      }
     }
   }
 
@@ -878,9 +884,12 @@ class SyncManager {
 
       ws.close()
 
-      // force terminate the connection after 5 seconds
+      // force terminate the connection after 2 seconds
       // ws.terminate is not defined in the test enviroment, which is the reason for the &&
-      setTimeout(() => ws.terminate && ws.terminate(), 5000)
+      this.terminateTimeout = setTimeout(
+        () => ws.terminate && ws.terminate(),
+        2000,
+      )
     }
   }
 }

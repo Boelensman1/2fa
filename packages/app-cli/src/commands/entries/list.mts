@@ -26,14 +26,11 @@ class EntriesListCommand extends BaseListOutputCommand {
   })
 
   getList() {
-    let entries
     if (this.withTokens) {
-      entries = this.twoFaLib.vault.listEntriesMetas(true)
+      return this.twoFaLib.vault.listEntriesMetas(true)
     } else {
-      entries = this.twoFaLib.vault.listEntriesMetas(false)
+      return this.twoFaLib.vault.listEntriesMetas(false)
     }
-
-    return entries
   }
 }
 

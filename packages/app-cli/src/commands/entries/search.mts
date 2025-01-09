@@ -32,17 +32,11 @@ class EntriesSearchCommand extends BaseListOutputCommand {
   query = Option.String({ required: true })
 
   getList() {
-    let filteredEntries
     if (this.withTokens) {
-      filteredEntries = this.twoFaLib.vault.searchEntriesMetas(this.query, true)
+      return this.twoFaLib.vault.searchEntriesMetas(this.query, true)
     } else {
-      filteredEntries = this.twoFaLib.vault.searchEntriesMetas(
-        this.query,
-        false,
-      )
+      return this.twoFaLib.vault.searchEntriesMetas(this.query, false)
     }
-
-    return filteredEntries
   }
 }
 

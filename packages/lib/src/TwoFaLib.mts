@@ -137,7 +137,18 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
     }
 
     if (syncState?.serverUrl) {
-      this.setSyncState(syncState as VaultSyncStateWithServerUrl)
+      // Initiate the syncManager
+      this.mediator.registerComponent(
+        'syncManager',
+        new SyncManager(
+          this.mediator,
+          this.deviceType,
+          this.publicKey,
+          this.privateKey,
+          syncState as VaultSyncStateWithServerUrl,
+          this.deviceId,
+        ),
+      )
     } else {
       // If no syncmanager we're ready now, otherwise the syncmanager is responsible for emitting the ready event
       // We do this with a delay of 1, so that there is time to add event listeners
@@ -274,24 +285,6 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
     this.mediator.unRegisterComponent('syncManager')
     this.mediator.registerComponent('syncManager', newSyncManager)
     await this.forceSave()
-  }
-
-  /**
-   * Sets the sync state, this will initiate the sync manager instance.
-   * @param syncState - The state of the sync.
-   */
-  private setSyncState(syncState: VaultSyncStateWithServerUrl) {
-    this.mediator.registerComponent(
-      'syncManager',
-      new SyncManager(
-        this.mediator,
-        this.deviceType,
-        this.publicKey,
-        this.privateKey,
-        syncState,
-        this.deviceId,
-      ),
-    )
   }
 
   /**

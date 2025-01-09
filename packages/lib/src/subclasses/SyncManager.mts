@@ -89,6 +89,7 @@ class SyncManager {
 
   private reconnectTimeout?: NodeJS.Timeout
   private terminateTimeout?: NodeJS.Timeout
+  private connectionFailedTimeout?: NodeJS.Timeout
   private shouldReconnect = true
 
   /**
@@ -133,7 +134,7 @@ class SyncManager {
     this.initServerConnection()
 
     // if not yet connected after 2 tries, emit ready event so we can continue
-    setTimeout(() => {
+    this.connectionFailedTimeout = setTimeout(() => {
       if (!this.readyEventEmitted && !this.webSocketConnected) {
         this.log('warning', 'Failed to connect to sync backend')
         this.dispatchLibEvent(TwoFaLibEvent.Ready)
@@ -241,6 +242,9 @@ class SyncManager {
       this.dispatchLibEvent(TwoFaLibEvent.ConnectionToSyncServerStatusChanged, {
         newStatus: ConnectionStatus.CONNECTED,
       })
+
+      clearTimeout(this.connectionFailedTimeout)
+      this.connectionFailedTimeout = undefined
 
       // send any commands that were done while offline
       void this.processCommandSendQueue()

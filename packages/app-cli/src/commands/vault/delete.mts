@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises'
+import { Option } from 'clipanion'
 import { confirm } from '@inquirer/prompts'
 
 import BaseCommand from '../../BaseCommand.mjs'
@@ -18,16 +19,22 @@ class VaultDeleteCommand extends BaseCommand {
     examples: [['Delete the current vault', 'vault delete']],
   })
 
-  async exec() {
-    const shouldDelete = await confirm({
-      message:
-        'Are you sure you want to delete the vault? This action cannot be undone.',
-      default: false,
-    })
+  force = Option.Boolean('--force', {
+    description: 'Delete the vault without confirmation',
+  })
 
-    if (!shouldDelete) {
-      this.output('Vault deletion cancelled.\n')
-      return { success: false, cancelled: true }
+  async exec() {
+    if (!this.force) {
+      const shouldDelete = await confirm({
+        message:
+          'Are you sure you want to delete the vault? This action cannot be undone.',
+        default: false,
+      })
+
+      if (!shouldDelete) {
+        this.output('Vault deletion cancelled.\n')
+        return { success: false, cancelled: true }
+      }
     }
 
     await fs.rm(this.settings.vaultLocation)

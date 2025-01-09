@@ -56,6 +56,13 @@ import AddSyncDeviceCommand from '../Command/commands/AddSyncDeviceCommand.mjs'
 const IN_TESTING = process.env.NODE_ENV === 'test'
 const IN_DEV = process.env.NODE_ENV === 'development'
 
+export enum ConnectionStatus {
+  CONNECTING,
+  CONNECTED,
+  NOT_CONNECTED,
+  FAILED,
+}
+
 const generateNonCryptographicRandomString = () => {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
   const length = Math.floor(Math.random() * 64) + 1
@@ -124,6 +131,21 @@ class SyncManager {
     this.commandSendQueue = commandSendQueue
     this.serverUrl = serverUrl
     this.initServerConnection()
+
+    // if not yet connected after 2 tries, emit ready event so we can continue
+    setTimeout(() => {
+      if (!this.readyEventEmitted && !this.webSocketConnected) {
+        this.log('warning', 'Failed to connect to sync backend')
+        this.dispatchLibEvent(TwoFaLibEvent.Ready)
+
+        this.dispatchLibEvent(
+          TwoFaLibEvent.ConnectionToSyncServerStatusChanged,
+          {
+            newStatus: ConnectionStatus.FAILED,
+          },
+        )
+      }
+    }, this.reconnectInterval + 1000)
   }
 
   private get libraryLoader() {
@@ -217,7 +239,7 @@ class SyncManager {
       this.log('info', 'Connected to server.')
       this.sendToServer('connect', { deviceId: syncManager.deviceId })
       this.dispatchLibEvent(TwoFaLibEvent.ConnectionToSyncServerStatusChanged, {
-        connected: true,
+        newStatus: ConnectionStatus.CONNECTED,
       })
 
       // send any commands that were done while offline
@@ -228,15 +250,19 @@ class SyncManager {
     this.ws = ws
   }
   private handleWebSocketClose(event: CloseEvent) {
-    this.dispatchLibEvent(TwoFaLibEvent.ConnectionToSyncServerStatusChanged, {
-      connected: false,
-    })
-
     if (this.shouldReconnect) {
+      this.dispatchLibEvent(TwoFaLibEvent.ConnectionToSyncServerStatusChanged, {
+        newStatus: ConnectionStatus.CONNECTING,
+      })
+
       // if we shouldn't reconnect, this closing is expected
       this.log('warning', `WebSocket closed: ${event.code} ${event.reason}`)
       this.attemptReconnect()
     } else {
+      this.dispatchLibEvent(TwoFaLibEvent.ConnectionToSyncServerStatusChanged, {
+        newStatus: ConnectionStatus.NOT_CONNECTED,
+      })
+
       // Connection closed, no need to force terminate
       if (this.terminateTimeout) {
         clearTimeout(this.terminateTimeout)

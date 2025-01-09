@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, beforeAll, vi, Mock } from 'vitest'
+import WS from 'vitest-websocket-mock'
 
 import {
   CryptoLib,
@@ -11,6 +12,7 @@ import {
   SymmetricKey,
   PublicKey,
   TwoFaLibEvent,
+  DeviceId,
 } from '../src/main.mjs'
 
 import {
@@ -19,6 +21,9 @@ import {
   deviceType,
   deviceId,
 } from './testUtils.mjs'
+
+// uses __mocks__/isomorphic-ws.js
+vi.mock('isomorphic-ws')
 
 describe('2falib', () => {
   let cryptoLib: CryptoLib
@@ -185,5 +190,130 @@ describe('2falib', () => {
 
     // Clean up the event listener
     twoFaLib.removeEventListener(TwoFaLibEvent.Ready, mockReadyFunction)
+  })
+
+  describe('setSyncServerUrl', () => {
+    it('should properly set server url and initialize sync manager', async () => {
+      const newServerUrl = 'ws://newserver:1234'
+      const server = new WS(newServerUrl, { jsonProtocol: true })
+
+      const twoFaLib = new TwoFaLib(
+        deviceType,
+        cryptoLib,
+        ['test'],
+        privateKey,
+        symmetricKey,
+        encryptedPrivateKey,
+        encryptedSymmetricKey,
+        salt,
+        publicKey,
+        'testDeviceId' as DeviceId,
+        [],
+      )
+
+      const mockCloseServerConnection = vi.fn()
+      const mockSyncManager = {
+        closeServerConnection: mockCloseServerConnection,
+      }
+      const mockSave = vi.fn()
+      // @ts-expect-error Accessing private property for testing
+      twoFaLib.mediator.components.persistentStorageManager.save = mockSave
+
+      // @ts-expect-error Accessing private property for testing
+      twoFaLib.mediator.registerComponent('syncManager', mockSyncManager)
+
+      await twoFaLib.setSyncServerUrl(newServerUrl)
+
+      // Should close existing connection
+      expect(mockCloseServerConnection).toHaveBeenCalledOnce()
+
+      // Wait for connection and hello message
+      await server.nextMessage // wait for the hello message
+
+      // Should have created a new sync manager with correct url
+      const syncManager = twoFaLib.sync
+      expect(syncManager).toBeDefined()
+      expect(syncManager?.serverUrl).toBe(newServerUrl)
+      expect(syncManager?.syncDevices).toEqual([])
+
+      // Should have initialized websocket connection
+      expect(syncManager?.webSocketConnected).toBe(true)
+
+      // should have saved
+      expect(mockSave).toHaveBeenCalledOnce()
+      expect(twoFaLib.sync?.serverUrl).toBe(newServerUrl)
+
+      // Clean up
+      server.close()
+      syncManager?.closeServerConnection()
+    })
+
+    it('should maintain old url if connection fails and force is false', async () => {
+      const originalUrl = 'ws://original:1234'
+      const newUrl = 'ws://unreachable:1234'
+
+      const server = new WS(originalUrl, { jsonProtocol: true })
+
+      const twoFaLib = new TwoFaLib(
+        deviceType,
+        cryptoLib,
+        ['test'],
+        privateKey,
+        symmetricKey,
+        encryptedPrivateKey,
+        encryptedSymmetricKey,
+        salt,
+        publicKey,
+        'testDeviceId' as DeviceId,
+        [],
+      )
+
+      // Set initial URL
+      await twoFaLib.setSyncServerUrl(originalUrl)
+      await server.nextMessage
+
+      // Attempt to set new URL without force
+      await expect(twoFaLib.setSyncServerUrl(newUrl)).rejects.toThrow(
+        'Failed to connect to server at ws://unreachable:1234, not setting',
+      )
+      expect(twoFaLib.sync?.serverUrl).toBe(originalUrl)
+
+      // Clean up
+      twoFaLib.sync?.closeServerConnection()
+      server.close()
+    })
+
+    it('should update url if connection fails but force is true', async () => {
+      const originalUrl = 'ws://original:1234'
+      const newUrl = 'ws://unreachable:1234'
+
+      const server = new WS(originalUrl, { jsonProtocol: true })
+
+      const twoFaLib = new TwoFaLib(
+        deviceType,
+        cryptoLib,
+        ['test'],
+        privateKey,
+        symmetricKey,
+        encryptedPrivateKey,
+        encryptedSymmetricKey,
+        salt,
+        publicKey,
+        'testDeviceId' as DeviceId,
+        [],
+      )
+
+      // Set initial URL
+      await twoFaLib.setSyncServerUrl(originalUrl)
+      await server.nextMessage
+
+      // Attempt to set new URL without force
+      await twoFaLib.setSyncServerUrl(newUrl, true)
+      expect(twoFaLib.sync?.serverUrl).toBe(newUrl)
+
+      // Clean up
+      twoFaLib.sync?.closeServerConnection()
+      server.close()
+    })
   })
 })

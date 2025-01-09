@@ -9,7 +9,7 @@ class SetServerUrlCommand extends BaseCommand {
     description: 'Set the server URL for syncing',
     details: `
       This command sets the URL of the server that will be used for syncing.
-      
+
       The server URL must be provided as an argument.
     `,
     examples: [
@@ -20,9 +20,12 @@ class SetServerUrlCommand extends BaseCommand {
   requireTwoFaLib = true
 
   serverUrl = Option.String({ required: true })
+  force = Option.Boolean('--force', {
+    description: 'Set serverUrl even if connection fails',
+  })
 
   async exec() {
-    await this.twoFaLib.setSyncServerUrl(this.serverUrl)
+    await this.twoFaLib.setSyncServerUrl(this.serverUrl, this.force)
     return { success: true }
   }
 }

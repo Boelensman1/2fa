@@ -24,9 +24,9 @@ import type {
 
 import TwoFaLibMediator from './TwoFaLibMediator.mjs'
 import { TwoFaLibEvent } from './TwoFaLibEvent.mjs'
-import { InitializationError } from './TwoFALibError.mjs'
+import { InitializationError, SyncError } from './TwoFALibError.mjs'
 
-import SyncManager from './subclasses/SyncManager.mjs'
+import SyncManager, { ConnectionStatus } from './subclasses/SyncManager.mjs'
 import LibraryLoader from './subclasses/LibraryLoader.mjs'
 import ExportImportManager from './subclasses/ExportImportManager.mjs'
 import PersistentStorageManager from './subclasses/PersistentStorageManager.mjs'
@@ -216,11 +216,12 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
   /**
    * Sets a server url, this will allow syncing with the server.
    * @param serverUrl - The server url.
+   * @param force - Force setting the sync server url, even if no connection can be made
    */
-  async setSyncServerUrl(serverUrl: string) {
+  async setSyncServerUrl(serverUrl: string, force = false) {
     if (this.sync) {
+      // close connection so no data is send to the old syncServer
       this.sync.closeServerConnection()
-      this.mediator.unRegisterComponent('syncManager')
     }
 
     const newSyncState: VaultSyncStateWithServerUrl = {
@@ -228,7 +229,50 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
       devices: [],
       commandSendQueue: [],
     }
-    this.setSyncState(newSyncState)
+    const newSyncManager = new SyncManager(
+      this.mediator,
+      this.deviceType,
+      this.publicKey,
+      this.privateKey,
+      newSyncState,
+      this.deviceId,
+    )
+
+    const success = await new Promise((resolve) => {
+      this.addEventListener(
+        TwoFaLibEvent.ConnectionToSyncServerStatusChanged,
+        (event) => {
+          if (event.detail.newStatus === ConnectionStatus.CONNECTED) {
+            resolve(true)
+          }
+          if (event.detail.newStatus === ConnectionStatus.FAILED) {
+            resolve(false)
+          }
+        },
+      )
+    })
+    if (!success) {
+      if (force) {
+        this.log(
+          'warning',
+          `Failed to connect to server at ${serverUrl}, force setting`,
+        )
+      } else {
+        if (this.sync) {
+          // re-establish old connection
+          this.sync.initServerConnection()
+        }
+
+        newSyncManager.closeServerConnection()
+        throw new SyncError(
+          `Failed to connect to server at ${serverUrl}, not setting`,
+        )
+      }
+    }
+
+    // connection succeeded (or force=true), switch to the new syncManager
+    this.mediator.unRegisterComponent('syncManager')
+    this.mediator.registerComponent('syncManager', newSyncManager)
     await this.forceSave()
   }
 

@@ -20,7 +20,7 @@ const [, , ...args] = process.argv
 const cli = new Cli({
   binaryLabel: 'FavaCli',
   binaryName: `favacli`,
-  binaryVersion: '0.0.12',
+  binaryVersion: '0.0.14',
 })
 
 cli.register(VaultCreateCommand)

@@ -33,11 +33,20 @@ const loadVault = async (
       vaultData,
       passphrase,
     )
-  twoFaLib.addEventListener(TwoFaLibEvent.Changed, (ev) => {
-    return fs.writeFile(
-      settings.vaultLocation,
-      ev.detail.newLockedRepresentationString,
-    )
+  twoFaLib.addEventListener(TwoFaLibEvent.Changed, async (ev) => {
+    const tempFile = `${settings.vaultLocation}.tmp`
+    try {
+      // Write to temporary file first, so we don't have to worry about partial writes
+      await fs.writeFile(tempFile, ev.detail.newLockedRepresentationString)
+      // Atomically rename temp file to target file
+      await fs.rename(tempFile, settings.vaultLocation)
+    } catch (error) {
+      // Clean up temp file if something went wrong
+      await fs.unlink(tempFile).catch((err) => {
+        console.error(err)
+      })
+      throw error
+    }
   })
   twoFaLib.addEventListener(TwoFaLibEvent.Log, (ev) => {
     if (ev.detail.severity !== 'info' || verbose) {

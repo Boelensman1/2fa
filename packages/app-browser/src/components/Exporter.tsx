@@ -112,7 +112,10 @@ const Exporter = () => {
       </Show>
       <button
         onClick={() => void handleExport()}
-        disabled={!password() && !acknowledgedWarning()}
+        disabled={
+          (!password() && !acknowledgedWarning()) ||
+          (password() && (passwordStrength() ?? { score: 0 })?.score < 3)
+        }
         class="bg-blue-500 text-white py-2 px-4 rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
       >
         Export and Download

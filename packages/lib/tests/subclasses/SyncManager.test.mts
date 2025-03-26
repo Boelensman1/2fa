@@ -270,6 +270,42 @@ describe('SyncManager', () => {
     })
   })
 
+  it(
+    'should work with a really big vault',
+    async () => {
+      const wsInstancesMap = new Map([
+        [senderTwoFaLib.deviceId, senderWsInstance],
+        [receiverTwoFaLib.deviceId, receiverWsInstance],
+      ])
+
+      // this part actually takes the most time
+      for (let i = 0; i < 1000; i += 1) {
+        await senderTwoFaLib.vault.addEntry({
+          name: 'name'.repeat(10),
+          type: 'TOTP',
+          issuer: 'issuer'.repeat(10),
+          payload: {
+            digits: 8,
+            period: 30,
+            secret: 'secretsecret',
+            algorithm: 'SHA-1',
+          },
+        })
+      }
+
+      await connectDevices({
+        senderTwoFaLib,
+        receiverTwoFaLib,
+        server,
+        wsInstancesMap,
+      })
+
+      expect(senderTwoFaLib.sync?.syncDevices).toHaveLength(1)
+      expect(receiverTwoFaLib.sync?.syncDevices).toHaveLength(1)
+    },
+    60 * 1000,
+  )
+
   it('Connected devices should sync', async () => {
     const wsInstancesMap = new Map([
       [senderTwoFaLib.deviceId, senderWsInstance],

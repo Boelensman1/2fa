@@ -1,20 +1,17 @@
 import { type Component, createSignal, Show } from 'solid-js'
-import useStore from '../store/useStore'
 import Add from './Add'
 import ItemList from './ItemList'
 import Importer from './Importer'
 import Exporter from './Exporter'
 import Settings from './Settings'
-import AddDevice from './AddDevice'
+import SyncOptions from './SyncOptions'
 
 const AppAuthenticated: Component = () => {
-  const [state] = useStore()
-  const { twoFaLib } = state
   const [showAdd, setShowAdd] = createSignal(false)
   const [showImporter, setShowImporter] = createSignal(false)
   const [showSettings, setShowSettings] = createSignal(false)
-  const [showAddDevice, setShowAddDevice] = createSignal(false)
   const [showExporter, setShowExporter] = createSignal(false)
+  const [showSyncOptions, setShowSyncOptions] = createSignal(false)
 
   return (
     <div class="container mx-auto p-4">
@@ -46,16 +43,10 @@ const AppAuthenticated: Component = () => {
           {showSettings() ? 'Hide Settings' : 'Show Settings'}
         </button>
         <button
-          onClick={() => {
-            const newShowAddDevice = !showAddDevice()
-            setShowAddDevice(newShowAddDevice)
-            if (!newShowAddDevice) {
-              twoFaLib?.sync?.cancelAddSyncDevice()
-            }
-          }}
+          onClick={() => setShowSyncOptions(!showSyncOptions())}
           class="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded transition duration-200"
         >
-          {showAddDevice() ? 'Hide Add Device' : 'Show Add Device'}
+          {showSyncOptions() ? 'Hide Sync Options' : 'Show Sync Options'}
         </button>
       </div>
 
@@ -75,8 +66,8 @@ const AppAuthenticated: Component = () => {
         <Settings />
       </Show>
 
-      <Show when={showAddDevice()}>
-        <AddDevice />
+      <Show when={showSyncOptions()}>
+        <SyncOptions />
       </Show>
     </div>
   )

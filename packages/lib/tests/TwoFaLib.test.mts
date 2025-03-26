@@ -234,7 +234,6 @@ describe('2falib', () => {
       const syncManager = twoFaLib.sync
       expect(syncManager).toBeDefined()
       expect(syncManager?.serverUrl).toBe(newServerUrl)
-      expect(syncManager?.syncDevices).toEqual([])
 
       // Should have initialized websocket connection
       expect(syncManager?.webSocketConnected).toBe(true)

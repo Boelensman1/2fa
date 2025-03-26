@@ -83,7 +83,8 @@ class PersistentStorageManager {
       vault,
       deviceId: this.deviceId,
       sync: {
-        devices: this.syncManager?.syncDevices ?? [],
+        // eslint-disable-next-line @typescript-eslint/dot-notation
+        devices: this.syncManager ? this.syncManager['syncDevices'] : [],
         serverUrl: this.syncManager?.serverUrl,
         commandSendQueue: this.syncManager?.getCommandSendQueue() ?? [],
       },

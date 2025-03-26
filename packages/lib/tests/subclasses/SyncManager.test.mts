@@ -101,8 +101,8 @@ describe('SyncManager', () => {
       publicKey,
       'senderDeviceId' as DeviceId,
       [],
-      { serverUrl, devices: [], commandSendQueue: [] },
     )
+    void senderTwoFaLib.setSyncServerUrl(serverUrl)
     await server.connected
     await server.nextMessage // wait for the hello message
 
@@ -120,8 +120,8 @@ describe('SyncManager', () => {
       publicKey,
       'receiverDeviceId' as DeviceId,
       [],
-      { serverUrl, devices: [], commandSendQueue: [] },
     )
+    void receiverTwoFaLib.setSyncServerUrl(serverUrl)
     await allConnected
     await server.nextMessage // wait for the hello message
   })
@@ -242,13 +242,6 @@ describe('SyncManager', () => {
       timeout: 200,
       interval: 5,
     })
-
-    expect(senderTwoFaLib.sync.inAddDeviceFlow).toBe(false)
-    expect(receiverTwoFaLib.sync.inAddDeviceFlow).toBe(false)
-    expect(receiverTwoFaLib.vault.listEntries()).toEqual(
-      senderTwoFaLib.vault.listEntries(),
-    )
-
     // nonces must be different
     const nonces = messageDatas.map((d) => (d as { nonce: string }).nonce)
     expect(new Set(nonces).size).toEqual(nonces.length)
@@ -268,6 +261,15 @@ describe('SyncManager', () => {
       type: 'syncCommandsExecuted',
       data: { commandIds: [expect.any(String)] },
     })
+
+    expect(senderTwoFaLib.sync.inAddDeviceFlow).toBe(false)
+    expect(receiverTwoFaLib.sync.inAddDeviceFlow).toBe(false)
+    expect(receiverTwoFaLib.vault.listEntries()).toEqual(
+      senderTwoFaLib.vault.listEntries(),
+    )
+
+    expect(senderTwoFaLib.sync.getSyncDevices()).toHaveLength(1)
+    expect(receiverTwoFaLib.sync.getSyncDevices()).toHaveLength(1)
   })
 
   it(
@@ -300,8 +302,8 @@ describe('SyncManager', () => {
         wsInstancesMap,
       })
 
-      expect(senderTwoFaLib.sync?.syncDevices).toHaveLength(1)
-      expect(receiverTwoFaLib.sync?.syncDevices).toHaveLength(1)
+      expect(senderTwoFaLib.sync?.getSyncDevices()).toHaveLength(1)
+      expect(receiverTwoFaLib.sync?.getSyncDevices()).toHaveLength(1)
     },
     60 * 1000,
   )
@@ -546,9 +548,9 @@ describe('SyncManager', () => {
       wsInstancesMap,
     })
 
-    expect(senderTwoFaLib.sync?.syncDevices).toHaveLength(2)
-    expect(receiverTwoFaLib.sync?.syncDevices).toHaveLength(2)
-    expect(otherReceiverTwoFaLib.sync?.syncDevices).toHaveLength(2)
+    expect(senderTwoFaLib.sync?.getSyncDevices()).toHaveLength(2)
+    expect(receiverTwoFaLib.sync?.getSyncDevices()).toHaveLength(2)
+    expect(otherReceiverTwoFaLib.sync?.getSyncDevices()).toHaveLength(2)
 
     const addedEntryId =
       await receiverTwoFaLib.vault.addEntry(anotherNewTotpEntry)

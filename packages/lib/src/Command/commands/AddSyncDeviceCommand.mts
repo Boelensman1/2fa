@@ -1,12 +1,11 @@
 import { InvalidCommandError, TwoFALibError } from '../../TwoFALibError.mjs'
 import type TwoFaLibMediator from '../../TwoFaLibMediator.mjs'
 import Command from '../BaseCommand.mjs'
-import type { DeviceId, DeviceType } from '../../interfaces/SyncTypes.mjs'
+import type { DeviceId } from '../../interfaces/SyncTypes.mjs'
 import type { PublicKey } from '../../interfaces/CryptoLib.mjs'
 
 export interface AddSyncDeviceData {
   deviceId: DeviceId
-  deviceType: DeviceType
   publicKey: PublicKey
 }
 
@@ -15,7 +14,7 @@ export interface AddSyncDeviceData {
  */
 class AddSyncDeviceCommand extends Command<AddSyncDeviceData> {
   /**
-   * Creates a new AddEntryCommand instance.
+   * Creates a new AddSyncDeviceCommand instance.
    * @inheritdoc
    * @param data - The data of the entry to be added.
    */
@@ -30,7 +29,7 @@ class AddSyncDeviceCommand extends Command<AddSyncDeviceData> {
   }
 
   /**
-   * Executes the command to add the entry to the vault.
+   * Executes the command to add a sync device
    * @inheritdoc
    * @throws {InvalidCommandError} If the command data is invalid.
    */

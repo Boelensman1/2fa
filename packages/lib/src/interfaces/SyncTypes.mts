@@ -4,11 +4,15 @@ import { PublicKey, SyncKey } from './CryptoLib.mjs'
 
 export type DeviceId = Tagged<string, 'DeviceId'>
 export type DeviceType = Tagged<string, 'DeviceType'>
+export type DeviceFriendlyName = Tagged<string, 'DeviceFriendlyName'>
 
 export interface SyncDevice {
   deviceId: DeviceId
-  deviceType: DeviceType
   publicKey: PublicKey
+  meta?: {
+    deviceType: DeviceType
+    deviceFriendlyName: DeviceFriendlyName
+  }
 }
 
 export interface BaseAddDeviceFlow {
@@ -32,16 +36,14 @@ export interface AddDeviceFlowInitiator_SyncKeyCreated
   > {
   state: 'initiator:syncKeyCreated'
   responderDeviceId: DeviceId
-  responderDeviceType: DeviceType
   syncKey: SyncKey
 }
 
 // Add device flow from the responder's perspective
 export interface AddDeviceFlowResponder_Initiated extends BaseAddDeviceFlow {
   state: 'responder:initated'
-  initiatorDeviceId: DeviceId
   responderDeviceId: DeviceId
-  initiatorDeviceType: DeviceType
+  initiatorDeviceId: DeviceId
 }
 
 export interface AddDeviceFlowResponder_SyncKeyCreated
@@ -59,7 +61,6 @@ export type ActiveAddDeviceFlow =
 export interface InitiateAddDeviceFlowResult {
   addDevicePassword: string
   initiatorDeviceId: DeviceId
-  initiatorDeviceType: DeviceType
   timestamp: number
   pass1Result: Record<keyof Round1Result, string>
 }

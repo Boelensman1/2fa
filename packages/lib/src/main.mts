@@ -26,6 +26,7 @@ import type {
   SyncDevice,
   DeviceId,
   DeviceType,
+  DeviceFriendlyName,
 } from './interfaces/SyncTypes.mjs'
 import type {
   EncryptedVaultStateString,
@@ -76,5 +77,6 @@ export type {
   Salt,
   DeviceId,
   DeviceType,
+  DeviceFriendlyName,
   SyncDevice,
 }

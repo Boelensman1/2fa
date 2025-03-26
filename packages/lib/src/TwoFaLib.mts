@@ -10,7 +10,11 @@ import type {
   Salt,
   SymmetricKey,
 } from './interfaces/CryptoLib.mjs'
-import type { DeviceId, DeviceType } from './interfaces/SyncTypes.mjs'
+import type {
+  DeviceFriendlyName,
+  DeviceId,
+  DeviceType,
+} from './interfaces/SyncTypes.mjs'
 import type {
   TwoFaLibEventMap,
   TwoFaLibEventMapEvents,
@@ -43,6 +47,7 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
 
   public readonly deviceId: DeviceId
   public readonly deviceType: DeviceType
+  public deviceFriendlyName: DeviceFriendlyName = '' as DeviceFriendlyName
 
   private mediator: TwoFaLibMediator
 
@@ -142,7 +147,6 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
         'syncManager',
         new SyncManager(
           this.mediator,
-          this.deviceType,
           this.publicKey,
           this.privateKey,
           syncState as VaultSyncStateWithServerUrl,
@@ -242,7 +246,6 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
     }
     const newSyncManager = new SyncManager(
       this.mediator,
-      this.deviceType,
       this.publicKey,
       this.privateKey,
       newSyncState,
@@ -281,10 +284,21 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
       }
     }
 
-    // connection succeeded (or force=true), switch to the new syncManager
+    // connection succeeded (or force=true)
+    // switch to the new syncManager
     this.mediator.unRegisterComponent('syncManager')
     this.mediator.registerComponent('syncManager', newSyncManager)
-    await this.forceSave()
+
+    // add the current device to the initial list of syncdevices
+    // this also saves the vault
+    await newSyncManager.addSyncDevice({
+      deviceId: newSyncManager.deviceId,
+      publicKey: this.publicKey,
+      meta: {
+        deviceType: this.deviceType,
+        deviceFriendlyName: this.deviceFriendlyName,
+      },
+    })
   }
 
   /**

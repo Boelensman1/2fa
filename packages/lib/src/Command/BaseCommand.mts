@@ -50,9 +50,11 @@ abstract class BaseCommand<T extends CommandData = CommandData> {
   /**
    * Creates an undo command that, when executed, reverses the effects of this command.
    * @param VaultDataManager - The TwoFaLibMediator instance to use for creating the undo command.
-   * @returns A BaseCommand instance that undoes this command.
+   * @returns A BaseCommand instance that undoes this command or false if this command has no undo.
    */
-  abstract createUndoCommand(TwoFaLibMediator: TwoFaLibMediator): BaseCommand
+  abstract createUndoCommand(
+    TwoFaLibMediator: TwoFaLibMediator,
+  ): BaseCommand | false
 
   /**
    * Creates a new instance of the command with the provided data.

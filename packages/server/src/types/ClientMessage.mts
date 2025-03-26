@@ -1,6 +1,5 @@
 import type {
   DeviceId,
-  DeviceType,
   Encrypted,
   EncryptedPublicKey,
   EncryptedSymmetricKey,
@@ -18,7 +17,6 @@ export interface ConnectMessage {
 export interface AddSyncDeviceInitialiseDataMessage {
   type: 'addSyncDeviceInitialiseData'
   data: {
-    initiatorDeviceType: DeviceType
     initiatorDeviceId: DeviceId
     timestamp: number
     nonce: string
@@ -42,7 +40,6 @@ export interface JPAKEPass2Message {
       }
     }
     responderDeviceId: DeviceId
-    responderDeviceType: DeviceType
     initiatorDeviceId: DeviceId
   }
 }
@@ -70,7 +67,6 @@ export interface VaultMessage {
   data: {
     nonce: string
     initiatorDeviceId: DeviceId
-    initiatorEncryptedPublicKey: EncryptedPublicKey
     encryptedVaultData: EncryptedVaultStateString
   }
 }

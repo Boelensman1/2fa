@@ -62,8 +62,14 @@ class CommandManager {
     const command = this.executedCommands.pop()
     if (command) {
       const undoCommand = command.createUndoCommand(this.mediator)
-      await undoCommand.execute(this.mediator)
-      this.undoneCommands.push(command)
+      // check if the last command was undoable
+      if (undoCommand) {
+        await undoCommand.execute(this.mediator)
+        this.undoneCommands.push(command)
+      } else {
+        // if it was not, skip it
+        await this.undo()
+      }
     }
   }
 

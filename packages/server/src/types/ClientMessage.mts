@@ -36,6 +36,10 @@ export interface JPAKEPass2Message {
         ZKPx1: JsonifiedUint8Array
         ZKPx2: JsonifiedUint8Array
       }
+      round2Result: {
+        A: JsonifiedUint8Array
+        ZKPx2s: JsonifiedUint8Array
+      }
     }
     responderDeviceId: DeviceId
     responderDeviceType: DeviceType

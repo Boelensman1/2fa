@@ -11,7 +11,11 @@ import WS from 'vitest-websocket-mock'
 export { WebSocket as default } from 'mock-socket'
 
 import type ServerMessage from 'favaserver/ServerMessage'
-import { ConnectMessage } from 'favaserver/ClientMessage'
+import type {
+  ConnectClientMessage,
+  SyncCommandsClientMessage,
+  StartResilverClientMessage,
+} from 'favaserver/ClientMessage'
 import {
   CryptoLib,
   EncryptedPrivateKey,
@@ -40,6 +44,7 @@ import {
 } from '../../src/TwoFALibError.mjs'
 import type { DeviceId } from '../../src/interfaces/SyncTypes.mjs'
 import { TwoFaLibEvent } from '../../src/TwoFaLibEvent.mjs'
+import { VaultServerMessage } from 'favaserver/ServerMessage'
 
 // uses __mocks__/isomorphic-ws.js
 vi.mock('isomorphic-ws')
@@ -227,7 +232,7 @@ describe('SyncManager', () => {
       { type: 'JPAKEPass2', sender: senderWsInstance },
       { type: 'JPAKEPass3', sender: receiverWsInstance },
       { type: 'publicKey', sender: senderWsInstance },
-      { type: 'vault', sender: receiverWsInstance },
+      { type: 'initialVault', sender: receiverWsInstance },
     ]
     const messageDatas = []
     for (const { type, sender } of messages) {
@@ -308,7 +313,7 @@ describe('SyncManager', () => {
     60 * 1000,
   )
 
-  it('Connected devices should sync', async () => {
+  it('should sync commands between connected devices', async () => {
     const wsInstancesMap = new Map([
       [senderTwoFaLib.deviceId, senderWsInstance],
       [receiverTwoFaLib.deviceId, receiverWsInstance],
@@ -458,7 +463,7 @@ describe('SyncManager', () => {
     // @ts-expect-error Accessing private property for testing
     senderTwoFaLib.sync.ws.readyState = WebSocket.OPEN
 
-    const connectMessage = (await server.nextMessage) as ConnectMessage
+    const connectMessage = (await server.nextMessage) as ConnectClientMessage
     expect(connectMessage.type).toBe('connect')
     send(senderWsInstance, 'syncCommands', [])
 
@@ -572,5 +577,94 @@ describe('SyncManager', () => {
     expect(senderTwoFaLib.vault.getEntryMeta(addedEntryId)).toBeTruthy()
     expect(receiverTwoFaLib.vault.getEntryMeta(addedEntryId)).toBeTruthy()
     expect(otherReceiverTwoFaLib.vault.getEntryMeta(addedEntryId)).toBeTruthy()
+
+    // cleanup (rest of cleanup is done in afterEach)
+    // @ts-expect-error we're force resetting
+    otherReceiverWsInstance = null
+    otherReceiverTwoFaLib.sync?.closeServerConnection()
+  })
+
+  it('should resilver when asked', async () => {
+    const wsInstancesMap = new Map([
+      [senderTwoFaLib.deviceId, senderWsInstance],
+      [receiverTwoFaLib.deviceId, receiverWsInstance],
+    ])
+
+    await connectDevices({
+      senderTwoFaLib,
+      receiverTwoFaLib,
+      server,
+      wsInstancesMap,
+    })
+
+    await senderTwoFaLib.vault.addEntry({
+      name: 'name',
+      type: 'TOTP',
+      issuer: 'issuer',
+      payload: {
+        digits: 8,
+        period: 30,
+        secret: 'secretsecret',
+        algorithm: 'SHA-1',
+      },
+    })
+
+    const syncCommandsMsg =
+      (await server.nextMessage) as SyncCommandsClientMessage
+    if (syncCommandsMsg.type !== 'syncCommands') {
+      // eslint-disable-next-line no-restricted-globals
+      throw new Error(
+        `Wrong message received:\n ${JSON.stringify(syncCommandsMsg, null, 2)} `,
+      )
+    }
+    // Send confirmation of received commands
+    send(senderWsInstance, 'syncCommandsReceived', {
+      commandIds: syncCommandsMsg.data.commands.map((c) => c.commandId),
+    })
+
+    // We don't actually send the command! The vaults are out of sync now
+    expect(senderTwoFaLib.vault.listEntries()).toHaveLength(2)
+    expect(receiverTwoFaLib.vault.listEntries()).toHaveLength(1)
+
+    receiverTwoFaLib.sync!.requestResilver()
+    const startResilverMessage =
+      (await server.nextMessage) as StartResilverClientMessage
+    expect(startResilverMessage).toEqual({
+      type: 'startResilver',
+      data: { deviceIds: [senderTwoFaLib.deviceId, receiverTwoFaLib.deviceId] },
+    })
+
+    send(senderWsInstance, 'startResilver', startResilverMessage.data)
+    const senderResilverVaultMsg =
+      (await server.nextMessage) as VaultServerMessage
+    expect(senderResilverVaultMsg.data.forDeviceId).toEqual(
+      receiverTwoFaLib.deviceId,
+    )
+
+    send(receiverWsInstance, 'startResilver', startResilverMessage.data)
+    const receiverResilverVaultMsg =
+      (await server.nextMessage) as VaultServerMessage
+    expect(receiverResilverVaultMsg.data.forDeviceId).toEqual(
+      senderTwoFaLib.deviceId,
+    )
+
+    send(receiverWsInstance, 'vault', {
+      ...senderResilverVaultMsg.data,
+      fromDeviceId: senderTwoFaLib.deviceId,
+    })
+    send(senderWsInstance, 'vault', {
+      ...receiverResilverVaultMsg.data,
+      fromDeviceId: receiverTwoFaLib.deviceId,
+    })
+
+    // Wait for all to process the resilver
+    await vi.waitUntil(
+      () =>
+        senderTwoFaLib.vault.size === 2 &&
+        receiverTwoFaLib.vault.size === 2 && {
+          timeout: 1000,
+          interval: 20,
+        },
+    )
   })
 })

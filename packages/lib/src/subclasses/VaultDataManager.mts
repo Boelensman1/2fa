@@ -90,13 +90,20 @@ class VaultDataManager {
 
   /**
    * Add a new entry to the vault.
-   * @param entry - The entry data to add (without an ID, as it will be generated).
+   * @param entry - The entry data to add
+   * @param saveAfter - Whether to save the new vault after adding it (set to false when adding multiple entries)
    * @returns A promise that resolves when the entry is added.
    */
-  async addEntry(entry: Entry): Promise<void> {
+  async addEntry(entry: Entry, saveAfter = true): Promise<void> {
+    if (this.vault.find((e) => e.id === entry.id)) {
+      // We already have this entry
+      return
+    }
     this.vault.push(entry)
 
-    await this.persistentStorageManager.save()
+    if (saveAfter) {
+      await this.persistentStorageManager.save()
+    }
   }
 
   /**

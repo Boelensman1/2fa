@@ -1,46 +1,58 @@
 import type { EmptyObject } from 'type-fest'
 import type {
-  JPAKEPass2Message as JPAKEPass2ServerMessage,
-  JPAKEPass3Message as JPAKEPass3ServerMessage,
-  PublicKeyMessage as PublicKeyServerMessage,
-  VaultMessage as VaultServerMessage,
-  AddSyncDeviceCancelledMessage as AddSyncDeviceCancelledServerMessage,
+  JPAKEPass2ClientMessage,
+  JPAKEPass3ClientMessage,
+  PublicKeyClientMessage,
+  InitialVaultClientMessage,
+  VaultClientMessage,
+  AddSyncDeviceCancelledClientMessage,
+  StartResilverClientMessage,
 } from './ClientMessage.mjs'
-import { Encrypted, EncryptedSymmetricKey } from 'favalib'
+import type { Encrypted, EncryptedSymmetricKey, DeviceId } from 'favalib'
 
-export interface ConfirmAddSyncDeviceInitialiseData {
+export interface ConfirmAddSyncDeviceInitialiseServerMessage {
   type: 'confirmAddSyncDeviceInitialiseData'
   data: EmptyObject
 }
 
-export type JPAKEPass2Message = JPAKEPass2ServerMessage
-export type JPAKEPass3Message = JPAKEPass3ServerMessage
-export type PublicKeyMessage = PublicKeyServerMessage
-export type VaultMessage = VaultServerMessage
-export type AddSyncDeviceCancelledMessage = AddSyncDeviceCancelledServerMessage
+export type JPAKEPass2ServerMessage = JPAKEPass2ClientMessage
+export type JPAKEPass3ServerMessage = JPAKEPass3ClientMessage
+export type PublicKeyServerMessage = PublicKeyClientMessage
+export type InitialVaultServerMessage = InitialVaultClientMessage
+export type AddSyncDeviceCancelledServerMessage =
+  AddSyncDeviceCancelledClientMessage
+export type StartResilverServerMessage = StartResilverClientMessage
 
 export interface SyncCommandFromServer {
   commandId: string
   encryptedCommand: Encrypted<string>
   encryptedSymmetricKey: EncryptedSymmetricKey
 }
-export interface SyncCommandsMessage {
+export interface SyncCommandsServerMessage {
   type: 'syncCommands'
   data: SyncCommandFromServer[]
 }
-export interface SyncCommandReceivedMessage {
+export interface SyncCommandReceivedServerMessage {
   type: 'syncCommandsReceived'
   data: { commandIds: string[] }
 }
 
+export interface VaultServerMessage extends Omit<VaultClientMessage, 'data'> {
+  data: VaultClientMessage['data'] & {
+    fromDeviceId: DeviceId
+  }
+}
+
 type OutgoingMessage =
-  | ConfirmAddSyncDeviceInitialiseData
-  | JPAKEPass2Message
-  | JPAKEPass3Message
-  | PublicKeyMessage
-  | VaultMessage
-  | SyncCommandsMessage
-  | AddSyncDeviceCancelledMessage
-  | SyncCommandReceivedMessage
+  | ConfirmAddSyncDeviceInitialiseServerMessage
+  | JPAKEPass2ServerMessage
+  | JPAKEPass3ServerMessage
+  | PublicKeyServerMessage
+  | InitialVaultServerMessage
+  | VaultServerMessage
+  | SyncCommandsServerMessage
+  | AddSyncDeviceCancelledServerMessage
+  | SyncCommandReceivedServerMessage
+  | StartResilverServerMessage
 
 export default OutgoingMessage

@@ -33,6 +33,16 @@ const SyncOptions: Component = () => {
         >
           {showListDevices() ? 'Hide List Devices' : 'Show List Devices'}
         </button>
+        <button
+          onClick={() => {
+            if (twoFaLib?.sync) {
+              twoFaLib.sync.requestResilver()
+            }
+          }}
+          class="bg-pink-500 hover:bg-pink-600 text-white font-bold py-2 px-4 rounded transition duration-200"
+        >
+          Resilver
+        </button>
       </div>
 
       <Show when={showAddDevice()}>
@@ -42,6 +52,9 @@ const SyncOptions: Component = () => {
       <Show when={showListDevices()}>
         <ListSyncDevices />
       </Show>
+      <div class="absolute bottom-2 right-2 text-xs text-gray-500">
+        deviceId {twoFaLib?.deviceId}
+      </div>
     </div>
   )
 }

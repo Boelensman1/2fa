@@ -58,7 +58,7 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
 
   /**
    * Constructs a new instance of TwoFaLib. If a serverUrl is provided, the library will use it for its sync operations.
-   * @param deviceType - A unique identifier for this device type (e.g. 2fa-cli).
+   * @param deviceType - The identifier for this device type (e.g. 2fa-cli).
    * @param cryptoLib - An instance of CryptoLib that is compatible with the environment.
    * @param passphraseExtraDict - Additional words to be used for passphrase strength evaluation.
    * @param privateKey - The private key used for cryptographic operations.
@@ -289,16 +289,8 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
     this.mediator.unRegisterComponent('syncManager')
     this.mediator.registerComponent('syncManager', newSyncManager)
 
-    // add the current device to the initial list of syncdevices
-    // this also saves the vault
-    await newSyncManager.addSyncDevice({
-      deviceId: newSyncManager.deviceId,
-      publicKey: this.publicKey,
-      meta: {
-        deviceType: this.deviceType,
-        deviceFriendlyName: this.deviceFriendlyName,
-      },
-    })
+    // save
+    await this.forceSave()
   }
 
   /**

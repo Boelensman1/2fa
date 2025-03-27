@@ -14,6 +14,7 @@ export interface SyncDevice {
     deviceFriendlyName: DeviceFriendlyName
   }
 }
+export type PublicSyncDevice = Omit<SyncDevice, 'publicKey'>
 
 export interface BaseAddDeviceFlow {
   jpak: JPakeThreePass

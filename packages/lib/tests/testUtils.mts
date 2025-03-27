@@ -18,8 +18,8 @@ import { PassphraseExtraDict } from '../src/interfaces/PassphraseExtraDict.js'
 
 import type ServerMessage from 'favaserver/ServerMessage'
 import type {
-  SyncCommandsMessage,
-  SyncCommandsExecutedMessage,
+  SyncCommandsClientMessage,
+  SyncCommandsExecutedClientMessage,
 } from 'favaserver/ClientMessage'
 
 export const newTotpEntry: NewEntry = {
@@ -157,7 +157,7 @@ export async function connectDevices({
     { type: 'JPAKEPass2', sender: senderWsInstance },
     { type: 'JPAKEPass3', sender: receiverWsInstance },
     { type: 'publicKey', sender: senderWsInstance },
-    { type: 'vault', sender: receiverWsInstance },
+    { type: 'initialVault', sender: receiverWsInstance },
   ] as const
 
   for (const { type, sender } of messages) {
@@ -226,7 +226,8 @@ export const handleSyncCommands = async (
   }
 
   // Wait for the command to be re-sent
-  const syncCommandsMsg = (await server.nextMessage) as SyncCommandsMessage
+  const syncCommandsMsg =
+    (await server.nextMessage) as SyncCommandsClientMessage
 
   if (syncCommandsMsg.type !== 'syncCommands') {
     throw new Error(
@@ -241,7 +242,7 @@ export const handleSyncCommands = async (
 
   const syncCommandsExecutedMsgs = new Map<
     DeviceId,
-    SyncCommandsExecutedMessage
+    SyncCommandsExecutedClientMessage
   >()
 
   for (const command of syncCommandsMsg.data.commands) {
@@ -254,7 +255,7 @@ export const handleSyncCommands = async (
     send(receiverWsInstance, 'syncCommands', syncCommandsMsg.data.commands)
 
     const executedMsg =
-      (await server.nextMessage) as SyncCommandsExecutedMessage
+      (await server.nextMessage) as SyncCommandsExecutedClientMessage
     if (executedMsg.type !== 'syncCommandsExecuted') {
       throw new Error(
         `Expected "syncCommandsExecuted" type but got "${executedMsg.type as string}"`,

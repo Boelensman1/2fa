@@ -23,7 +23,7 @@ import type {
   Salt,
 } from './interfaces/CryptoLib.mjs'
 import type {
-  SyncDevice,
+  PublicSyncDevice,
   DeviceId,
   DeviceType,
   DeviceFriendlyName,
@@ -78,5 +78,5 @@ export type {
   DeviceId,
   DeviceType,
   DeviceFriendlyName,
-  SyncDevice,
+  PublicSyncDevice,
 }

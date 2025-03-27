@@ -8,8 +8,8 @@ import ConnectedDevicesManager from './ConnectedDevicesManager.mjs'
 import UnExecutedSyncCommand from './models/UnExecutedSyncCommand.mjs'
 
 import type ClientMessage from './types/ClientMessage.mjs'
-import type { AddSyncDeviceInitialiseDataMessage } from './types/ClientMessage.mjs'
-import type ServerMessage from './types/ServerMessage.mjs'
+import type { AddSyncDeviceInitialiseDataClientMessage } from './types/ClientMessage.mjs'
+import type OutgoingMessage from './types/ServerMessage.mjs'
 
 const config = JSON.parse(
   fs.readFileSync('./knexfile.json').toString(),
@@ -21,16 +21,16 @@ const port = Number(process.env.PORT ?? 8080)
 const wss = new WebSocketServer({ port })
 console.log(`Server started on port ${port}`)
 
-const ongoingAddDeviceRequests: (AddSyncDeviceInitialiseDataMessage['data'] & {
+const ongoingAddDeviceRequests: (AddSyncDeviceInitialiseDataClientMessage['data'] & {
   wsInitiator: WebSocket
   wsResponder?: WebSocket
 })[] = []
 const connectedDevices = new ConnectedDevicesManager()
 
-const send = <T extends ServerMessage['type']>(
+const send = <T extends OutgoingMessage['type']>(
   ws: WebSocket,
   type: T,
-  data?: Extract<ServerMessage, { type: T }>['data'],
+  data?: Extract<OutgoingMessage, { type: T }>['data'],
 ) => {
   ws.send(JSON.stringify({ type, data }))
 }
@@ -102,7 +102,7 @@ const handleMessage = (ws: WebSocket, message: ClientMessage) => {
       send(request.wsInitiator, 'publicKey', message.data)
       return
     }
-    case 'vault': {
+    case 'initialVault': {
       const { initiatorDeviceId } = message.data
       // find matching request
       const request = ongoingAddDeviceRequests.find(
@@ -117,7 +117,28 @@ const handleMessage = (ws: WebSocket, message: ClientMessage) => {
         return
       }
 
-      send(request.wsResponder, 'vault', message.data)
+      send(request.wsResponder, 'initialVault', message.data)
+      return
+    }
+    case 'vault': {
+      const { forDeviceId } = message.data
+      const fromDeviceId = connectedDevices.getDeviceId(ws)
+      if (!fromDeviceId) {
+        console.error('fromDeviceId not found when resilvering')
+        return
+      }
+
+      // find matching device
+      const forDeviceWs = connectedDevices.getWs(forDeviceId)
+      if (!forDeviceWs) {
+        // device is offline, cannot resilver
+        return
+      }
+
+      send(forDeviceWs, 'vault', {
+        ...message.data,
+        fromDeviceId,
+      })
       return
     }
     case 'addSyncDeviceCancelled': {
@@ -191,6 +212,20 @@ const handleMessage = (ws: WebSocket, message: ClientMessage) => {
         .whereIn('commandId', commandIds)
         .del()
         .execute()
+      return
+    }
+    case 'startResilver': {
+      const { deviceIds } = message.data
+      for (const deviceId of deviceIds) {
+        // find matching device
+        const deviceWs = connectedDevices.getWs(deviceId)
+        if (!deviceWs) {
+          // device is offline, cannot start resilver
+          return
+        }
+
+        send(deviceWs, 'startResilver', message.data)
+      }
       return
     }
   }

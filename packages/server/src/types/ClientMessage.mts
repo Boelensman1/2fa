@@ -7,14 +7,14 @@ import type {
 } from 'favalib'
 import type JsonifiedUint8Array from './JsonifiedUint8Array.mjs'
 
-export interface ConnectMessage {
+export interface ConnectClientMessage {
   type: 'connect'
   data: {
     deviceId: DeviceId
   }
 }
 
-export interface AddSyncDeviceInitialiseDataMessage {
+export interface AddSyncDeviceInitialiseDataClientMessage {
   type: 'addSyncDeviceInitialiseData'
   data: {
     initiatorDeviceId: DeviceId
@@ -23,7 +23,7 @@ export interface AddSyncDeviceInitialiseDataMessage {
   }
 }
 
-export interface JPAKEPass2Message {
+export interface JPAKEPass2ClientMessage {
   type: 'JPAKEPass2'
   data: {
     nonce: string
@@ -44,7 +44,7 @@ export interface JPAKEPass2Message {
   }
 }
 
-export interface JPAKEPass3Message {
+export interface JPAKEPass3ClientMessage {
   type: 'JPAKEPass3'
   data: {
     nonce: string
@@ -53,7 +53,7 @@ export interface JPAKEPass3Message {
   }
 }
 
-export interface PublicKeyMessage {
+export interface PublicKeyClientMessage {
   type: 'publicKey'
   data: {
     initiatorDeviceId: DeviceId
@@ -62,16 +62,26 @@ export interface PublicKeyMessage {
   }
 }
 
-export interface VaultMessage {
-  type: 'vault'
+export interface InitialVaultClientMessage {
+  type: 'initialVault'
   data: {
-    nonce: string
     initiatorDeviceId: DeviceId
+    nonce: string
     encryptedVaultData: EncryptedVaultStateString
   }
 }
 
-export interface AddSyncDeviceCancelledMessage {
+export interface VaultClientMessage {
+  type: 'vault'
+  data: {
+    forDeviceId: DeviceId
+    nonce: string
+    encryptedVaultData: EncryptedVaultStateString
+    encryptedSymmetricKey: EncryptedSymmetricKey
+  }
+}
+
+export interface AddSyncDeviceCancelledClientMessage {
   type: 'addSyncDeviceCancelled'
   data: {
     initiatorDeviceId: DeviceId
@@ -84,7 +94,7 @@ export interface SyncCommandFromClient {
   encryptedCommand: Encrypted<string>
   encryptedSymmetricKey: EncryptedSymmetricKey
 }
-export interface SyncCommandsMessage {
+export interface SyncCommandsClientMessage {
   type: 'syncCommands'
   data: {
     nonce: string
@@ -92,22 +102,31 @@ export interface SyncCommandsMessage {
   }
 }
 
-export interface SyncCommandsExecutedMessage {
+export interface SyncCommandsExecutedClientMessage {
   type: 'syncCommandsExecuted'
   data: {
     commandIds: string[]
   }
 }
 
+export interface StartResilverClientMessage {
+  type: 'startResilver'
+  data: {
+    deviceIds: DeviceId[]
+  }
+}
+
 type IncomingMessage =
-  | ConnectMessage
-  | AddSyncDeviceInitialiseDataMessage
-  | JPAKEPass2Message
-  | JPAKEPass3Message
-  | PublicKeyMessage
-  | VaultMessage
-  | AddSyncDeviceCancelledMessage
-  | SyncCommandsMessage
-  | SyncCommandsExecutedMessage
+  | ConnectClientMessage
+  | AddSyncDeviceInitialiseDataClientMessage
+  | JPAKEPass2ClientMessage
+  | JPAKEPass3ClientMessage
+  | PublicKeyClientMessage
+  | InitialVaultClientMessage
+  | VaultClientMessage
+  | AddSyncDeviceCancelledClientMessage
+  | SyncCommandsClientMessage
+  | SyncCommandsExecutedClientMessage
+  | StartResilverClientMessage
 
 export default IncomingMessage

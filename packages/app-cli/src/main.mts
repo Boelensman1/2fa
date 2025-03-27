@@ -8,6 +8,7 @@ import EntriesListCommand from './commands/entries/list.mjs'
 import EntriesSearchCommand from './commands/entries/search.mjs'
 import SyncSetServerUrlCommand from './commands/sync/setServerUrl.mjs'
 import SyncConnect from './commands/sync/connect.mjs'
+import SyncResilver from './commands/sync/resilver.mjs'
 import ExportTextCommand from './commands/export/text.mjs'
 
 // check node version
@@ -31,6 +32,7 @@ cli.register(EntriesListCommand)
 cli.register(EntriesSearchCommand)
 cli.register(SyncSetServerUrlCommand)
 cli.register(SyncConnect)
+cli.register(SyncResilver)
 cli.register(ExportTextCommand)
 
 cli.register(Builtins.HelpCommand)

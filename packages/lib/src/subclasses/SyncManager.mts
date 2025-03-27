@@ -702,7 +702,6 @@ class SyncManager {
     })
 
     // save the added the sync device, done via command so this is synced to all sync devices
-    // this also re-adds the sync device to the just added sync device, which syncDevices list is now equal to our own
     const command = AddSyncDeviceCommand.create({
       deviceId: this.activeAddDeviceFlow.responderDeviceId,
       publicKey: decryptedPublicKey as PublicKey,
@@ -748,7 +747,6 @@ class SyncManager {
       )
     }
 
-    this.syncDevices = vaultState.sync.devices
     for (const device of vaultState.sync.devices) {
       await this.addSyncDevice(device, false)
     }

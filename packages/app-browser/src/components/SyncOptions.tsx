@@ -52,7 +52,7 @@ const SyncOptions: Component = () => {
       <Show when={showListDevices()}>
         <ListSyncDevices />
       </Show>
-      <div class="absolute bottom-2 right-2 text-xs text-gray-500">
+      <div class="fixed bottom-2 right-2 text-xs text-gray-500">
         deviceId {twoFaLib?.deviceId}
       </div>
     </div>

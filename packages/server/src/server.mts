@@ -221,7 +221,7 @@ const handleMessage = (ws: WebSocket, message: ClientMessage) => {
         const deviceWs = connectedDevices.getWs(deviceId)
         if (!deviceWs) {
           // device is offline, cannot start resilver
-          return
+          continue
         }
 
         send(deviceWs, 'startResilver', message.data)

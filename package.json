@@ -20,8 +20,5 @@
     "tsx": "^4.19.1",
     "typescript": "^5.5.4",
     "typescript-eslint": "^8.5.0"
-  },
-  "dependencies": {
-    "peer": "^1.0.2"
   }
 }

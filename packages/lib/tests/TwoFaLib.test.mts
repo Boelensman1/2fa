@@ -22,8 +22,8 @@ import {
   deviceId,
 } from './testUtils.mjs'
 
-// uses __mocks__/isomorphic-ws.js
-vi.mock('isomorphic-ws')
+// uses __mocks__/unws.js
+vi.mock('unws')
 
 describe('2falib', () => {
   let cryptoLib: CryptoLib

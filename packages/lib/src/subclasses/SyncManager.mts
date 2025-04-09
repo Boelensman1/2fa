@@ -1,4 +1,4 @@
-import WebSocket, { MessageEvent, CloseEvent } from 'isomorphic-ws'
+import { MessageEvent } from 'unws'
 import {
   base64ToUint8Array,
   hexToUint8Array,
@@ -231,7 +231,7 @@ class SyncManager {
     const syncManager = this
 
     ws.addEventListener('error', (event) => {
-      syncManager.log('warning', `Error in websocket: ${event.error}`)
+      syncManager.log('warning', `Error in websocket: ${event}`)
     })
 
     ws.addEventListener('message', function message(message: MessageEvent) {
@@ -975,13 +975,6 @@ class SyncManager {
       this.ws = undefined
 
       ws.close()
-
-      // force terminate the connection after 2 seconds
-      // ws.terminate is not defined in the test enviroment, which is the reason for the &&
-      this.terminateTimeout = setTimeout(
-        () => ws.terminate && ws.terminate(),
-        2000,
-      )
     }
   }
 }

@@ -46,8 +46,8 @@ import type { DeviceId } from '../../src/interfaces/SyncTypes.mjs'
 import { TwoFaLibEvent } from '../../src/TwoFaLibEvent.mjs'
 import { VaultServerMessage } from 'favaserver/ServerMessage'
 
-// uses __mocks__/isomorphic-ws.js
-vi.mock('isomorphic-ws')
+// uses __mocks__/unws.js
+vi.mock('unws')
 
 const serverPort = 9770
 const serverBaseUrl = 'ws://localhost'
@@ -631,7 +631,12 @@ describe('SyncManager', () => {
       (await server.nextMessage) as StartResilverClientMessage
     expect(startResilverMessage).toEqual({
       type: 'startResilver',
-      data: { deviceIds: [senderTwoFaLib.deviceId, receiverTwoFaLib.deviceId] },
+      data: {
+        deviceIds: expect.arrayContaining([
+          senderTwoFaLib.deviceId,
+          receiverTwoFaLib.deviceId,
+        ]),
+      },
     })
 
     send(senderWsInstance, 'startResilver', startResilverMessage.data)

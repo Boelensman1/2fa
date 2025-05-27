@@ -206,9 +206,11 @@ const handleMessage = (ws: WebSocket, message: ClientMessage) => {
       return
     }
     case 'syncCommandsExecuted': {
-      // sync commands executed, can be removed
+      // sync commands executed, can be removed (for this device)
+      const deviceId = connectedDevices.getDeviceId(ws)
       const { commandIds } = message.data
       void UnExecutedSyncCommand.query()
+        .where({ deviceId })
         .whereIn('commandId', commandIds)
         .del()
         .execute()

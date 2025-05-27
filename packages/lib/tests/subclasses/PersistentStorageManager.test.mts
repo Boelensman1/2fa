@@ -84,7 +84,7 @@ describe('PersistentStorageManager', () => {
     } as unknown as SyncManager
     mediator.registerComponent('syncManager', mockedSyncManager)
 
-    const locked = await persistentStorageManager['getLockedRepresentation']()
+    const locked = await persistentStorageManager.getLockedRepresentation()
 
     expect(mockEncryptSymmetric).toHaveBeenCalledOnce()
 
@@ -157,7 +157,9 @@ describe('PersistentStorageManager', () => {
     // Check if the save function was called with the correct argument
     const firstCall = getNthMockCallFirstArg(mockSaveFunction, 0)
     expect(firstCall).toEqual(expect.any(String) as string)
-    expect(() => JSON.parse(firstCall)).not.toThrow()
+    expect(() => {
+      JSON.parse(firstCall)
+    }).not.toThrow()
 
     // Reset mock
     mockSaveFunction.mockClear()
@@ -171,7 +173,9 @@ describe('PersistentStorageManager', () => {
 
     const secondCall = getNthMockCallFirstArg(mockSaveFunction, 0)
     expect(secondCall).toEqual(expect.any(String))
-    expect(() => JSON.parse(secondCall)).not.toThrow()
+    expect(() => {
+      JSON.parse(secondCall)
+    }).not.toThrow()
 
     expect(firstCall).not.toEqual(secondCall)
   }, 15000) // long running test
@@ -265,18 +269,18 @@ describe('PersistentStorageManager', () => {
     let activeSaveCalls = 0
     let maxConcurrentSaves = 0
 
-    const mockSaveFunction = vi.fn(
-      async (_data: LockedRepresentationString) => {
-        saveCallCount++
-        activeSaveCalls++
-        maxConcurrentSaves = Math.max(maxConcurrentSaves, activeSaveCalls)
+    const mockSaveFunction = vi.fn(async (data: LockedRepresentationString) => {
+      saveCallCount++
+      activeSaveCalls++
+      maxConcurrentSaves = Math.max(maxConcurrentSaves, activeSaveCalls)
 
-        // Simulate some async work
-        await new Promise((resolve) => setTimeout(resolve, 100))
+      // Simulate some async work
+      await new Promise((resolve) => setTimeout(resolve, 100))
 
-        activeSaveCalls--
-      },
-    )
+      activeSaveCalls--
+
+      expect(data).toBeTypeOf('string')
+    })
 
     twoFaLib.storage.setSaveFunction(mockSaveFunction)
 
@@ -291,6 +295,7 @@ describe('PersistentStorageManager', () => {
 
     // Verify that save was called for each operation
     expect(mockSaveFunction).toHaveBeenCalledTimes(3)
+    expect(saveCallCount).toBe(3)
 
     // Verify that saves were queued/serialized, not run concurrently
     expect(maxConcurrentSaves).toBe(1)

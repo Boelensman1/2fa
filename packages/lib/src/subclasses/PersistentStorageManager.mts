@@ -103,7 +103,7 @@ class PersistentStorageManager {
    * @returns A promise that resolves with a json encoded string of
    * the partially encrypted library's data.
    */
-  private async getLockedRepresentation(): Promise<LockedRepresentationString> {
+  async getLockedRepresentation(): Promise<LockedRepresentationString> {
     const encryptedVaultState = await this.getEncryptedVaultState()
 
     const lockedRepresentation: LockedRepresentation = {

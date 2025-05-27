@@ -22,6 +22,7 @@ class StorageOperationsManager {
 
   /**
    * Forces a save.
+   * @returns void
    */
   async forceSave() {
     return this.persistentStorage.save()

@@ -24,11 +24,14 @@
   "author": "",
   "license": "ISC",
   "devDependencies": {
+    "@types/node": "^22.15.21",
+    "@types/ws": "^8.18.1",
     "type-fest": "^4.26.1"
   },
   "dependencies": {
     "knex": "^3.1.0",
     "objection": "^3.1.5",
-    "pg": "^8.13.0"
+    "pg": "^8.13.0",
+    "ws": "^8.18.2"
   }
 }

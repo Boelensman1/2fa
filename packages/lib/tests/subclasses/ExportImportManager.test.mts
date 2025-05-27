@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, beforeAll } from 'vitest'
 import fs from 'fs/promises'
 import path from 'path'
-import openpgp from 'openpgp'
+import * as openpgp from 'openpgp'
 
 import { TwoFaLib } from '../../src/main.mjs'
 

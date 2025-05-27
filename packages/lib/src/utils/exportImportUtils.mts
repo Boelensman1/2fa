@@ -201,6 +201,7 @@ export const encryptExport = async (
   data: string,
   password: string,
 ): Promise<string> => {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
   const encrypted = await openPgpLib.encrypt({
     message: await openPgpLib.createMessage({ text: data }),
     passwords: [password],

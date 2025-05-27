@@ -638,7 +638,7 @@ describe('SyncManager', () => {
         deviceIds: expect.arrayContaining([
           senderTwoFaLib.deviceId,
           receiverTwoFaLib.deviceId,
-        ]),
+        ]) as string[],
       },
     })
 

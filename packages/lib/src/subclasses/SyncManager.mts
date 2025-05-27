@@ -231,7 +231,8 @@ class SyncManager {
     const syncManager = this
 
     ws.addEventListener('error', (event) => {
-      syncManager.log('warning', `Error in websocket: ${event}`)
+      // eslint-disable-next-line @typescript-eslint/no-base-to-string
+      syncManager.log('warning', `Error in websocket: ${event.toString()}`)
     })
 
     ws.addEventListener('message', function message(message: MessageEvent) {

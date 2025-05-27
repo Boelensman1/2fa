@@ -236,7 +236,8 @@ wss.on('connection', function connection(ws) {
   ws.on('error', console.error)
 
   ws.on('message', function message(data) {
-    const messageDecoded = JSON.parse(String(data)) as unknown
+    // eslint-disable-next-line @typescript-eslint/no-base-to-string
+    const messageDecoded = JSON.parse(data.toString()) as unknown
     handleMessage(ws, messageDecoded as ClientMessage)
   })
 

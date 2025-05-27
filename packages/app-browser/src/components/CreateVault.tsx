@@ -21,10 +21,11 @@ const CreateVault: Component = () => {
     const passphrase = password()
     const { twoFaLib } = await creationUtils.createNewTwoFaLibVault(passphrase)
 
-    twoFaLib.addEventListener(TwoFaLibEvent.Changed, (event) => {
-      saveFunction(event.detail.newLockedRepresentationString)
+    twoFaLib.storage.setSaveFunction((newLockedRepresentationString) => {
+      saveFunction(newLockedRepresentationString)
       syncStoreWithLib(twoFaLib)
     })
+
     twoFaLib.addEventListener(
       TwoFaLibEvent.ConnectToExistingVaultFinished,
       () => {
@@ -32,7 +33,7 @@ const CreateVault: Component = () => {
       },
     )
     if (mode() === 'create') {
-      void twoFaLib.forceSave()
+      void twoFaLib.storage.forceSave()
     }
 
     dispatch(actions.setConnectingToExistingVault(mode() === 'connect'))

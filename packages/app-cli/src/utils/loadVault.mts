@@ -6,39 +6,25 @@ import {
   getTwoFaLibVaultCreationUtils,
   type LockedRepresentationString,
   Passphrase,
+  SaveFunction,
   TwoFaLibEvent,
 } from 'favalib'
 import NodeCryptoProvider from 'favalib/cryptoProviders/node'
 import { Settings } from './init.mjs'
 
 const cryptoLib = new NodeCryptoProvider()
-const twoFaLibVaultCreationUtils = getTwoFaLibVaultCreationUtils(
-  cryptoLib,
-  'cli' as DeviceType,
-  ['cli'],
-)
 
 const loadVault = async (
   vaultData: LockedRepresentationString,
   settings: Settings,
   verbose = false,
 ) => {
-  const passphrase = (await keytar.getPassword(
-    'favacli',
-    'vault-passphrase',
-  )) as Passphrase
-
-  const twoFaLib =
-    await twoFaLibVaultCreationUtils.loadTwoFaLibFromLockedRepesentation(
-      vaultData,
-      passphrase,
-    )
-  twoFaLib.addEventListener(TwoFaLibEvent.Changed, async (ev) => {
+  const saveFunction: SaveFunction = async (newLockedRepresentationString) => {
     const tempFile = `${settings.vaultLocation}.tmp`
     const backupFile = `${settings.vaultLocation}.backup`
     try {
       // Write to temporary file first, so we don't have to worry about partial writes
-      await fs.writeFile(tempFile, ev.detail.newLockedRepresentationString)
+      await fs.writeFile(tempFile, newLockedRepresentationString)
 
       // Create backup of existing vault if it exists
       try {
@@ -58,7 +44,25 @@ const loadVault = async (
       })
       throw error
     }
-  })
+  }
+
+  const twoFaLibVaultCreationUtils = getTwoFaLibVaultCreationUtils(
+    cryptoLib,
+    'cli' as DeviceType,
+    ['cli'],
+    saveFunction,
+  )
+
+  const passphrase = (await keytar.getPassword(
+    'favacli',
+    'vault-passphrase',
+  )) as Passphrase
+
+  const twoFaLib =
+    await twoFaLibVaultCreationUtils.loadTwoFaLibFromLockedRepesentation(
+      vaultData,
+      passphrase,
+    )
   twoFaLib.addEventListener(TwoFaLibEvent.Log, (ev) => {
     if (ev.detail.severity !== 'info' || verbose) {
       console.log(ev.detail)

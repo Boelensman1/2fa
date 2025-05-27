@@ -27,8 +27,8 @@ const Login: Component = () => {
       password() as Passphrase,
     )
 
-    twoFaLib.addEventListener(TwoFaLibEvent.Changed, (event) => {
-      saveFunction(event.detail.newLockedRepresentationString)
+    twoFaLib.storage.setSaveFunction((newLockedRepresentationString) => {
+      saveFunction(newLockedRepresentationString)
       syncStoreWithLib(twoFaLib)
     })
 

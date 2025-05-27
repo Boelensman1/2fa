@@ -3,21 +3,11 @@ import keytar from 'keytar'
 
 import BaseCommand from '../../BaseCommand.mjs'
 
-import {
-  DeviceType,
-  getTwoFaLibVaultCreationUtils,
-  Passphrase,
-  TwoFaLibEvent,
-} from 'favalib'
+import { DeviceType, getTwoFaLibVaultCreationUtils, Passphrase } from 'favalib'
 import NodeCryptoProvider from 'favalib/cryptoProviders/node'
 import { password } from '@inquirer/prompts'
 
 const cryptoLib = new NodeCryptoProvider()
-const twoFaLibVaultCreationUtils = getTwoFaLibVaultCreationUtils(
-  cryptoLib,
-  'cli' as DeviceType,
-  ['cli'],
-)
 
 class VaultCreateCommand extends BaseCommand {
   static override paths = [['vault', 'create']]
@@ -37,6 +27,17 @@ class VaultCreateCommand extends BaseCommand {
   })
 
   async exec() {
+    const twoFaLibVaultCreationUtils = getTwoFaLibVaultCreationUtils(
+      cryptoLib,
+      'cli' as DeviceType,
+      ['cli'],
+      (newLockedRepresentationString) =>
+        fs.writeFile(
+          this.settings.vaultLocation,
+          newLockedRepresentationString,
+        ),
+    )
+
     const passphrase = (await password({
       message: 'Enter your vault passphrase:',
       mask: '*',
@@ -54,14 +55,8 @@ class VaultCreateCommand extends BaseCommand {
     const { twoFaLib } =
       await twoFaLibVaultCreationUtils.createNewTwoFaLibVault(passphrase)
 
-    twoFaLib.addEventListener(TwoFaLibEvent.Changed, (ev) => {
-      return fs.writeFile(
-        this.settings.vaultLocation,
-        ev.detail.newLockedRepresentationString,
-      )
-    })
     await Promise.all([
-      twoFaLib.forceSave(),
+      twoFaLib.storage.forceSave(),
       keytar.setPassword('favacli', 'vault-passphrase', passphrase),
     ])
     return { success: true }

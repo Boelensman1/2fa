@@ -28,8 +28,9 @@ const Importer = () => {
     const file = e.dataTransfer?.files[0]
     if (file) {
       const reader = new FileReader()
-      reader.onload = (event) => {
-        const fileContents = event.target?.result?.toString()
+      reader.onload = () => {
+        // eslint-disable-next-line @typescript-eslint/no-base-to-string
+        const fileContents = reader.result?.toString()
         if (fileContents) {
           void twoFaLib.exportImport
             .importFromTextFile(fileContents)

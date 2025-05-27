@@ -19,11 +19,13 @@ pkgs.mkShell {
     python3
   ] ++ (if isLinux then [
     libuuid
+    libsecret
+    glib
   ] else if isDarwin then [
     darwin.apple_sdk.frameworks.Foundation
   ] else []);
 
   env = if isLinux then {
-    LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [pkgs.libuuid];
+    LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [pkgs.libuuid pkgs.libsecret pkgs.glib];
   } else {};
 }

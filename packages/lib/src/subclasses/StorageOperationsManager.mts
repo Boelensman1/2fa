@@ -1,6 +1,7 @@
 import type TwoFaLibMediator from '../TwoFaLibMediator.mjs'
 
 import type { Passphrase } from '../interfaces/CryptoLib.mjs'
+import type SaveFunction from '../interfaces/SaveFunction.mjs'
 
 /**
  * Manages the public operations related to the vault storage
@@ -38,6 +39,14 @@ class StorageOperationsManager {
     newPassphrase: Passphrase,
   ): Promise<void> {
     return this.persistentStorage.changePassphrase(oldPassphrase, newPassphrase)
+  }
+
+  /**
+   * Sets the save function for the library.
+   * @param saveFunction - The save function to set.
+   */
+  public setSaveFunction(saveFunction: SaveFunction) {
+    this.persistentStorage.setSaveFunction(saveFunction)
   }
 }
 

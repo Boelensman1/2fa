@@ -138,7 +138,7 @@ describe('PersistentStorageManager', () => {
 
   it('Should save when save is called', async () => {
     const mockSaveFunction = vi.fn()
-    twoFaLib['persistentStorageManager'].setSaveFunction(mockSaveFunction)
+    twoFaLib.storage.setSaveFunction(mockSaveFunction)
     await persistentStorageManager.save()
     // Check if save function was called
     expect(mockSaveFunction).toHaveBeenCalledTimes(1)
@@ -146,7 +146,8 @@ describe('PersistentStorageManager', () => {
 
   it('Should save when data is changed', async () => {
     const mockSaveFunction = vi.fn()
-    twoFaLib['persistentStorageManager'].setSaveFunction(mockSaveFunction)
+    twoFaLib.storage.setSaveFunction(mockSaveFunction)
+
     // Add an entry
     await twoFaLib.vault.addEntry(newTotpEntry)
 
@@ -184,7 +185,7 @@ describe('PersistentStorageManager', () => {
       savedData = data
     })
 
-    persistentStorageManager['setSaveFunction'](mockSaveFunction)
+    persistentStorageManager.setSaveFunction(mockSaveFunction)
 
     await persistentStorageManager.changePassphrase(
       oldPassphrase,
@@ -277,7 +278,7 @@ describe('PersistentStorageManager', () => {
       },
     )
 
-    twoFaLib['persistentStorageManager'].setSaveFunction(mockSaveFunction)
+    twoFaLib.storage.setSaveFunction(mockSaveFunction)
 
     // Trigger multiple save operations simultaneously
     const promises = [

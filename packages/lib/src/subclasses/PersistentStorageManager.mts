@@ -119,10 +119,10 @@ class PersistentStorageManager {
   }
 
   /**
-   * Sets the save function for the library. Used for testing.
+   * Sets the save function for the library.
    * @param saveFunction - The save function to set.
    */
-  setSaveFunction(saveFunction: SaveFunction) {
+  public setSaveFunction(saveFunction: SaveFunction) {
     this.saveFunction = saveFunction
   }
 

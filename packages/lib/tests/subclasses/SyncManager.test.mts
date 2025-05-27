@@ -171,6 +171,7 @@ describe('SyncManager', () => {
       publicKey,
       'disconnectedDeviceId' as DeviceId,
       [],
+      undefined,
       { serverUrl: temporaryServerUrl, devices: [], commandSendQueue: [] },
     )
 
@@ -414,6 +415,7 @@ describe('SyncManager', () => {
       publicKey,
       'newSenderDeviceId' as DeviceId,
       [],
+      undefined,
       { serverUrl, devices: [], commandSendQueue: [] },
     )
 
@@ -524,6 +526,7 @@ describe('SyncManager', () => {
       publicKey,
       'otherReceiverDeviceId' as DeviceId,
       [],
+      undefined,
       { serverUrl, devices: [], commandSendQueue: [] },
     )
 

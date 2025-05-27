@@ -20,15 +20,16 @@ import type TwoFaLibMediator from '../TwoFaLibMediator.mjs'
 import type { DeviceId } from '../interfaces/SyncTypes.mjs'
 import type { PassphraseExtraDict } from '../interfaces/PassphraseExtraDict.js'
 
-import { TwoFaLibEvent } from '../TwoFaLibEvent.mjs'
 import TwoFaLib from '../TwoFaLib.mjs'
 import { validatePassphraseStrength } from '../utils/creationUtils.mjs'
+import SaveFunction from '../interfaces/SaveFunction.mjs'
 
 /**
  * Manages all storage of data that should be persistent.
  */
 class PersistentStorageManager {
   public static readonly storageVersion = 1
+  private savePromise: Promise<void> | null = null
 
   /**
    * Constructs a new instance of PersistentStorageManager.
@@ -40,6 +41,7 @@ class PersistentStorageManager {
    * @param encryptedPrivateKey - The encrypted private key
    * @param encryptedSymmetricKey - The encrypted symmetric key
    * @param salt - The salt used for key derivation.
+   * @param saveFunction - The function to save the data.
    */
   constructor(
     private mediator: TwoFaLibMediator,
@@ -50,6 +52,7 @@ class PersistentStorageManager {
     private encryptedPrivateKey: EncryptedPrivateKey,
     private encryptedSymmetricKey: EncryptedSymmetricKey,
     private salt: Salt,
+    private saveFunction?: SaveFunction,
   ) {}
 
   private get cryptoLib() {
@@ -63,9 +66,6 @@ class PersistentStorageManager {
       return null
     }
     return this.mediator.getComponent('syncManager')
-  }
-  private get dispatchLibEvent() {
-    return this.mediator.getComponent('dispatchLibEvent')
   }
 
   /**
@@ -103,7 +103,7 @@ class PersistentStorageManager {
    * @returns A promise that resolves with a json encoded string of
    * the partially encrypted library's data.
    */
-  async getLockedRepresentation(): Promise<LockedRepresentationString> {
+  private async getLockedRepresentation(): Promise<LockedRepresentationString> {
     const encryptedVaultState = await this.getEncryptedVaultState()
 
     const lockedRepresentation: LockedRepresentation = {
@@ -119,14 +119,44 @@ class PersistentStorageManager {
   }
 
   /**
+   * Sets the save function for the library. Used for testing.
+   * @param saveFunction - The save function to set.
+   */
+  setSaveFunction(saveFunction: SaveFunction) {
+    this.saveFunction = saveFunction
+  }
+
+  /**
    * Saves the current state of the library.
    * @returns A promise that resolves when the save operation is complete.
    */
   public async save() {
+    if (this.saveFunction) {
+      // If a save is already in progress, wait for it to complete
+      if (this.savePromise) {
+        await this.savePromise
+        // recurse
+        await this.save()
+        return
+      }
+
+      // Start a new save operation
+      this.savePromise = this.performSave()
+
+      try {
+        await this.savePromise
+      } finally {
+        this.savePromise = null
+      }
+    }
+  }
+
+  /**
+   * Internal method to perform the actual save operation.
+   */
+  private async performSave(): Promise<void> {
     const lockedRepresentation = await this.getLockedRepresentation()
-    this.dispatchLibEvent(TwoFaLibEvent.Changed, {
-      newLockedRepresentationString: lockedRepresentation,
-    })
+    await this.saveFunction!(lockedRepresentation)
   }
 
   /**

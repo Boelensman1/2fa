@@ -2,6 +2,7 @@ import type TwoFaLib from './TwoFaLib.mjs'
 import type LibraryLoader from './subclasses/LibraryLoader.mjs'
 import type ExportImportManager from './subclasses/ExportImportManager.mjs'
 import type PersistentStorageManager from './subclasses/PersistentStorageManager.mjs'
+import type StorageOperationsManager from './subclasses/StorageOperationsManager.mjs'
 import type VaultDataManager from './subclasses/VaultDataManager.mjs'
 import type ExternalVaultManager from './subclasses/VaultOperationsManager.mjs'
 import type CommandManager from './subclasses/CommandManager.mjs'
@@ -15,6 +16,7 @@ class TwoFaLibMediator {
   private components: {
     libraryLoader?: LibraryLoader
     persistentStorageManager?: PersistentStorageManager
+    storageOperationsManager?: StorageOperationsManager
     vaultDataManager?: VaultDataManager
     commandManager?: CommandManager
     vaultOperationsManager?: ExternalVaultManager

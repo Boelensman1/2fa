@@ -4,7 +4,6 @@ import type CryptoLib from './interfaces/CryptoLib.mjs'
 import type {
   EncryptedPrivateKey,
   EncryptedSymmetricKey,
-  Passphrase,
   PrivateKey,
   PublicKey,
   Salt,
@@ -37,6 +36,8 @@ import PersistentStorageManager from './subclasses/PersistentStorageManager.mjs'
 import VaultDataManager from './subclasses/VaultDataManager.mjs'
 import VaultOperationsManager from './subclasses/VaultOperationsManager.mjs'
 import CommandManager from './subclasses/CommandManager.mjs'
+import SaveFunction from './interfaces/SaveFunction.mjs'
+import StorageOperationsManager from './subclasses/StorageOperationsManager.mjs'
 
 /**
  * The Two-Factor Library, this is the main entry point.
@@ -69,6 +70,7 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
    * @param publicKey - The public key of the device.
    * @param deviceId - A unique identifier for this device.
    * @param vault - The vault data (entries)
+   * @param saveFunction - The function to save the data.
    * @param syncState - The state of the sync, includes the serverUrl
    * @returns A promise that resolves when initialization is complete.
    * @throws {InitializationError} If some parameter has an invalid value
@@ -86,6 +88,7 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
     publicKey: PublicKey,
     deviceId: DeviceId,
     vault?: Vault,
+    saveFunction?: SaveFunction,
     syncState?: VaultSyncState,
   ) {
     super()
@@ -124,11 +127,13 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
           encryptedPrivateKey,
           encryptedSymmetricKey,
           salt,
+          saveFunction,
         ),
       ],
       ['vaultDataManager', new VaultDataManager(this.mediator)],
       ['commandManager', new CommandManager(this.mediator)],
       ['vaultOperationsManager', new VaultOperationsManager(this.mediator)],
+      ['storageOperationsManager', new StorageOperationsManager(this.mediator)],
       [
         'exportImportManager',
         new ExportImportManager(this.mediator, passphraseExtraDict),
@@ -174,11 +179,26 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
   }
 
   /**
+   * @returns The persistent storage manager instance which can be used to store data.
+   */
+  private get persistentStorageManager() {
+    return this.mediator.getComponent('persistentStorageManager')
+  }
+
+  /**
    * Gives access to vault operations.
-   * @returns The vault manager instance which can be used to perform operations on the vault.
+   * @returns The vault operations manager instance which can be used to perform operations on the vault.
    */
   get vault() {
     return this.mediator.getComponent('vaultOperationsManager')
+  }
+
+  /**
+   * Gives access to storage operations.
+   * @returns The storage operations manager instance which can be used to perform operations on the vault.
+   */
+  get storage() {
+    return this.mediator.getComponent('storageOperationsManager')
   }
 
   /**
@@ -198,34 +218,6 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
       return null
     }
     return this.mediator.getComponent('syncManager')
-  }
-
-  /**
-   * @returns The persistent storage manager instance which can be used to store data.
-   */
-  private get persistentStorage() {
-    return this.mediator.getComponent('persistentStorageManager')
-  }
-
-  /**
-   * Forces a save of the persistent storage.
-   */
-  async forceSave() {
-    await this.persistentStorage.save()
-  }
-
-  /**
-   * Changes the library's passphrase.
-   * @param oldPassphrase - The current passphrase.
-   * @param newPassphrase - The new passphrase to set.
-   * @returns A promise that resolves when the passphrase change is complete.
-   * @throws {AuthenticationError} If the provided old passphrase is incorrect.
-   */
-  async changePassphrase(
-    oldPassphrase: Passphrase,
-    newPassphrase: Passphrase,
-  ): Promise<void> {
-    return this.persistentStorage.changePassphrase(oldPassphrase, newPassphrase)
   }
 
   /**
@@ -290,7 +282,7 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
     this.mediator.registerComponent('syncManager', newSyncManager)
 
     // save
-    await this.forceSave()
+    await this.persistentStorageManager.save()
   }
 
   /**

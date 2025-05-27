@@ -5,6 +5,7 @@ import type { EntryId, Token } from '../interfaces/Entry.mjs'
 
 import type TwoFaLibMediator from '../TwoFaLibMediator.mjs'
 import { EntryNotFoundError, TokenGenerationError } from '../TwoFALibError.mjs'
+import { TwoFaLibEvent } from '../TwoFaLibEvent.mjs'
 
 import {
   SUPPORTED_ALGORITHMS,
@@ -28,6 +29,9 @@ class VaultDataManager {
 
   private get persistentStorageManager() {
     return this.mediator.getComponent('persistentStorageManager')
+  }
+  private get dispatchLibEvent() {
+    return this.mediator.getComponent('dispatchLibEvent')
   }
 
   /**
@@ -100,6 +104,7 @@ class VaultDataManager {
       return
     }
     this.vault.push(entry)
+    this.dispatchLibEvent(TwoFaLibEvent.Changed)
 
     if (saveAfter) {
       await this.persistentStorageManager.save()
@@ -116,6 +121,7 @@ class VaultDataManager {
     if (index === -1) throw new EntryNotFoundError('Entry not found')
     this.vault.splice(index, 1)
 
+    this.dispatchLibEvent(TwoFaLibEvent.Changed)
     await this.persistentStorageManager.save()
   }
 
@@ -132,6 +138,7 @@ class VaultDataManager {
 
     this.vault[index] = updatedEntry
 
+    this.dispatchLibEvent(TwoFaLibEvent.Changed)
     await this.persistentStorageManager.save()
   }
 
@@ -141,6 +148,7 @@ class VaultDataManager {
    */
   replaceVault(newVault: Vault) {
     this.vault = newVault
+    this.dispatchLibEvent(TwoFaLibEvent.Changed)
   }
 }
 

@@ -4,7 +4,6 @@ import {
   type CryptoLib,
   type Passphrase,
   LockedRepresentationString,
-  TwoFaLibEvent,
 } from '../../src/main.mjs'
 import {
   createTwoFaLibForTests,
@@ -18,13 +17,16 @@ describe('creationUtils', () => {
   let lockedRepresentation: LockedRepresentationString
 
   beforeAll(async () => {
-    const result = await createTwoFaLibForTests()
+    const saveFunction = (
+      newLockedRepresentation: LockedRepresentationString,
+    ) => {
+      lockedRepresentation = newLockedRepresentation
+    }
+
+    const result = await createTwoFaLibForTests(saveFunction)
     cryptoLib = result.cryptoLib
 
-    result.twoFaLib.addEventListener(TwoFaLibEvent.Changed, (evt) => {
-      lockedRepresentation = evt.detail.newLockedRepresentationString
-    })
-    await result.twoFaLib.forceSave()
+    await result.twoFaLib.storage.forceSave()
 
     creationUtils = getTwoFaLibVaultCreationUtils(
       cryptoLib,

@@ -28,7 +28,7 @@ const getMetaForEntry = (entry: Entry) => ({
 /**
  * Manages the public operations related to the vault, including adding, deleting, and updating entries.
  */
-class VaultManager {
+class VaultOperationsManager {
   /**
    * Constructs a new instance of VaultManager.
    * @param mediator - The mediator for accessing other components.
@@ -221,4 +221,4 @@ class VaultManager {
   }
 }
 
-export default VaultManager
+export default VaultOperationsManager

@@ -1,7 +1,8 @@
-import { describe, it, expect, beforeEach, beforeAll } from 'vitest'
+import { describe, it, expect, beforeEach, beforeAll, vi } from 'vitest'
 
 import {
   EntryNotFoundError,
+  TwoFaLibEvent,
   type EntryId,
   type NewEntry,
   type TwoFaLib,
@@ -169,5 +170,12 @@ describe('VaultManager', () => {
     expect(otp1.otp).not.toEqual(otp2.otp)
     expect(otp1.validFrom).toBeLessThan(otp2.validFrom)
     expect(otp1.validTill).toBeLessThan(otp2.validTill)
+  })
+
+  it('should emit changed event when data is changed', async () => {
+    const listener = vi.fn()
+    twoFaLib.addEventListener(TwoFaLibEvent.Changed, listener)
+    await twoFaLib.vault.addEntry(newTotpEntry)
+    expect(listener).toHaveBeenCalledTimes(1)
   })
 })

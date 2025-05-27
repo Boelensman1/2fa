@@ -160,7 +160,7 @@ describe('2falib', () => {
   })
 
   it('should save the current state when forceSave is called', async () => {
-    await twoFaLib.forceSave()
+    await twoFaLib.storage.forceSave()
     expect(mockPersistentStorageManager.save).toHaveBeenCalledWith()
   })
 

@@ -23,7 +23,6 @@ import {
   deviceType,
 } from '../testUtils.mjs'
 import { newTotpEntry } from '../testUtils.mjs'
-import { TwoFaLibEvent } from '../../src/TwoFaLibEvent.mjs'
 import type PersistentStorageManager from '../../src/subclasses/PersistentStorageManager.mjs'
 import type {
   LockedRepresentation,
@@ -31,15 +30,8 @@ import type {
 } from '../../src/interfaces/Vault.mjs'
 import type SyncManager from '../../src/subclasses/SyncManager.mjs'
 
-const getNthCallTypeAndDetail = (mockFn: Mock, n: number) => {
-  const call = mockFn.mock.calls[n][0] as {
-    type: unknown
-    detail: unknown
-  }
-  return {
-    type: call.type as TwoFaLibEvent,
-    detail: call.detail,
-  }
+const getNthMockCallFirstArg = (mockFn: Mock, n: number) => {
+  return mockFn.mock.calls[n][0] as string
 }
 
 describe('PersistentStorageManager', () => {
@@ -61,7 +53,7 @@ describe('PersistentStorageManager', () => {
     encryptedSymmetricKey = result.encryptedSymmetricKey
 
     // eslint-disable-next-line @typescript-eslint/dot-notation
-    persistentStorageManager = twoFaLib['persistentStorage']
+    persistentStorageManager = twoFaLib['persistentStorageManager']
   })
 
   beforeEach(async () => {
@@ -92,7 +84,7 @@ describe('PersistentStorageManager', () => {
     } as unknown as SyncManager
     mediator.registerComponent('syncManager', mockedSyncManager)
 
-    const locked = await persistentStorageManager.getLockedRepresentation()
+    const locked = await persistentStorageManager['getLockedRepresentation']()
 
     expect(mockEncryptSymmetric).toHaveBeenCalledOnce()
 
@@ -144,35 +136,27 @@ describe('PersistentStorageManager', () => {
     mediator.unRegisterComponent('syncManager')
   })
 
-  it('should emit changed event when data is changed', async () => {
-    const mockChangedFunction = vi.fn()
-    twoFaLib.addEventListener(TwoFaLibEvent.Changed, mockChangedFunction)
-
-    await twoFaLib.vault.addEntry(newTotpEntry)
-
-    expect(mockChangedFunction).toHaveBeenCalledTimes(1)
-  })
-
-  it('Should emit save event when save is called', async () => {
+  it('Should save when save is called', async () => {
     const mockSaveFunction = vi.fn()
-    twoFaLib.addEventListener(TwoFaLibEvent.Changed, mockSaveFunction)
+    twoFaLib['persistentStorageManager'].setSaveFunction(mockSaveFunction)
     await persistentStorageManager.save()
     // Check if save function was called
     expect(mockSaveFunction).toHaveBeenCalledTimes(1)
+  })
 
+  it('Should save when data is changed', async () => {
+    const mockSaveFunction = vi.fn()
+    twoFaLib['persistentStorageManager'].setSaveFunction(mockSaveFunction)
     // Add an entry
     await twoFaLib.vault.addEntry(newTotpEntry)
 
     // Check if save function was called again
-    expect(mockSaveFunction).toHaveBeenCalledTimes(2)
+    expect(mockSaveFunction).toHaveBeenCalledTimes(1)
 
-    // Check if the save function was called with the correct arguments
-    const firstCall = getNthCallTypeAndDetail(mockSaveFunction, 0)
-    expect(firstCall.type).toEqual('changed')
-    expect(firstCall.detail).toEqual({
-      newLockedRepresentationString: expect.any(String) as string,
-    })
-    // TODO: check if this newLockedRepresentationString is valid
+    // Check if the save function was called with the correct argument
+    const firstCall = getNthMockCallFirstArg(mockSaveFunction, 0)
+    expect(firstCall).toEqual(expect.any(String) as string)
+    expect(() => JSON.parse(firstCall)).not.toThrow()
 
     // Reset mock
     mockSaveFunction.mockClear()
@@ -184,10 +168,11 @@ describe('PersistentStorageManager', () => {
     // Check if save function was called
     expect(mockSaveFunction).toHaveBeenCalledTimes(1)
 
-    expect(getNthCallTypeAndDetail(mockSaveFunction, 0).detail).toEqual({
-      newLockedRepresentationString: expect.any(String) as string,
-    })
-    // TODO: check if this newLockedRepresentationString is valid
+    const secondCall = getNthMockCallFirstArg(mockSaveFunction, 0)
+    expect(secondCall).toEqual(expect.any(String))
+    expect(() => JSON.parse(secondCall)).not.toThrow()
+
+    expect(firstCall).not.toEqual(secondCall)
   }, 15000) // long running test
 
   it('should change passphrase', async () => {
@@ -199,10 +184,7 @@ describe('PersistentStorageManager', () => {
       savedData = data
     })
 
-    const originalTwoFaLib = twoFaLib
-    originalTwoFaLib.addEventListener(TwoFaLibEvent.Changed, (evt) => {
-      mockSaveFunction(evt.detail.newLockedRepresentationString)
-    })
+    persistentStorageManager['setSaveFunction'](mockSaveFunction)
 
     await persistentStorageManager.changePassphrase(
       oldPassphrase,
@@ -226,7 +208,7 @@ describe('PersistentStorageManager', () => {
     )
 
     // eslint-disable-next-line @typescript-eslint/dot-notation
-    const newPersistentStorageManager = newTwoFaLib['persistentStorage']
+    const newPersistentStorageManager = newTwoFaLib['persistentStorageManager']
 
     // Verify that the new passphrase works
     await expect(
@@ -276,4 +258,40 @@ describe('PersistentStorageManager', () => {
     )
     expect(isValid).toBe(false)
   })
+
+  it('should not allow two save functions to run concurrently', async () => {
+    let saveCallCount = 0
+    let activeSaveCalls = 0
+    let maxConcurrentSaves = 0
+
+    const mockSaveFunction = vi.fn(
+      async (_data: LockedRepresentationString) => {
+        saveCallCount++
+        activeSaveCalls++
+        maxConcurrentSaves = Math.max(maxConcurrentSaves, activeSaveCalls)
+
+        // Simulate some async work
+        await new Promise((resolve) => setTimeout(resolve, 100))
+
+        activeSaveCalls--
+      },
+    )
+
+    twoFaLib['persistentStorageManager'].setSaveFunction(mockSaveFunction)
+
+    // Trigger multiple save operations simultaneously
+    const promises = [
+      twoFaLib.storage.forceSave(),
+      twoFaLib.storage.forceSave(),
+      twoFaLib.storage.forceSave(),
+    ]
+
+    await Promise.all(promises)
+
+    // Verify that save was called for each operation
+    expect(mockSaveFunction).toHaveBeenCalledTimes(3)
+
+    // Verify that saves were queued/serialized, not run concurrently
+    expect(maxConcurrentSaves).toBe(1)
+  }, 15000) // long running test
 })

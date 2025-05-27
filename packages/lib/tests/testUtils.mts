@@ -21,6 +21,7 @@ import type {
   SyncCommandsClientMessage,
   SyncCommandsExecutedClientMessage,
 } from 'favaserver/ClientMessage'
+import type SaveFunction from '../src/interfaces/SaveFunction.mjs'
 
 export const newTotpEntry: NewEntry = {
   name: 'Test TOTP',
@@ -60,14 +61,16 @@ export const passphraseExtraDict: PassphraseExtraDict = ['test']
 
 /**
  * Creates a TwoFaLib instance that can be used for testing.
+ * @param saveFunction - The function to save the data.
  * @returns A promise that resolves to the TwoFaLib instance.
  */
-export const createTwoFaLibForTests = async () => {
+export const createTwoFaLibForTests = async (saveFunction?: SaveFunction) => {
   const cryptoLib = new NodeCryptoProvider()
   const { createNewTwoFaLibVault } = getTwoFaLibVaultCreationUtils(
     cryptoLib,
     deviceType,
     passphraseExtraDict,
+    saveFunction,
   )
   const result = await createNewTwoFaLibVault(passphrase)
   const keys = await cryptoLib.decryptKeys(

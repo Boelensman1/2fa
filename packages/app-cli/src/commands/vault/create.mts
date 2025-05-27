@@ -41,6 +41,16 @@ class VaultCreateCommand extends BaseCommand {
       message: 'Enter your vault passphrase:',
       mask: '*',
     })) as Passphrase
+
+    const repeatPassphrase = (await password({
+      message: 'Repeat your vault passphrase:',
+      mask: '*',
+    })) as Passphrase
+
+    if (passphrase != repeatPassphrase) {
+      throw new Error("Passphrases don't match")
+    }
+
     const { twoFaLib } =
       await twoFaLibVaultCreationUtils.createNewTwoFaLibVault(passphrase)
 

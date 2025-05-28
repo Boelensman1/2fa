@@ -36,7 +36,7 @@ const SyncOptions: Component = () => {
         <button
           onClick={() => {
             if (twoFaLib?.sync) {
-              twoFaLib.sync.requestResilver()
+              void twoFaLib.sync.requestResilver()
             }
           }}
           class="bg-pink-500 hover:bg-pink-600 text-white font-bold py-2 px-4 rounded transition duration-200"
@@ -53,7 +53,7 @@ const SyncOptions: Component = () => {
         <ListSyncDevices />
       </Show>
       <div class="fixed bottom-2 right-2 text-xs text-gray-500">
-        deviceId {twoFaLib?.deviceId}
+        deviceId {twoFaLib?.meta.deviceId}
       </div>
     </div>
   )

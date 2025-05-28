@@ -2,7 +2,7 @@ import type { EmptyObject } from 'type-fest'
 import type {
   JPAKEPass2ClientMessage,
   JPAKEPass3ClientMessage,
-  PublicKeyClientMessage,
+  PublicKeyAndDeviceInfoClientMessage,
   InitialVaultClientMessage,
   VaultClientMessage,
   AddSyncDeviceCancelledClientMessage,
@@ -17,7 +17,7 @@ export interface ConfirmAddSyncDeviceInitialiseServerMessage {
 
 export type JPAKEPass2ServerMessage = JPAKEPass2ClientMessage
 export type JPAKEPass3ServerMessage = JPAKEPass3ClientMessage
-export type PublicKeyServerMessage = PublicKeyClientMessage
+export type PublicKeyServerMessage = PublicKeyAndDeviceInfoClientMessage
 export type InitialVaultServerMessage = InitialVaultClientMessage
 export type AddSyncDeviceCancelledServerMessage =
   AddSyncDeviceCancelledClientMessage

@@ -20,11 +20,14 @@ import {
   ActiveAddDeviceFlow,
   InitiateAddDeviceFlowResult,
   SyncDevice,
-  DeviceId,
   PublicSyncDevice,
+  DeviceType,
+  DeviceId,
+  DeviceInfo,
 } from '../interfaces/SyncTypes.mjs'
 import { decodeInitiatorData, jsonToUint8Array } from '../utils/syncUtils.mjs'
 import type {
+  Encrypted,
   EncryptedPublicKey,
   PrivateKey,
   PublicKey,
@@ -49,6 +52,8 @@ import {
   EncryptedVaultStateString,
   VaultSyncStateWithServerUrl,
 } from '../interfaces/Vault.mjs'
+import type { FavaMeta } from '../interfaces/FavaMeta.mjs'
+
 import { SyncCommandFromServer } from 'favaserver/ServerMessage'
 import { SyncCommandFromClient } from 'favaserver/ClientMessage'
 import AddSyncDeviceCommand from '../Command/commands/AddSyncDeviceCommand.mjs'
@@ -81,7 +86,6 @@ class SyncManager {
   private readonly reconnectInterval: number = IN_TESTING ? 100 : 5000 // 5 seconds
   readonly serverUrl: string
   private syncDevices: SyncDevice[]
-  deviceId: DeviceId
 
   private readyEventEmitted = false
 
@@ -91,6 +95,17 @@ class SyncManager {
   private terminateTimeout?: NodeJS.Timeout
   private connectionFailedTimeout?: NodeJS.Timeout
   private shouldReconnect = true
+
+  private get deviceId() {
+    return this.favaMeta.deviceId
+  }
+
+  private get deviceInfo(): DeviceInfo {
+    return {
+      deviceType: this.deviceType,
+      deviceFriendlyName: this.favaMeta.deviceFriendlyName,
+    }
+  }
 
   /**
    * Public getter for the command send queue.
@@ -109,7 +124,7 @@ class SyncManager {
       .filter((d) => d.deviceId !== this.deviceId)
       .map((d) => ({
         deviceId: d.deviceId,
-        meta: d.meta,
+        ...d.deviceInfo,
       }))
   }
 
@@ -118,16 +133,18 @@ class SyncManager {
    * @param mediator - The mediator for accessing other components.
    * @param publicKey - The public key of the device.
    * @param privateKey - The private key of the device.
+   * @param favaMeta - Meta info containing at least a unique identifier for this device.
    * @param syncState - The state of the sync.
-   * @param deviceId - The unique identifier of the device.
+   * @param deviceType - The identifier for this device type (e.g. 2fa-cli).
    * @throws {InitializationError} If initialization fails (e.g., if the server URL is invalid).
    */
   constructor(
     private readonly mediator: TwoFaLibMediator,
     private readonly publicKey: PublicKey,
     private readonly privateKey: PrivateKey,
+    private readonly favaMeta: FavaMeta,
     syncState: VaultSyncStateWithServerUrl,
-    deviceId: DeviceId,
+    private readonly deviceType: DeviceType,
   ) {
     const { serverUrl, devices, commandSendQueue } = syncState
 
@@ -138,7 +155,6 @@ class SyncManager {
         )
       }
     }
-    this.deviceId = deviceId
     this.syncDevices = devices
     this.commandSendQueue = commandSendQueue
     this.serverUrl = serverUrl
@@ -147,8 +163,9 @@ class SyncManager {
     // add ourselves to the list of syncdevices if we're missing
     void this.addSyncDevice(
       {
-        deviceId: deviceId,
+        deviceId: this.favaMeta.deviceId,
         publicKey: this.publicKey,
+        deviceInfo: this.deviceInfo,
       },
       false,
     )
@@ -332,18 +349,21 @@ class SyncManager {
         void this.finishAddDeviceFlowKeyExchangeResponder(pass3Result)
         break
       }
-      case 'publicKey': {
+      case 'publicKeyAndDeviceInfo': {
         const { data } = message
-        const { responderEncryptedPublicKey } = data
-        void this.sendFullVaultData(
-          responderEncryptedPublicKey as EncryptedPublicKey,
+        const { responderEncryptedPublicKey, responderEncryptedDeviceInfo } =
+          data
+
+        void this.sendFullVaultDataAndSetDeviceInfo(
+          responderEncryptedPublicKey,
+          responderEncryptedDeviceInfo,
         )
         break
       }
       case 'initialVault': {
         const { data } = message
         const { encryptedVaultData } = data
-        void this.importInitialVaultState(encryptedVaultData)
+        void this.importInitialVault(encryptedVaultData)
         break
       }
       case 'vault': {
@@ -658,16 +678,23 @@ class SyncManager {
       syncKey,
       this.publicKey,
     )
+    const responderEncryptedDeviceInfo = await this.cryptoLib.encryptSymmetric(
+      syncKey,
+      JSON.stringify(this.deviceInfo),
+    )
+
     // send our public key
-    this.sendToServer('publicKey', {
+    this.sendToServer('publicKeyAndDeviceInfo', {
       nonce: await this.getNonce(),
       responderEncryptedPublicKey,
+      responderEncryptedDeviceInfo,
       initiatorDeviceId: this.activeAddDeviceFlow.initiatorDeviceId,
     })
   }
 
-  private async sendFullVaultData(
+  private async sendFullVaultDataAndSetDeviceInfo(
     responderEncryptedPublicKey: EncryptedPublicKey,
+    responderEncryptedDeviceInfo: Encrypted<string>,
   ) {
     if (!this.ws || !this.webSocketConnected) {
       throw new SyncNoServerConnectionError()
@@ -691,6 +718,15 @@ class SyncManager {
       responderEncryptedPublicKey,
     )
 
+    // decrypt the received device info
+
+    const responderDeviceInfo = JSON.parse(
+      await this.cryptoLib.decryptSymmetric(
+        syncKey,
+        responderEncryptedDeviceInfo,
+      ),
+    ) as DeviceInfo
+
     // get the vault data (encrypted with the sync key)
     const encryptedVaultData =
       await this.persistentStorageManager.getEncryptedVaultState(syncKey)
@@ -705,7 +741,8 @@ class SyncManager {
     // save the added the sync device, done via command so this is synced to all sync devices
     const command = AddSyncDeviceCommand.create({
       deviceId: this.activeAddDeviceFlow.responderDeviceId,
-      publicKey: decryptedPublicKey as PublicKey,
+      publicKey: decryptedPublicKey,
+      deviceInfo: responderDeviceInfo,
     })
     await this.commandManager.execute(command)
 
@@ -713,7 +750,7 @@ class SyncManager {
     this.activeAddDeviceFlow = undefined
   }
 
-  private async importInitialVaultState(
+  private async importInitialVault(
     encryptedVaultState: EncryptedVaultStateString,
   ) {
     if (this.activeAddDeviceFlow?.state !== 'responder:syncKeyCreated') {
@@ -932,20 +969,17 @@ class SyncManager {
 
   /**
    * Add a sync device
-   * @param deviceInfo - The info about the device
+   * @param device - The device to add
    * @param saveAfter - Whether to save the new vault after adding it (set to false when adding multiple devices)
    */
-  async addSyncDevice(deviceInfo: SyncDevice, saveAfter = true) {
-    if (this.syncDevices.some((d) => d.deviceId === deviceInfo.deviceId)) {
+  async addSyncDevice(device: SyncDevice, saveAfter = true) {
+    if (this.syncDevices.some((d) => d.deviceId === device.deviceId)) {
       // we already have this device
       return
     }
-    this.log(
-      'info',
-      `Adding syncdevice ${deviceInfo.deviceId} to ${this.deviceId}`,
-    )
+    this.log('info', `Adding syncdevice ${device.deviceId} to ${this.deviceId}`)
     this.syncDevices.push({
-      ...deviceInfo,
+      ...device,
     })
 
     if (saveAfter) {
@@ -956,9 +990,10 @@ class SyncManager {
   /**
    * Requests a resilver of the vault
    */
-  requestResilver() {
+  async requestResilver() {
     this.sendToServer('startResilver', {
       deviceIds: this.syncDevices.map((d) => d.deviceId),
+      nonce: await this.getNonce(),
     })
   }
 

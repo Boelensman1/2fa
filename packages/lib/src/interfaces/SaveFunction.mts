@@ -1,7 +1,5 @@
 import type { LockedRepresentationString } from './Vault.mjs'
 
-type SaveFunction = (
+export type SaveFunction = (
   newLockedRepresentationString: LockedRepresentationString,
 ) => Promise<void> | void
-
-export default SaveFunction

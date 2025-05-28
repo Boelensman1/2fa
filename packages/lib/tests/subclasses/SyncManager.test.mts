@@ -42,7 +42,10 @@ import {
   SyncAddDeviceFlowConflictError,
   SyncNoServerConnectionError,
 } from '../../src/TwoFALibError.mjs'
-import type { DeviceId } from '../../src/interfaces/SyncTypes.mjs'
+import type {
+  DeviceFriendlyName,
+  DeviceId,
+} from '../../src/interfaces/SyncTypes.mjs'
 import { TwoFaLibEvent } from '../../src/TwoFaLibEvent.mjs'
 import { VaultServerMessage } from 'favaserver/ServerMessage'
 
@@ -104,7 +107,10 @@ describe('SyncManager', () => {
       encryptedSymmetricKey,
       salt,
       publicKey,
-      'senderDeviceId' as DeviceId,
+      {
+        deviceId: 'senderDeviceId' as DeviceId,
+        deviceFriendlyName: 'senderFriendlyName' as DeviceFriendlyName,
+      },
       [],
     )
     void senderTwoFaLib.setSyncServerUrl(serverUrl)
@@ -123,7 +129,10 @@ describe('SyncManager', () => {
       encryptedSymmetricKey,
       salt,
       publicKey,
-      'receiverDeviceId' as DeviceId,
+      {
+        deviceId: 'receiverDeviceId' as DeviceId,
+        deviceFriendlyName: 'receiverFriendlyName' as DeviceFriendlyName,
+      },
       [],
     )
     void receiverTwoFaLib.setSyncServerUrl(serverUrl)
@@ -169,7 +178,7 @@ describe('SyncManager', () => {
       encryptedSymmetricKey,
       salt,
       publicKey,
-      'disconnectedDeviceId' as DeviceId,
+      { deviceId: 'disconnectedDeviceId' as DeviceId },
       [],
       undefined,
       { serverUrl: temporaryServerUrl, devices: [], commandSendQueue: [] },
@@ -207,8 +216,8 @@ describe('SyncManager', () => {
     }
 
     const wsInstancesMap = new Map([
-      [senderTwoFaLib.deviceId, senderWsInstance],
-      [receiverTwoFaLib.deviceId, receiverWsInstance],
+      [senderTwoFaLib.meta.deviceId, senderWsInstance],
+      [receiverTwoFaLib.meta.deviceId, receiverWsInstance],
     ])
 
     // initiate the add device flow
@@ -232,7 +241,7 @@ describe('SyncManager', () => {
     const messages: { type: ServerMessage['type']; sender: WsClient }[] = [
       { type: 'JPAKEPass2', sender: senderWsInstance },
       { type: 'JPAKEPass3', sender: receiverWsInstance },
-      { type: 'publicKey', sender: senderWsInstance },
+      { type: 'publicKeyAndDeviceInfo', sender: senderWsInstance },
       { type: 'initialVault', sender: receiverWsInstance },
     ]
     const messageDatas = []
@@ -255,13 +264,13 @@ describe('SyncManager', () => {
     // receive the messages about adding the syncDevices
     const { syncCommandsExecutedMessages } = await handleSyncCommands(
       server,
-      senderTwoFaLib.deviceId,
+      senderTwoFaLib.meta.deviceId,
       wsInstancesMap,
     )
 
     // received the syncCommandsExecuted message
     const syncCommandsExecutedMessage = syncCommandsExecutedMessages.get(
-      receiverTwoFaLib.deviceId,
+      receiverTwoFaLib.meta.deviceId,
     )
     expect(syncCommandsExecutedMessage).toEqual({
       type: 'syncCommandsExecuted',
@@ -274,16 +283,28 @@ describe('SyncManager', () => {
       senderTwoFaLib.vault.listEntries(),
     )
 
-    expect(senderTwoFaLib.sync.getSyncDevices()).toHaveLength(1)
-    expect(receiverTwoFaLib.sync.getSyncDevices()).toHaveLength(1)
+    const senderSyncDevices = senderTwoFaLib.sync.getSyncDevices()
+    const receiverSyncDevices = receiverTwoFaLib.sync.getSyncDevices()
+    expect(senderSyncDevices).toHaveLength(1)
+    expect(receiverSyncDevices).toHaveLength(1)
+    expect(senderSyncDevices[0]).toEqual({
+      deviceId: 'receiverDeviceId' as DeviceId,
+      deviceFriendlyName: 'receiverFriendlyName' as DeviceFriendlyName,
+      deviceType: 'receiver',
+    })
+    expect(receiverSyncDevices[0]).toEqual({
+      deviceId: 'senderDeviceId' as DeviceId,
+      deviceFriendlyName: 'senderFriendlyName' as DeviceFriendlyName,
+      deviceType: 'sender',
+    })
   })
 
   it(
     'should work with a really big vault',
     async () => {
       const wsInstancesMap = new Map([
-        [senderTwoFaLib.deviceId, senderWsInstance],
-        [receiverTwoFaLib.deviceId, receiverWsInstance],
+        [senderTwoFaLib.meta.deviceId, senderWsInstance],
+        [receiverTwoFaLib.meta.deviceId, receiverWsInstance],
       ])
 
       // this part actually takes the most time
@@ -316,8 +337,8 @@ describe('SyncManager', () => {
 
   it('should sync commands between connected devices', async () => {
     const wsInstancesMap = new Map([
-      [senderTwoFaLib.deviceId, senderWsInstance],
-      [receiverTwoFaLib.deviceId, receiverWsInstance],
+      [senderTwoFaLib.meta.deviceId, senderWsInstance],
+      [receiverTwoFaLib.meta.deviceId, receiverWsInstance],
     ])
 
     await connectDevices({
@@ -333,13 +354,13 @@ describe('SyncManager', () => {
 
     const { syncCommandsExecutedMessages } = await handleSyncCommands(
       server,
-      senderTwoFaLib.deviceId,
+      senderTwoFaLib.meta.deviceId,
       wsInstancesMap,
     )
 
     // received the syncCommandsExecuted message
     const syncCommandsExecutedMessage = syncCommandsExecutedMessages.get(
-      receiverTwoFaLib.deviceId,
+      receiverTwoFaLib.meta.deviceId,
     )
     expect(syncCommandsExecutedMessage).toEqual({
       type: 'syncCommandsExecuted',
@@ -361,11 +382,11 @@ describe('SyncManager', () => {
     const { syncCommandsExecutedMessages: syncCommandsExecutedMessages1 } =
       await handleSyncCommands(
         server,
-        receiverTwoFaLib.deviceId,
+        receiverTwoFaLib.meta.deviceId,
         wsInstancesMap,
       )
     const syncCommandsExecutedMessage1 = syncCommandsExecutedMessages1.get(
-      senderTwoFaLib.deviceId,
+      senderTwoFaLib.meta.deviceId,
     )
 
     // entry should now be added
@@ -386,7 +407,11 @@ describe('SyncManager', () => {
     await senderTwoFaLib.vault.deleteEntry(addedEntryId)
 
     // mock server
-    await handleSyncCommands(server, senderTwoFaLib.deviceId, wsInstancesMap)
+    await handleSyncCommands(
+      server,
+      senderTwoFaLib.meta.deviceId,
+      wsInstancesMap,
+    )
 
     await vi.waitUntil(() => receiverTwoFaLib.vault.size !== 3, {
       timeout: 1000,
@@ -413,7 +438,7 @@ describe('SyncManager', () => {
       encryptedSymmetricKey,
       salt,
       publicKey,
-      'newSenderDeviceId' as DeviceId,
+      { deviceId: 'newSenderDeviceId' as DeviceId },
       [],
       undefined,
       { serverUrl, devices: [], commandSendQueue: [] },
@@ -435,8 +460,8 @@ describe('SyncManager', () => {
     }
 
     const wsInstancesMap = new Map([
-      [senderTwoFaLib.deviceId, senderWsInstance],
-      [receiverTwoFaLib.deviceId, receiverWsInstance],
+      [senderTwoFaLib.meta.deviceId, senderWsInstance],
+      [receiverTwoFaLib.meta.deviceId, receiverWsInstance],
     ])
 
     expect(server.messagesToConsume.pendingItems).toHaveLength(0)
@@ -449,7 +474,11 @@ describe('SyncManager', () => {
 
     // Add an entry while connected (should not be resend after the reconnect)
     await senderTwoFaLib.vault.addEntry(newTotpEntry)
-    await handleSyncCommands(server, senderTwoFaLib.deviceId, wsInstancesMap)
+    await handleSyncCommands(
+      server,
+      senderTwoFaLib.meta.deviceId,
+      wsInstancesMap,
+    )
     expect(server.messagesToConsume.pendingItems).toHaveLength(0)
 
     // Simulate disconnection
@@ -472,7 +501,7 @@ describe('SyncManager', () => {
     // Wait for the command to be re-sent
     const { syncCommandsMessage } = await handleSyncCommands(
       server,
-      senderTwoFaLib.deviceId,
+      senderTwoFaLib.meta.deviceId,
       wsInstancesMap,
     )
     expect(syncCommandsMessage).toEqual({
@@ -524,7 +553,7 @@ describe('SyncManager', () => {
       encryptedSymmetricKey,
       salt,
       publicKey,
-      'otherReceiverDeviceId' as DeviceId,
+      { deviceId: 'otherReceiverDeviceId' as DeviceId },
       [],
       undefined,
       { serverUrl, devices: [], commandSendQueue: [] },
@@ -535,9 +564,9 @@ describe('SyncManager', () => {
     await server.nextMessage // wait for the hello message
 
     const wsInstancesMap = new Map([
-      [senderTwoFaLib.deviceId, senderWsInstance],
-      [receiverTwoFaLib.deviceId, receiverWsInstance],
-      [otherReceiverTwoFaLib.deviceId, otherReceiverWsInstance!],
+      [senderTwoFaLib.meta.deviceId, senderWsInstance],
+      [receiverTwoFaLib.meta.deviceId, receiverWsInstance],
+      [otherReceiverTwoFaLib.meta.deviceId, otherReceiverWsInstance!],
     ])
 
     // connect first two
@@ -563,7 +592,11 @@ describe('SyncManager', () => {
     const addedEntryId =
       await receiverTwoFaLib.vault.addEntry(anotherNewTotpEntry)
 
-    await handleSyncCommands(server, senderTwoFaLib.deviceId, wsInstancesMap)
+    await handleSyncCommands(
+      server,
+      senderTwoFaLib.meta.deviceId,
+      wsInstancesMap,
+    )
 
     // Wait for all to process the command
     await vi.waitUntil(
@@ -589,8 +622,8 @@ describe('SyncManager', () => {
 
   it('should resilver when asked', async () => {
     const wsInstancesMap = new Map([
-      [senderTwoFaLib.deviceId, senderWsInstance],
-      [receiverTwoFaLib.deviceId, receiverWsInstance],
+      [senderTwoFaLib.meta.deviceId, senderWsInstance],
+      [receiverTwoFaLib.meta.deviceId, receiverWsInstance],
     ])
 
     await connectDevices({
@@ -629,16 +662,17 @@ describe('SyncManager', () => {
     expect(senderTwoFaLib.vault.listEntries()).toHaveLength(2)
     expect(receiverTwoFaLib.vault.listEntries()).toHaveLength(1)
 
-    receiverTwoFaLib.sync!.requestResilver()
+    await receiverTwoFaLib.sync!.requestResilver()
     const startResilverMessage =
       (await server.nextMessage) as StartResilverClientMessage
     expect(startResilverMessage).toEqual({
       type: 'startResilver',
       data: {
         deviceIds: expect.arrayContaining([
-          senderTwoFaLib.deviceId,
-          receiverTwoFaLib.deviceId,
+          senderTwoFaLib.meta.deviceId,
+          receiverTwoFaLib.meta.deviceId,
         ]) as string[],
+        nonce: expect.any(String) as string,
       },
     })
 
@@ -646,23 +680,23 @@ describe('SyncManager', () => {
     const senderResilverVaultMsg =
       (await server.nextMessage) as VaultServerMessage
     expect(senderResilverVaultMsg.data.forDeviceId).toEqual(
-      receiverTwoFaLib.deviceId,
+      receiverTwoFaLib.meta.deviceId,
     )
 
     send(receiverWsInstance, 'startResilver', startResilverMessage.data)
     const receiverResilverVaultMsg =
       (await server.nextMessage) as VaultServerMessage
     expect(receiverResilverVaultMsg.data.forDeviceId).toEqual(
-      senderTwoFaLib.deviceId,
+      senderTwoFaLib.meta.deviceId,
     )
 
     send(receiverWsInstance, 'vault', {
       ...senderResilverVaultMsg.data,
-      fromDeviceId: senderTwoFaLib.deviceId,
+      fromDeviceId: senderTwoFaLib.meta.deviceId,
     })
     send(senderWsInstance, 'vault', {
       ...receiverResilverVaultMsg.data,
-      fromDeviceId: receiverTwoFaLib.deviceId,
+      fromDeviceId: receiverTwoFaLib.meta.deviceId,
     })
 
     // Wait for all to process the resilver

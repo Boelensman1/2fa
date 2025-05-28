@@ -16,7 +16,7 @@ class ResilverCommand extends BaseCommand {
       throw new Error('No server url set')
     }
 
-    this.twoFaLib.sync.requestResilver()
+    await this.twoFaLib.sync.requestResilver()
 
     // TODO: do this based on events
     await new Promise((resolve) => setTimeout(resolve, 5000))

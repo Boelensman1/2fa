@@ -14,6 +14,7 @@ import { InitializationError } from './TwoFALibError.mjs'
  */
 class TwoFaLibMediator {
   private components: {
+    lib?: TwoFaLib
     libraryLoader?: LibraryLoader
     persistentStorageManager?: PersistentStorageManager
     storageOperationsManager?: StorageOperationsManager

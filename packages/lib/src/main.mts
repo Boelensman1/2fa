@@ -27,12 +27,13 @@ import type {
   DeviceId,
   DeviceType,
   DeviceFriendlyName,
+  DeviceInfo,
 } from './interfaces/SyncTypes.mjs'
 import type {
   EncryptedVaultStateString,
   LockedRepresentationString,
 } from './interfaces/Vault.mjs'
-import type SaveFunction from './interfaces/SaveFunction.mjs'
+import type { SaveFunction } from './interfaces/SaveFunction.mjs'
 
 import {
   TwoFALibError,
@@ -79,6 +80,7 @@ export type {
   DeviceId,
   DeviceType,
   DeviceFriendlyName,
+  DeviceInfo,
   PublicSyncDevice,
   SaveFunction,
 }

@@ -233,7 +233,7 @@ describe('ExportImportManager', () => {
       expect(token.otp).toHaveLength(6) // Default digit length
     })
 
-    it.only('should successfully import multiple valid OTP URIs', async () => {
+    it('should successfully import multiple valid OTP URIs', async () => {
       const testCases = [
         {
           uri: 'otpauth://totp/Example:alice@google.com?secret=JBSWY3DPEHPK3PXP&issuer=Example',

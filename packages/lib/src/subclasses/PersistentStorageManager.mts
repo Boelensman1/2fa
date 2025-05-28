@@ -17,12 +17,12 @@ import {
 } from '../interfaces/Vault.mjs'
 
 import type TwoFaLibMediator from '../TwoFaLibMediator.mjs'
-import type { DeviceId } from '../interfaces/SyncTypes.mjs'
+import type { FavaMeta } from '../interfaces/FavaMeta.mjs'
 import type { PassphraseExtraDict } from '../interfaces/PassphraseExtraDict.js'
 
 import TwoFaLib from '../TwoFaLib.mjs'
 import { validatePassphraseStrength } from '../utils/creationUtils.mjs'
-import SaveFunction from '../interfaces/SaveFunction.mjs'
+import { SaveFunction } from '../interfaces/SaveFunction.mjs'
 
 /**
  * Manages all storage of data that should be persistent.
@@ -35,7 +35,7 @@ class PersistentStorageManager {
    * Constructs a new instance of PersistentStorageManager.
    * @param mediator - The mediator for accessing other components.
    * @param passphraseExtraDict - Additional words to be used for passphrase strength evaluation.
-   * @param deviceId - The unique identifier of the device.
+   * @param favaMeta - Meta info containing at least a unique identifier for this device.
    * @param privateKey - The private key used for cryptographic operations.
    * @param symmetricKey - The symmetric key used for cryptographic operations.
    * @param encryptedPrivateKey - The encrypted private key
@@ -46,7 +46,7 @@ class PersistentStorageManager {
   constructor(
     private mediator: TwoFaLibMediator,
     private readonly passphraseExtraDict: PassphraseExtraDict,
-    private readonly deviceId: DeviceId,
+    private readonly favaMeta: FavaMeta,
     private readonly privateKey: PrivateKey,
     private readonly symmetricKey: SymmetricKey,
     private encryptedPrivateKey: EncryptedPrivateKey,
@@ -81,7 +81,8 @@ class PersistentStorageManager {
 
     const vaultState: VaultState = {
       vault,
-      deviceId: this.deviceId,
+      deviceId: this.favaMeta.deviceId,
+      deviceFriendlyName: this.favaMeta.deviceFriendlyName,
       sync: {
         // eslint-disable-next-line @typescript-eslint/dot-notation
         devices: this.syncManager ? this.syncManager['syncDevices'] : [],

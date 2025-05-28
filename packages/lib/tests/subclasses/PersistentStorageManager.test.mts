@@ -107,7 +107,7 @@ describe('PersistentStorageManager', () => {
       parsed.encryptedVaultState,
     ) as VaultState
     expect(parsedVaultState).toEqual({
-      deviceId: twoFaLib.deviceId,
+      deviceId: twoFaLib.meta.deviceId,
       sync: {
         devices: 'syncDevicesFromMock',
         serverUrl: 'serverUrlFromMock',

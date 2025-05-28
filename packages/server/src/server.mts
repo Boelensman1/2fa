@@ -88,9 +88,8 @@ const handleMessage = (ws: WebSocket, message: ClientMessage) => {
       send(request.wsResponder, 'JPAKEPass3', message.data)
       return
     }
-    case 'publicKey': {
+    case 'publicKeyAndDeviceInfo': {
       const { initiatorDeviceId } = message.data
-      // find matching request
       const request = ongoingAddDeviceRequests.find(
         (r) => r.initiatorDeviceId === initiatorDeviceId,
       )
@@ -99,12 +98,11 @@ const handleMessage = (ws: WebSocket, message: ClientMessage) => {
         return
       }
 
-      send(request.wsInitiator, 'publicKey', message.data)
+      send(request.wsInitiator, 'publicKeyAndDeviceInfo', message.data)
       return
     }
     case 'initialVault': {
       const { initiatorDeviceId } = message.data
-      // find matching request
       const request = ongoingAddDeviceRequests.find(
         (r) => r.initiatorDeviceId === initiatorDeviceId,
       )

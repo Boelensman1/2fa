@@ -53,12 +53,13 @@ export interface JPAKEPass3ClientMessage {
   }
 }
 
-export interface PublicKeyClientMessage {
-  type: 'publicKey'
+export interface PublicKeyAndDeviceInfoClientMessage {
+  type: 'publicKeyAndDeviceInfo'
   data: {
     initiatorDeviceId: DeviceId
     nonce: string
     responderEncryptedPublicKey: EncryptedPublicKey
+    responderEncryptedDeviceInfo: Encrypted<string>
   }
 }
 
@@ -113,6 +114,7 @@ export interface StartResilverClientMessage {
   type: 'startResilver'
   data: {
     deviceIds: DeviceId[]
+    nonce: string
   }
 }
 
@@ -121,7 +123,7 @@ type IncomingMessage =
   | AddSyncDeviceInitialiseDataClientMessage
   | JPAKEPass2ClientMessage
   | JPAKEPass3ClientMessage
-  | PublicKeyClientMessage
+  | PublicKeyAndDeviceInfoClientMessage
   | InitialVaultClientMessage
   | VaultClientMessage
   | AddSyncDeviceCancelledClientMessage

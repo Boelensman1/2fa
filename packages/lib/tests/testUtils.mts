@@ -21,7 +21,7 @@ import type {
   SyncCommandsClientMessage,
   SyncCommandsExecutedClientMessage,
 } from 'favaserver/ClientMessage'
-import type SaveFunction from '../src/interfaces/SaveFunction.mjs'
+import type { SaveFunction } from '../src/interfaces/SaveFunction.mjs'
 
 export const newTotpEntry: NewEntry = {
   name: 'Test TOTP',
@@ -131,8 +131,8 @@ export async function connectDevices({
     throw new Error('Sync manager not initialized')
   }
 
-  const senderWsInstance = wsInstancesMap.get(senderTwoFaLib.deviceId)
-  const receiverWsInstance = wsInstancesMap.get(receiverTwoFaLib.deviceId)
+  const senderWsInstance = wsInstancesMap.get(senderTwoFaLib.meta.deviceId)
+  const receiverWsInstance = wsInstancesMap.get(receiverTwoFaLib.meta.deviceId)
 
   if (!senderWsInstance || !receiverWsInstance) {
     throw new Error('Sender/receiver ws instance not found')
@@ -159,7 +159,7 @@ export async function connectDevices({
   const messages = [
     { type: 'JPAKEPass2', sender: senderWsInstance },
     { type: 'JPAKEPass3', sender: receiverWsInstance },
-    { type: 'publicKey', sender: senderWsInstance },
+    { type: 'publicKeyAndDeviceInfo', sender: senderWsInstance },
     { type: 'initialVault', sender: receiverWsInstance },
   ] as const
 
@@ -182,7 +182,7 @@ export async function connectDevices({
     throw new Error('Device connection failed')
   }
 
-  await handleSyncCommands(server, senderTwoFaLib.deviceId, wsInstancesMap)
+  await handleSyncCommands(server, senderTwoFaLib.meta.deviceId, wsInstancesMap)
 }
 
 /**

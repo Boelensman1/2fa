@@ -6,7 +6,7 @@ import type {
   Salt,
 } from './CryptoLib.mjs'
 import type Entry from './Entry.mjs'
-import { DeviceId, SyncDevice } from './SyncTypes.mjs'
+import { DeviceFriendlyName, DeviceId, SyncDevice } from './SyncTypes.mjs'
 import { SyncCommandFromClient } from 'favaserver/ClientMessage'
 
 export type Vault = Entry[]
@@ -35,6 +35,7 @@ export type VaultSyncStateWithServerUrl = Omit<VaultSyncState, 'serverUrl'> & {
 }
 export interface VaultState {
   deviceId: DeviceId
+  deviceFriendlyName?: DeviceFriendlyName
   vault: Vault
   sync: VaultSyncState
 }

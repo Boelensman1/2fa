@@ -15,7 +15,7 @@ import type {
   VaultState,
 } from '../interfaces/Vault.mjs'
 import type { PassphraseExtraDict } from '../interfaces/PassphraseExtraDict.js'
-import SaveFunction from '../interfaces/SaveFunction.mjs'
+import { SaveFunction } from '../interfaces/SaveFunction.mjs'
 
 /**
  * Evaluates the strength of a passphrase.
@@ -124,7 +124,9 @@ const createNewTwoFaLibVault = async (
     encryptedSymmetricKey,
     salt,
     publicKey,
-    deviceId,
+    {
+      deviceId,
+    },
     [],
     saveFunction,
     {
@@ -214,7 +216,10 @@ const loadTwoFaLibFromLockedRepesentation = async (
     lockedRepresentation.encryptedSymmetricKey,
     lockedRepresentation.salt,
     publicKey,
-    vaultState.deviceId,
+    {
+      deviceId: vaultState.deviceId,
+      deviceFriendlyName: vaultState.deviceFriendlyName,
+    },
     vaultState.vault,
     saveFunction,
     vaultState.sync,

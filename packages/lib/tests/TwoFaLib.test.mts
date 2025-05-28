@@ -73,7 +73,7 @@ describe('2falib', () => {
             encryptedSymmetricKey,
             salt,
             publicKey,
-            deviceId,
+            { deviceId },
             [],
           ),
       ).toThrow('Device type is required')
@@ -93,7 +93,7 @@ describe('2falib', () => {
             encryptedSymmetricKey,
             salt,
             publicKey,
-            deviceId,
+            { deviceId },
             [],
           ),
       ).toThrow('Device type is too long, max 256 characters')
@@ -113,7 +113,7 @@ describe('2falib', () => {
             encryptedSymmetricKey,
             salt,
             publicKey,
-            deviceId,
+            { deviceId },
             [],
           ),
       ).toThrow('CryptoLib is required')
@@ -133,7 +133,7 @@ describe('2falib', () => {
             encryptedSymmetricKey,
             salt,
             publicKey,
-            deviceId,
+            { deviceId },
             [],
           ),
       ).toThrow('Passphrase extra dictionary is required')
@@ -150,7 +150,7 @@ describe('2falib', () => {
         encryptedSymmetricKey,
         salt,
         publicKey,
-        deviceId,
+        { deviceId },
         [],
       )
 
@@ -175,7 +175,7 @@ describe('2falib', () => {
       encryptedSymmetricKey,
       salt,
       publicKey,
-      deviceId,
+      { deviceId },
       [],
     )
 
@@ -207,7 +207,7 @@ describe('2falib', () => {
         encryptedSymmetricKey,
         salt,
         publicKey,
-        'testDeviceId' as DeviceId,
+        { deviceId: 'testDeviceId' as DeviceId },
         [],
       )
 
@@ -263,7 +263,7 @@ describe('2falib', () => {
         encryptedSymmetricKey,
         salt,
         publicKey,
-        'testDeviceId' as DeviceId,
+        { deviceId: 'testDeviceId' as DeviceId },
         [],
       )
 
@@ -298,7 +298,7 @@ describe('2falib', () => {
         encryptedSymmetricKey,
         salt,
         publicKey,
-        'testDeviceId' as DeviceId,
+        { deviceId: 'testDeviceId' as DeviceId },
         [],
       )
 

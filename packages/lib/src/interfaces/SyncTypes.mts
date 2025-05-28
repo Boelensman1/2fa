@@ -6,15 +6,18 @@ export type DeviceId = Tagged<string, 'DeviceId'>
 export type DeviceType = Tagged<string, 'DeviceType'>
 export type DeviceFriendlyName = Tagged<string, 'DeviceFriendlyName'>
 
+export interface DeviceInfo {
+  deviceType: DeviceType
+  deviceFriendlyName?: DeviceFriendlyName
+}
+
 export interface SyncDevice {
   deviceId: DeviceId
   publicKey: PublicKey
-  meta?: {
-    deviceType: DeviceType
-    deviceFriendlyName: DeviceFriendlyName
-  }
+  deviceInfo?: DeviceInfo
 }
-export type PublicSyncDevice = Omit<SyncDevice, 'publicKey'>
+export type PublicSyncDevice = Omit<SyncDevice, 'publicKey' | 'deviceInfo'> &
+  Partial<SyncDevice['deviceInfo']>
 
 export interface BaseAddDeviceFlow {
   jpak: JPakeThreePass

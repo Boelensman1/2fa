@@ -1,7 +1,7 @@
 import type TwoFaLibMediator from '../TwoFaLibMediator.mjs'
 
 import type { Passphrase } from '../interfaces/CryptoLib.mjs'
-import type SaveFunction from '../interfaces/SaveFunction.mjs'
+import type { SaveFunction } from '../interfaces/SaveFunction.mjs'
 
 /**
  * Manages the public operations related to the vault storage

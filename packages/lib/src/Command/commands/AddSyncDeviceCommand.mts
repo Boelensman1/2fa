@@ -1,12 +1,13 @@
 import { InvalidCommandError, TwoFALibError } from '../../TwoFALibError.mjs'
 import type TwoFaLibMediator from '../../TwoFaLibMediator.mjs'
 import Command from '../BaseCommand.mjs'
-import type { DeviceId } from '../../interfaces/SyncTypes.mjs'
+import type { DeviceId, DeviceInfo } from '../../interfaces/SyncTypes.mjs'
 import type { PublicKey } from '../../interfaces/CryptoLib.mjs'
 
 export interface AddSyncDeviceData {
   deviceId: DeviceId
   publicKey: PublicKey
+  deviceInfo: DeviceInfo
 }
 
 /**

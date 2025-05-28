@@ -9,11 +9,7 @@ import type {
   Salt,
   SymmetricKey,
 } from './interfaces/CryptoLib.mjs'
-import type {
-  DeviceFriendlyName,
-  DeviceId,
-  DeviceType,
-} from './interfaces/SyncTypes.mjs'
+import type { DeviceFriendlyName, DeviceType } from './interfaces/SyncTypes.mjs'
 import type {
   TwoFaLibEventMap,
   TwoFaLibEventMapEvents,
@@ -24,10 +20,17 @@ import type {
   VaultSyncState,
   VaultSyncStateWithServerUrl,
 } from './interfaces/Vault.mjs'
+import type { SaveFunction } from './interfaces/SaveFunction.mjs'
+import type { FavaMeta } from './interfaces/FavaMeta.mjs'
+import type { ChangeSyncDeviceInfoData } from './Command/commands/ChangeDeviceInfoCommand.mjs'
 
 import TwoFaLibMediator from './TwoFaLibMediator.mjs'
 import { TwoFaLibEvent } from './TwoFaLibEvent.mjs'
-import { InitializationError, SyncError } from './TwoFALibError.mjs'
+import {
+  InitializationError,
+  SyncError,
+  TwoFALibError,
+} from './TwoFALibError.mjs'
 
 import SyncManager, { ConnectionStatus } from './subclasses/SyncManager.mjs'
 import LibraryLoader from './subclasses/LibraryLoader.mjs'
@@ -36,8 +39,8 @@ import PersistentStorageManager from './subclasses/PersistentStorageManager.mjs'
 import VaultDataManager from './subclasses/VaultDataManager.mjs'
 import VaultOperationsManager from './subclasses/VaultOperationsManager.mjs'
 import CommandManager from './subclasses/CommandManager.mjs'
-import SaveFunction from './interfaces/SaveFunction.mjs'
 import StorageOperationsManager from './subclasses/StorageOperationsManager.mjs'
+import ChangeDeviceInfoCommand from './Command/commands/ChangeDeviceInfoCommand.mjs'
 
 /**
  * The Two-Factor Library, this is the main entry point.
@@ -46,9 +49,9 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
   // TOOD: load this from package.json
   public static readonly version = '0.0.1'
 
-  public readonly deviceId: DeviceId
+  private readonly favaMeta: FavaMeta
   public readonly deviceType: DeviceType
-  public deviceFriendlyName: DeviceFriendlyName = '' as DeviceFriendlyName
+  public deviceFriendlyName?: DeviceFriendlyName
 
   private mediator: TwoFaLibMediator
 
@@ -56,6 +59,17 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
   private readonly privateKey: PrivateKey
 
   public readonly ready: Promise<unknown>
+
+  /**
+   * @returns The meta info for this device.
+   */
+  public get meta() {
+    return {
+      deviceId: this.favaMeta.deviceId,
+      deviceFriendlyName: this.deviceFriendlyName ?? '',
+      deviceType: this.deviceType,
+    }
+  }
 
   /**
    * Constructs a new instance of TwoFaLib. If a serverUrl is provided, the library will use it for its sync operations.
@@ -68,7 +82,7 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
    * @param encryptedSymmetricKey - The encrypted symmetric key
    * @param salt - The salt used for key derivation.
    * @param publicKey - The public key of the device.
-   * @param deviceId - A unique identifier for this device.
+   * @param favaMeta - Meta info about this device containing at least a unique identifier for this device.
    * @param vault - The vault data (entries)
    * @param saveFunction - The function to save the data.
    * @param syncState - The state of the sync, includes the serverUrl
@@ -86,7 +100,7 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
     encryptedSymmetricKey: EncryptedSymmetricKey,
     salt: Salt,
     publicKey: PublicKey,
-    deviceId: DeviceId,
+    favaMeta: FavaMeta,
     vault?: Vault,
     saveFunction?: SaveFunction,
     syncState?: VaultSyncState,
@@ -95,7 +109,7 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
     if (!deviceType) {
       throw new InitializationError('Device type is required')
     }
-    if (!deviceId) {
+    if (!favaMeta.deviceId) {
       throw new InitializationError('Device id is required')
     }
     if (deviceType.length > 256) {
@@ -103,13 +117,21 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
         'Device type is too long, max 256 characters',
       )
     }
+    if (
+      favaMeta.deviceFriendlyName &&
+      favaMeta.deviceFriendlyName.length > 256
+    ) {
+      throw new InitializationError(
+        'Device friendly name is too long, max 256 characters',
+      )
+    }
     if (passphraseExtraDict?.length === 0) {
       throw new InitializationError(
         'Passphrase extra dictionary is required and must contain at least one element (eg phone)',
       )
     }
+    this.favaMeta = favaMeta
     this.deviceType = deviceType
-    this.deviceId = deviceId
     this.publicKey = publicKey
     this.privateKey = privateKey
 
@@ -121,7 +143,7 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
         new PersistentStorageManager(
           this.mediator,
           passphraseExtraDict,
-          deviceId,
+          favaMeta,
           privateKey,
           symmetricKey,
           encryptedPrivateKey,
@@ -140,6 +162,7 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
       ],
       ['dispatchLibEvent', this.dispatchLibEvent.bind(this)],
       ['log', this.log.bind(this)],
+      ['lib', this],
     ])
 
     if (vault) {
@@ -154,8 +177,9 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
           this.mediator,
           this.publicKey,
           this.privateKey,
+          this.favaMeta,
           syncState as VaultSyncStateWithServerUrl,
-          this.deviceId,
+          this.deviceType,
         ),
       )
     } else {
@@ -240,8 +264,9 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
       this.mediator,
       this.publicKey,
       this.privateKey,
+      this.favaMeta,
       newSyncState,
-      this.deviceId,
+      this.deviceType,
     )
 
     const success = await new Promise((resolve) => {
@@ -283,6 +308,26 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
 
     // save
     await this.persistentStorageManager.save()
+  }
+
+  /**
+   * Set a friendly name for this vault (used in syncing)
+   * @param deviceFriendlyName Human readable name for the device
+   */
+  public async setDeviceFriendlyName(deviceFriendlyName: DeviceFriendlyName) {
+    const data: ChangeSyncDeviceInfoData = {
+      deviceId: this.favaMeta.deviceId,
+      newDeviceInfo: { deviceType: this.deviceType, deviceFriendlyName },
+    }
+    const command = ChangeDeviceInfoCommand.create(data)
+
+    if (!command.validate(this.mediator)) {
+      throw new TwoFALibError(
+        'Device friendly name has invalid length, max 256 characters',
+      )
+    }
+
+    await this.mediator.getComponent('commandManager').execute(command)
   }
 
   /**

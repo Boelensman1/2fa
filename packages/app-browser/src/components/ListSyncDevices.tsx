@@ -30,8 +30,7 @@ const ListSyncDevices = () => {
         <For each={devices()}>
           {(device) => (
             <li>
-              {device.deviceId} {device.meta?.deviceType}{' '}
-              {device.meta?.deviceFriendlyName}
+              {device.deviceId} {device.deviceType} {device.deviceFriendlyName}
             </li>
           )}
         </For>

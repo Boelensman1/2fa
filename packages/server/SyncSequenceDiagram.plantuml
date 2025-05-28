@@ -43,10 +43,10 @@ note right of Server: Forward J-PAKE Pass3 confirmation to NewDevice
 Server -> NewDevice: JPAKEPass3(jpakePass3Confirmation)
 deactivate Server
 
-NewDevice -> Server: publicKey(publicKey)
+NewDevice -> Server: publicKeyAndDeviceInfo(publicKey, deviceInfo)
 activate Server
-note right of Server: Share public key with ExistingDevice
-Server -> ExistingDevice: publicKey(publicKey)
+note right of Server: Share public key and device info (device type, friendly name) with ExistingDevice
+Server -> ExistingDevice: publicKeyAndDeviceInfo(publicKey, deviceInfo)
 deactivate Server
 
 ExistingDevice -> Server: vault(vaultData)

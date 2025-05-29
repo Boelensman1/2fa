@@ -2,6 +2,7 @@ import { type Component, createSignal, Show } from 'solid-js'
 import useStore from '../store/useStore'
 import AddDevice from './AddDevice'
 import ListSyncDevices from './ListSyncDevices'
+import SetDeviceNameModal from './SetDeviceNameModal'
 
 const SyncOptions: Component = () => {
   const [state] = useStore()
@@ -9,6 +10,7 @@ const SyncOptions: Component = () => {
 
   const [showAddDevice, setShowAddDevice] = createSignal(false)
   const [showListDevices, setShowListDevices] = createSignal(false)
+  const [showSetName, setShowSetName] = createSignal(false)
 
   return (
     <div>
@@ -43,6 +45,12 @@ const SyncOptions: Component = () => {
         >
           Resilver
         </button>
+        <button
+          onClick={() => setShowSetName(true)}
+          class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded transition duration-200"
+        >
+          Set Device Name
+        </button>
       </div>
 
       <Show when={showAddDevice()}>
@@ -52,6 +60,11 @@ const SyncOptions: Component = () => {
       <Show when={showListDevices()}>
         <ListSyncDevices />
       </Show>
+
+      <Show when={showSetName()}>
+        <SetDeviceNameModal onClose={() => setShowSetName(false)} />
+      </Show>
+
       <div class="fixed bottom-2 right-2 text-xs text-gray-500">
         deviceId {twoFaLib?.meta.deviceId}
       </div>

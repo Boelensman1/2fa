@@ -22,7 +22,7 @@ import type {
 } from './interfaces/Vault.mjs'
 import type { SaveFunction } from './interfaces/SaveFunction.mjs'
 import type { FavaMeta } from './interfaces/FavaMeta.mjs'
-import type { ChangeSyncDeviceInfoData } from './Command/commands/ChangeDeviceInfoCommand.mjs'
+import type { ChangeDeviceInfoData } from './Command/commands/ChangeDeviceInfoCommand.mjs'
 
 import TwoFaLibMediator from './TwoFaLibMediator.mjs'
 import { TwoFaLibEvent } from './TwoFaLibEvent.mjs'
@@ -315,7 +315,7 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
    * @param deviceFriendlyName Human readable name for the device
    */
   public async setDeviceFriendlyName(deviceFriendlyName: DeviceFriendlyName) {
-    const data: ChangeSyncDeviceInfoData = {
+    const data: ChangeDeviceInfoData = {
       deviceId: this.favaMeta.deviceId,
       newDeviceInfo: { deviceType: this.deviceType, deviceFriendlyName },
     }

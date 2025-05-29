@@ -7,7 +7,7 @@ import type {
   DeviceType,
 } from '../../interfaces/SyncTypes.mjs'
 
-export interface ChangeSyncDeviceInfoData {
+export interface ChangeDeviceInfoData {
   deviceId: DeviceId
   newDeviceInfo: {
     deviceFriendlyName?: DeviceFriendlyName
@@ -18,14 +18,14 @@ export interface ChangeSyncDeviceInfoData {
 /**
  * Represents a command that when executed changes the device info of a sync device
  */
-class ChangeDeviceInfoCommand extends Command<ChangeSyncDeviceInfoData> {
+class ChangeDeviceInfoCommand extends Command<ChangeDeviceInfoData> {
   /**
-   * Creates a new ChangeSyncDeviceMetaCommand instance.
+   * Creates a new ChangeDeviceMetaCommand instance.
    * @inheritdoc
    * @param data - The id of the device to change and the new meta info
    */
   constructor(
-    data: ChangeSyncDeviceInfoData,
+    data: ChangeDeviceInfoData,
     id?: string,
     timestamp?: number,
     version?: string,
@@ -35,9 +35,9 @@ class ChangeDeviceInfoCommand extends Command<ChangeSyncDeviceInfoData> {
   }
 
   /**
-   * Executes the command to change the sync device info
+   * Executes the command to change the device info
    * @inheritdoc
-   * @throws {InvalidCommandError} If the referenced sync device cannot be found
+   * @throws {InvalidCommandError} If the referenced device cannot be found
    */
   async execute(mediator: TwoFaLibMediator) {
     if (!this.validate(mediator)) {

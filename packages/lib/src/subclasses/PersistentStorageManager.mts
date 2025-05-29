@@ -19,10 +19,11 @@ import {
 import type TwoFaLibMediator from '../TwoFaLibMediator.mjs'
 import type { FavaMeta } from '../interfaces/FavaMeta.mjs'
 import type { PassphraseExtraDict } from '../interfaces/PassphraseExtraDict.js'
+import type { SaveFunction } from '../interfaces/SaveFunction.mjs'
+import type { DeviceId, VaultStateSend } from '../interfaces/SyncTypes.mjs'
 
 import TwoFaLib from '../TwoFaLib.mjs'
 import { validatePassphraseStrength } from '../utils/creationUtils.mjs'
-import { SaveFunction } from '../interfaces/SaveFunction.mjs'
 
 /**
  * Manages all storage of data that should be persistent.
@@ -72,16 +73,19 @@ class PersistentStorageManager {
    * Retrieves an encrypted representation of the library's current state.
    * This can be used for secure storage or transmission of the library's data.
    * @param key - The key to decrypt the locked representation with. If not provided the library's current symmetric key will be used.
+   * @param forDeviceId - If the vault is meant for a specific deviceId
    * @returns A promise that resolves with a string representation of the locked state.
    */
   async getEncryptedVaultState(
     key?: SymmetricKey,
+    forDeviceId?: DeviceId,
   ): Promise<EncryptedVaultStateString> {
     const vault = this.vaultDataManager.getAllEntries()
 
-    const vaultState: VaultState = {
+    const vaultState: VaultState | VaultStateSend = {
       vault,
       deviceId: this.favaMeta.deviceId,
+      forDeviceId,
       deviceFriendlyName: this.favaMeta.deviceFriendlyName,
       sync: {
         // eslint-disable-next-line @typescript-eslint/dot-notation

@@ -4,8 +4,9 @@ import { Model } from 'objection'
 import type { Knex } from 'knex'
 import createKnex from 'knex'
 
-import ConnectedDevicesManager from './ConnectedDevicesManager.mjs'
 import UnExecutedSyncCommand from './models/UnExecutedSyncCommand.mjs'
+
+import ConnectedDevicesManager from './ConnectedDevicesManager.mjs'
 
 import type ClientMessage from './types/ClientMessage.mjs'
 import type { AddSyncDeviceInitialiseDataClientMessage } from './types/ClientMessage.mjs'

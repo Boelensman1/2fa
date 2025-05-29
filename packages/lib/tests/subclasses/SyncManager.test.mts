@@ -26,6 +26,7 @@ import {
   PrivateKey,
   SymmetricKey,
   PublicKey,
+  EncryptedVaultStateString,
 } from '../../src/main.mjs'
 
 import {
@@ -708,5 +709,43 @@ describe('SyncManager', () => {
           interval: 20,
         },
     )
+  })
+  it('should error when vault data is received but no sync request was made', () => {
+    const vaultMessage: VaultServerMessage = {
+      type: 'vault',
+      data: {
+        forDeviceId: 'receiverDeviceId' as DeviceId,
+        nonce: 'dazPAriJJIy5CaF7fRKrWA==',
+        encryptedVaultData: '' as EncryptedVaultStateString,
+        encryptedSymmetricKey: '' as EncryptedSymmetricKey,
+        fromDeviceId: 'senderDeviceId' as DeviceId,
+      },
+    }
+    expect(() =>
+      // eslint-disable-next-line @typescript-eslint/dot-notation
+      receiverTwoFaLib.sync!['handleServerMessage'](vaultMessage),
+    ).toThrow(
+      'Got vault data while no resilver was requested, probably replay attack!',
+    )
+  })
+  it('should error when vault data is received for the wrong deviceId', () => {
+    const vaultMessage: VaultServerMessage = {
+      type: 'vault',
+      data: {
+        forDeviceId: 'notReceiverDeviceId' as DeviceId,
+        nonce: 'dazPAriJJIy5CaF7fRKrWA==',
+        encryptedVaultData: '' as EncryptedVaultStateString,
+        encryptedSymmetricKey: '' as EncryptedSymmetricKey,
+        fromDeviceId: 'senderDeviceId' as DeviceId,
+      },
+    }
+
+    // eslint-disable-next-line @typescript-eslint/dot-notation
+    receiverTwoFaLib.sync!['requestedResilver'] = true
+
+    expect(() =>
+      // eslint-disable-next-line @typescript-eslint/dot-notation
+      receiverTwoFaLib.sync!['handleServerMessage'](vaultMessage),
+    ).toThrow('Got vault data for the wrong device!')
   })
 })

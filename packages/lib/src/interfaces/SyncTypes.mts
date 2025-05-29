@@ -1,6 +1,7 @@
 import type { Tagged } from 'type-fest'
 import type { JPakeThreePass, Round1Result } from 'jpake-ts'
-import { PublicKey, SyncKey } from './CryptoLib.mjs'
+import type { PublicKey, SyncKey } from './CryptoLib.mjs'
+import type { Vault, VaultSyncState } from './Vault.mjs'
 
 export type DeviceId = Tagged<string, 'DeviceId'>
 export type DeviceType = Tagged<string, 'DeviceType'>
@@ -67,4 +68,12 @@ export interface InitiateAddDeviceFlowResult {
   initiatorDeviceId: DeviceId
   timestamp: number
   pass1Result: Record<keyof Round1Result, string>
+}
+
+export interface VaultStateSend {
+  deviceId: DeviceId
+  forDeviceId: DeviceId
+  deviceFriendlyName?: DeviceFriendlyName
+  vault: Vault
+  sync: VaultSyncState
 }

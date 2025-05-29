@@ -24,6 +24,7 @@ import {
   DeviceType,
   DeviceId,
   DeviceInfo,
+  VaultStateSend,
 } from '../interfaces/SyncTypes.mjs'
 import { decodeInitiatorData, jsonToUint8Array } from '../utils/syncUtils.mjs'
 import type {
@@ -48,7 +49,6 @@ import {
   TwoFALibError,
 } from '../TwoFALibError.mjs'
 import {
-  VaultState,
   EncryptedVaultStateString,
   VaultSyncStateWithServerUrl,
 } from '../interfaces/Vault.mjs'
@@ -95,6 +95,9 @@ class SyncManager {
   private terminateTimeout?: NodeJS.Timeout
   private connectionFailedTimeout?: NodeJS.Timeout
   private shouldReconnect = true
+
+  private requestedResilver = false
+  private requestedResilverTimeout?: NodeJS.Timeout
 
   private get deviceId() {
     return this.favaMeta.deviceId
@@ -367,8 +370,23 @@ class SyncManager {
         break
       }
       case 'vault': {
+        if (!this.requestedResilver) {
+          throw new SyncError(
+            'Got vault data while no resilver was requested, probably replay attack!',
+          )
+        }
         const { data } = message
-        const { encryptedVaultData, encryptedSymmetricKey, fromDeviceId } = data
+        const {
+          encryptedVaultData,
+          encryptedSymmetricKey,
+          fromDeviceId,
+          forDeviceId,
+        } = data
+
+        if (forDeviceId !== this.deviceId) {
+          throw new SyncError('Got vault data for the wrong device!')
+        }
+
         void this.cryptoLib
           .decrypt(this.privateKey, encryptedSymmetricKey)
           .then((symmetricKey) =>
@@ -719,7 +737,6 @@ class SyncManager {
     )
 
     // decrypt the received device info
-
     const responderDeviceInfo = JSON.parse(
       await this.cryptoLib.decryptSymmetric(
         syncKey,
@@ -729,7 +746,10 @@ class SyncManager {
 
     // get the vault data (encrypted with the sync key)
     const encryptedVaultData =
-      await this.persistentStorageManager.getEncryptedVaultState(syncKey)
+      await this.persistentStorageManager.getEncryptedVaultState(
+        syncKey,
+        this.activeAddDeviceFlow.responderDeviceId,
+      )
 
     // Send the encrypted vault data to the server
     this.sendToServer('initialVault', {
@@ -777,11 +797,16 @@ class SyncManager {
   ) {
     const vaultState = JSON.parse(
       await this.cryptoLib.decryptSymmetric(symmetricKey, encryptedVaultState),
-    ) as VaultState
+    ) as VaultStateSend
 
     if (vaultState.deviceId !== expectedDeviceId) {
       throw new SyncError(
         `DeviceId mismatch when importing, expected ${expectedDeviceId} got ${vaultState.deviceId}`,
+      )
+    }
+    if (vaultState.forDeviceId !== this.deviceId) {
+      throw new SyncError(
+        `For deviceId mismatch when importing, expected ${this.deviceId} got ${vaultState.forDeviceId}`,
       )
     }
 
@@ -833,6 +858,7 @@ class SyncManager {
           return
         }
 
+        // unique symmetricKey per command
         const symmetricKey = await this.cryptoLib.createSymmetricKey()
         const encryptedSymmetricKey = await this.cryptoLib.encrypt(
           device.publicKey,
@@ -956,7 +982,10 @@ class SyncManager {
         symmetricKey,
       )
       const encryptedVaultData =
-        await this.persistentStorageManager.getEncryptedVaultState(symmetricKey)
+        await this.persistentStorageManager.getEncryptedVaultState(
+          symmetricKey,
+          device.deviceId,
+        )
 
       this.sendToServer('vault', {
         forDeviceId: device.deviceId,
@@ -995,6 +1024,17 @@ class SyncManager {
       deviceIds: this.syncDevices.map((d) => d.deviceId),
       nonce: await this.getNonce(),
     })
+
+    // Set requestedResilver to true for 60 seconds, after this we no longer
+    // accept vault data
+    this.requestedResilver = true
+    if (this.requestedResilverTimeout) {
+      clearTimeout(this.requestedResilverTimeout)
+    }
+    this.requestedResilverTimeout = setTimeout(
+      () => (this.requestedResilver = false),
+      60 * 1000,
+    )
   }
 
   /**

@@ -1,6 +1,6 @@
 {
   "name": "favacli",
-  "version": "0.0.16",
+  "version": "0.0.17",
   "description": "",
   "type": "module",
   "author": "",
@@ -10,7 +10,7 @@
     "bufferutil": "^4.0.9",
     "clipanion": "^4.0.0-rc.4",
     "env-paths": "^3.0.0",
-    "favalib": "^0.0.9",
+    "favalib": "^0.0.10",
     "keytar": "^7.9.0",
     "tty-table": "^4.2.3",
     "typanion": "^3.14.0"

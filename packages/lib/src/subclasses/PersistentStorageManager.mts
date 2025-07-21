@@ -197,8 +197,8 @@ class PersistentStorageManager {
   ): Promise<void> {
     await validatePasswordStrength(
       this.mediator.getComponent('libraryLoader'),
-      newPassword,
       this.passwordExtraDict,
+      newPassword,
     )
 
     const isValid = await this.validatePassword(this.salt, oldPassword)

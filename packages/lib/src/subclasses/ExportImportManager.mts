@@ -74,8 +74,8 @@ class ExportImportManager {
     if (password) {
       await validatePasswordStrength(
         this.libraryLoader,
-        password as Password,
         this.passwordExtraDict,
+        password as Password,
       )
       return encryptExport(
         this.libraryLoader.getOpenPGPLib(),

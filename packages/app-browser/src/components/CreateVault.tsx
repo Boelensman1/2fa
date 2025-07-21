@@ -47,7 +47,7 @@ const CreateVault: Component = () => {
   const calculatePasswordStrength = async (
     password: Password,
   ): Promise<ZxcvbnResult> => {
-    return await creationUtils.getPasswordStrength(password, ['browser'])
+    return await creationUtils.getPasswordStrength(password)
   }
 
   createEffect(() => {

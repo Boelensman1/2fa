@@ -8,7 +8,7 @@ import creationUtils from '../utils/creationUtils'
 const calculatePasswordStrength = async (
   password: Password,
 ): Promise<ZxcvbnResult> => {
-  return await creationUtils.getPasswordStrength(password, ['browser'])
+  return await creationUtils.getPasswordStrength(password)
 }
 
 const Exporter = () => {

@@ -20,14 +20,14 @@ import { SaveFunction } from '../interfaces/SaveFunction.mjs'
 /**
  * Evaluates the strength of a password.
  * @param libraryLoader - An instance of LibraryLoader.
- * @param password - The password to evaluate.
  * @param passwordExtraDict - Additional words to be used for password strength evaluation.
+ * @param password - The password to evaluate.
  * @returns Promise resolving to the password strength result.
  */
 export const getPasswordStrength = async (
   libraryLoader: LibraryLoader,
-  password: Password,
   passwordExtraDict: PasswordExtraDict,
+  password: Password,
 ): Promise<ZxcvbnResult> => {
   const zxcvbn = await libraryLoader.getZxcvbn()
   return zxcvbn(password, [
@@ -60,19 +60,19 @@ export const getPasswordStrength = async (
 /**
  * Validates the strength of a password.
  * @param libraryLoader - An instance of LibraryLoader.
- * @param password - The password to validate.
  * @param passwordExtraDict - Additional words to be used for password strength evaluation.
+ * @param password - The password to validate.
  * @throws {InitializationError} If the password is too weak.
  */
 export const validatePasswordStrength = async (
   libraryLoader: LibraryLoader,
-  password: Password,
   passwordExtraDict: PasswordExtraDict,
+  password: Password,
 ) => {
   const passwordStrength = await getPasswordStrength(
     libraryLoader,
-    password,
     passwordExtraDict,
+    password,
   )
   if (passwordStrength.score < 3) {
     throw new TwoFALibError('Password is too weak')
@@ -108,7 +108,7 @@ const createNewTwoFaLibVault = async (
     salt,
   } = await cryptoLib.createKeys(password)
 
-  await validatePasswordStrength(libraryLoader, password, passwordExtraDict)
+  await validatePasswordStrength(libraryLoader, passwordExtraDict, password)
 
   const deviceId = genUuidV4() as DeviceId
   const twoFaLib = new TwoFaLib(
@@ -243,7 +243,11 @@ export const getTwoFaLibVaultCreationUtils = (
   const libraryLoader = new LibraryLoader(platformProviders)
 
   return {
-    getPasswordStrength: getPasswordStrength.bind(null, libraryLoader),
+    getPasswordStrength: getPasswordStrength.bind(
+      null,
+      libraryLoader,
+      passwordExtraDict,
+    ),
     createNewTwoFaLibVault: createNewTwoFaLibVault.bind(
       null,
       libraryLoader,

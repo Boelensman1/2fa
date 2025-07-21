@@ -39,6 +39,7 @@
     "@zxcvbn-ts/language-common": "^3.0.4",
     "@zxcvbn-ts/language-en": "^3.0.2",
     "canvas": "^3.1.0",
+    "esbuild": "^0.25.8",
     "hash-wasm": "^4.12.0",
     "jpake-ts": "^1.0.1",
     "jsqr": "^1.4.0",
@@ -48,7 +49,6 @@
     "totp-generator": "^1.0.0",
     "typescript-event-target": "^1.1.1",
     "uint8array-extras": "^1.4.0",
-    "unws": "^0.3.2",
     "uuid": "^11.1.0",
     "whatwg-url": "^14.2.0",
     "ws": "^8.18.2"

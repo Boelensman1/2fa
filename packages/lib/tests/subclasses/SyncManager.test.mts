@@ -8,7 +8,6 @@ import {
   expect,
 } from 'vitest'
 import WS from 'vitest-websocket-mock'
-export { WebSocket as default } from 'mock-socket'
 
 import type ServerMessage from 'favaserver/ServerMessage'
 import type {
@@ -49,9 +48,6 @@ import type {
 } from '../../src/interfaces/SyncTypes.mjs'
 import { TwoFaLibEvent } from '../../src/TwoFaLibEvent.mjs'
 import { VaultServerMessage } from 'favaserver/ServerMessage'
-
-// uses __mocks__/unws.js
-vi.mock('unws')
 
 const serverPort = 9770
 const serverBaseUrl = 'ws://localhost'

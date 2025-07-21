@@ -1,47 +1,26 @@
-import type { ImageData } from 'canvas'
 import { base64ToString } from 'uint8array-extras'
 
-import { getImageDataBrowser, getImageDataNode } from './qrUtils.mjs'
 import { InitiateAddDeviceFlowResult } from '../interfaces/SyncTypes.mjs'
 import { SyncError } from '../TwoFALibError.mjs'
+import type { QrCodeLib } from '../interfaces/QrCodeLib.mjs'
 
 /**
  * Decodes the initiator data from a string or QR code.
  * @param initiatorData - The initiator data to decode.
  * @param initiatorDataType The type of the initiatorData, determines how it should be decoded
  * @param jsQr - The QR code decoder.
- * @param getCanvasLib - A function to get the Canvas library.
+ * @param qrCodeLib - The extended QR code library with platform-specific image processing.
  * @returns A promise that resolves to the decoded initiator data.
  */
 export const decodeInitiatorData = async (
   initiatorData: string | Uint8Array | File,
   initiatorDataType: 'text' | 'qr',
   jsQr: typeof import('jsqr').default,
-  getCanvasLib: () => Promise<typeof import('canvas')>,
+  qrCodeLib: QrCodeLib,
 ): Promise<InitiateAddDeviceFlowResult> => {
   if (initiatorDataType === 'qr') {
     try {
-      let imageData: ImageData
-
-      if (typeof window !== 'undefined') {
-        if (initiatorData instanceof Uint8Array) {
-          throw new SyncError(
-            'Invalid initiator data type, should be a string or File in browser environment',
-          )
-        }
-        // Browser environment
-        imageData = await getImageDataBrowser(initiatorData)
-      } else {
-        if (!(initiatorData instanceof Uint8Array)) {
-          throw new SyncError(
-            'Invalid initiator data type, should be a Uint8Array in Node.js environment',
-          )
-        }
-        // Node.js environment
-        const canvasLib = await getCanvasLib()
-        imageData = await getImageDataNode(canvasLib, initiatorData)
-      }
-
+      const imageData = await qrCodeLib.getImageDataFromInput(initiatorData)
       const qrCodeResult = jsQr(
         imageData.data,
         imageData.width,

@@ -250,9 +250,10 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
    * @param force - Force setting the sync server url, even if no connection can be made
    */
   async setSyncServerUrl(serverUrl: string, force = false) {
-    if (this.sync) {
+    const oldSyncManager = this.sync
+    if (oldSyncManager) {
       // close connection so no data is send to the old syncServer
-      this.sync.closeServerConnection()
+      oldSyncManager.closeServerConnection()
     }
 
     const newSyncState: VaultSyncStateWithServerUrl = {
@@ -268,6 +269,10 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
       newSyncState,
       this.deviceType,
     )
+
+    // Temporarily register the new sync manager so its events can be heard
+    this.mediator.unRegisterComponent('syncManager')
+    this.mediator.registerComponent('syncManager', newSyncManager)
 
     const success = await new Promise((resolve) => {
       this.addEventListener(
@@ -289,23 +294,23 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
           `Failed to connect to server at ${serverUrl}, force setting`,
         )
       } else {
-        if (this.sync) {
+        // Close the new sync manager and restore the old one
+        newSyncManager.closeServerConnection()
+        this.mediator.unRegisterComponent('syncManager')
+
+        if (oldSyncManager) {
           // re-establish old connection
-          this.sync.initServerConnection()
+          this.mediator.registerComponent('syncManager', oldSyncManager)
+          oldSyncManager.initServerConnection()
         }
 
-        newSyncManager.closeServerConnection()
         throw new SyncError(
           `Failed to connect to server at ${serverUrl}, not setting`,
         )
       }
     }
 
-    // connection succeeded (or force=true)
-    // switch to the new syncManager
-    this.mediator.unRegisterComponent('syncManager')
-    this.mediator.registerComponent('syncManager', newSyncManager)
-
+    // connection succeeded (or force=true) - new sync manager is already registered
     // save
     await this.persistentStorageManager.save()
   }

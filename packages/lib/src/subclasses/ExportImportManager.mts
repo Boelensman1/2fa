@@ -78,7 +78,7 @@ class ExportImportManager {
         this.passphraseExtraDict,
       )
       return encryptExport(
-        await this.libraryLoader.getOpenPGPLib(),
+        this.libraryLoader.getOpenPGPLib(),
         exportData,
         passphrase,
       )
@@ -92,7 +92,7 @@ class ExportImportManager {
   }
 
   private async generateHtmlExport(): Promise<string> {
-    const qrGeneratorLib = await this.libraryLoader.getQrGeneratorLib()
+    const qrGeneratorLib = this.libraryLoader.getQrGeneratorLib()
     return generateHtmlExport(
       qrGeneratorLib,
       this.vaultDataManager.getAllEntries(),
@@ -112,7 +112,7 @@ class ExportImportManager {
   ): Promise<{ lineNr: number; entryId: EntryId | null; error: unknown }[]> {
     if (passphrase) {
       const decrypted = await decryptExport(
-        await this.libraryLoader.getOpenPGPLib(),
+        this.libraryLoader.getOpenPGPLib(),
         fileContents,
         passphrase,
       )

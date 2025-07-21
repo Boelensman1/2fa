@@ -1,6 +1,8 @@
 import type CryptoLib from '../interfaces/CryptoLib.mjs'
 import type { PlatformProviders } from '../interfaces/PlatformProviders.mjs'
-import { InitializationError, TwoFALibError } from '../TwoFALibError.mjs'
+import type { QrCodeLib } from '../interfaces/QrCodeLib.mjs'
+import type { OpenPgpLib } from '../interfaces/OpenPgpLib.mjs'
+import { InitializationError } from '../TwoFALibError.mjs'
 
 /**
  * Class responsible for loading various external (big) libraries required by the application.
@@ -12,12 +14,12 @@ class LibraryLoader {
   private cryptoLib: CryptoLib
 
   // libraries that are loaded on demand
-  private openPgpLib?: typeof import('openpgp')
-  private qrGeneratorLib?: typeof import('qrcode')
+  private openPgpLib?: OpenPgpLib
+  private qrGeneratorLib?: QrCodeLib
   private jsQrLib?: typeof import('jsqr').default
-  private canvasLib?: typeof import('canvas')
   private urlParserLib?: typeof import('whatwg-url')
   private zxcvbn?: typeof import('@zxcvbn-ts/core').zxcvbn
+  private webSocketLib?: typeof WebSocket
 
   /**
    * Constructs a new instance of LibraryLoader.
@@ -52,13 +54,8 @@ class LibraryLoader {
    * Loads and returns the OpenPGP library on demand.
    * @returns A promise that resolves to the OpenPGP library.
    */
-  async getOpenPGPLib() {
-    if (!this.openPgpLib) {
-      const module = await import('openpgp')
-      // enable Authenticated Encryption with Associated Data
-      module.config.aeadProtect = true
-      this.openPgpLib = module
-    }
+  getOpenPGPLib() {
+    this.openPgpLib ??= new this.platformProviders.OpenPgpLib()
     return this.openPgpLib
   }
 
@@ -66,11 +63,8 @@ class LibraryLoader {
    * Loads and returns the QR Generator library on demand.
    * @returns A promise that resolves to the QR Generator library.
    */
-  async getQrGeneratorLib() {
-    if (!this.qrGeneratorLib) {
-      const module = await import('qrcode')
-      this.qrGeneratorLib = module.default
-    }
+  getQrGeneratorLib() {
+    this.qrGeneratorLib ??= new this.platformProviders.QrCodeLib()
     return this.qrGeneratorLib
   }
 
@@ -87,23 +81,6 @@ class LibraryLoader {
   }
 
   /**
-   * Loads and returns the Canvas library on demand.
-   * @returns A promise that resolves to the Canvas library.
-   * @throws {TwoFALibError} If the library cannot be loaded in a browser environment.
-   */
-  async getCanvasLib() {
-    if (typeof window !== 'undefined') {
-      throw new TwoFALibError('Canvas lib can not be loaded in browser env')
-    }
-
-    if (!this.canvasLib) {
-      const module = await import('canvas')
-      this.canvasLib = module.default
-    }
-    return this.canvasLib
-  }
-
-  /**
    * Loads and returns the URL Parser library on demand.
    * @returns A promise that resolves to the URL Parser library.
    */
@@ -113,6 +90,15 @@ class LibraryLoader {
       this.urlParserLib = module.default
     }
     return this.urlParserLib
+  }
+
+  /**
+   * Loads and returns the WebSocket library on demand.
+   * @returns The WebSocket library.
+   */
+  getWebSocketLib() {
+    this.webSocketLib ??= this.platformProviders.WebSocketLib()
+    return this.webSocketLib
   }
 
   /**

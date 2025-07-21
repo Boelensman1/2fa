@@ -22,9 +22,6 @@ import {
   deviceId,
 } from './testUtils.mjs'
 
-// uses __mocks__/unws.js
-vi.mock('unws')
-
 describe('2falib', () => {
   let platformProviders: PlatformProviders
   let twoFaLib: TwoFaLib
@@ -211,16 +208,22 @@ describe('2falib', () => {
         [],
       )
 
+      // create a fake existing sync manager to check that the previous connection is correctly closed
       const mockCloseServerConnection = vi.fn()
-      const mockSyncManager = {
+      const mockExistingSyncManager = {
         closeServerConnection: mockCloseServerConnection,
+        initServerConnection: mockCloseServerConnection, // temporarily mock this too so we don't get an error when reconnecting after the connection fails
       }
       const mockSave = vi.fn()
       // @ts-expect-error Accessing private property for testing
       twoFaLib.mediator.components.persistentStorageManager.save = mockSave
 
       // @ts-expect-error Accessing private property for testing
-      twoFaLib.mediator.registerComponent('syncManager', mockSyncManager)
+      twoFaLib.mediator.registerComponent(
+        'syncManager',
+        // @ts-expect-error mockExistingSyncManager only has closeServerConnection property
+        mockExistingSyncManager,
+      )
 
       await twoFaLib.setSyncServerUrl(newServerUrl)
 

@@ -1,4 +1,3 @@
-import { MessageEvent } from 'unws'
 import {
   base64ToUint8Array,
   hexToUint8Array,
@@ -245,7 +244,8 @@ class SyncManager {
    * Initializes the WebSocket connection to the server.
    */
   initServerConnection() {
-    const ws = new WebSocket(this.serverUrl)
+    const WebSocketLib = this.libraryLoader.getWebSocketLib()
+    const ws = new WebSocketLib(this.serverUrl)
 
     // eslint-disable-next-line @typescript-eslint/no-this-alias
     const syncManager = this
@@ -531,7 +531,7 @@ class SyncManager {
 
     let returnQr = null
     if (returnAs.qr) {
-      const qrGeneratorLib = await this.libraryLoader.getQrGeneratorLib()
+      const qrGeneratorLib = this.libraryLoader.getQrGeneratorLib()
       returnQr = await qrGeneratorLib.toDataURL(JSON.stringify(returnData))
     }
     const returnText = returnAs.text
@@ -567,7 +567,7 @@ class SyncManager {
         initiatorData,
         initiatorDataType,
         await this.libraryLoader.getJsQrLib(),
-        this.libraryLoader.getCanvasLib.bind(this),
+        this.libraryLoader.getQrGeneratorLib(),
       )
 
     if (

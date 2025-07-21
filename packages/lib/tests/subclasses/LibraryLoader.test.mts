@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import LibraryLoader from '../../src/subclasses/LibraryLoader.mjs'
 import type CryptoLib from '../../src/interfaces/CryptoLib.mjs'
 import type { PlatformProviders } from '../../src/interfaces/PlatformProviders.mjs'
-import { InitializationError, TwoFALibError } from '../../src/TwoFALibError.mjs'
+import { InitializationError } from '../../src/TwoFALibError.mjs'
 
 // Mock the external libraries
 vi.mock('openpgp', () => ({
@@ -34,7 +34,10 @@ describe('LibraryLoader', () => {
     }
     platformProviders = {
       CryptoLib: vi.fn(() => cryptoLib),
-    } as PlatformProviders
+      WebSocketLib: WebSocket,
+      QrCodeLib: vi.fn(),
+      OpenPgpLib: vi.fn(),
+    }
     libraryLoader = new LibraryLoader(platformProviders)
   })
 
@@ -55,42 +58,22 @@ describe('LibraryLoader', () => {
     expect(libraryLoader.getCryptoLib()).toBe(cryptoLib)
   })
 
-  it('should load OpenPGP library', async () => {
-    const openPgpLib = await libraryLoader.getOpenPGPLib()
+  it('should load OpenPGP library', () => {
+    const openPgpLib = libraryLoader.getOpenPGPLib()
 
     expect(openPgpLib).toBeDefined()
-    expect(openPgpLib).toEqual({
-      mockOpenPGP: true,
-      config: { aeadProtect: true },
-    })
+    expect(platformProviders.OpenPgpLib).toHaveBeenCalled()
   })
 
-  it('should load QR Generator library', async () => {
-    const qrGeneratorLib = await libraryLoader.getQrGeneratorLib()
-    expect(qrGeneratorLib).toEqual({ mockQRCode: true })
+  it('should load QR Generator library', () => {
+    const qrGeneratorLib = libraryLoader.getQrGeneratorLib()
+    expect(qrGeneratorLib).toBeDefined()
+    expect(platformProviders.QrCodeLib).toHaveBeenCalled()
   })
 
   it('should load JsQR library', async () => {
     const jsQrLib = await libraryLoader.getJsQrLib()
     expect(jsQrLib).toEqual({ mockJsQR: true })
-  })
-
-  it('should load Canvas library in non-browser environment', async () => {
-    const canvasLib = await libraryLoader.getCanvasLib()
-    expect(canvasLib).toEqual({ mockCanvas: true })
-  })
-
-  it('should throw an error when loading Canvas library in browser environment', async () => {
-    // Mock window to simulate browser environment
-    vi.stubGlobal('window', {})
-
-    await expect(libraryLoader.getCanvasLib()).rejects.toThrow(TwoFALibError)
-    await expect(libraryLoader.getCanvasLib()).rejects.toThrow(
-      'Canvas lib can not be loaded in browser env',
-    )
-
-    // Clean up the mock
-    vi.unstubAllGlobals()
   })
 
   it('should load URL Parser library', async () => {
@@ -99,21 +82,19 @@ describe('LibraryLoader', () => {
   })
 
   it('should cache libraries after first load', async () => {
-    const openPgpLib1 = await libraryLoader.getOpenPGPLib()
-    const openPgpLib2 = await libraryLoader.getOpenPGPLib()
+    const openPgpLib1 = libraryLoader.getOpenPGPLib()
+    const openPgpLib2 = libraryLoader.getOpenPGPLib()
     expect(openPgpLib1).toBe(openPgpLib2)
+    expect(platformProviders.OpenPgpLib).toHaveBeenCalledTimes(1)
 
-    const qrGeneratorLib1 = await libraryLoader.getQrGeneratorLib()
-    const qrGeneratorLib2 = await libraryLoader.getQrGeneratorLib()
+    const qrGeneratorLib1 = libraryLoader.getQrGeneratorLib()
+    const qrGeneratorLib2 = libraryLoader.getQrGeneratorLib()
     expect(qrGeneratorLib1).toBe(qrGeneratorLib2)
+    expect(platformProviders.QrCodeLib).toHaveBeenCalledTimes(1)
 
     const jsQrLib1 = await libraryLoader.getJsQrLib()
     const jsQrLib2 = await libraryLoader.getJsQrLib()
     expect(jsQrLib1).toBe(jsQrLib2)
-
-    const canvasLib1 = await libraryLoader.getCanvasLib()
-    const canvasLib2 = await libraryLoader.getCanvasLib()
-    expect(canvasLib1).toBe(canvasLib2)
 
     const urlParserLib1 = await libraryLoader.getUrlParserLib()
     const urlParserLib2 = await libraryLoader.getUrlParserLib()

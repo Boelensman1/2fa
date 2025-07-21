@@ -2,6 +2,8 @@ import type { NewEntry } from '../interfaces/Entry.mjs'
 import type Entry from '../interfaces/Entry.mjs'
 import type { SupportedAlgorithmsType } from './constants.mjs'
 import type { EntryId } from '../interfaces/Entry.mjs'
+import type { QrCodeLib } from '../interfaces/QrCodeLib.mjs'
+import type { OpenPgpLib } from '../interfaces/OpenPgpLib.mjs'
 import { ExportImportError } from '../TwoFALibError.mjs'
 
 /**
@@ -112,7 +114,7 @@ const generateOtpUrl = (entry: Entry) => {
  * @returns A promise that resolves to the HTML string.
  */
 export const generateHtmlExport = async (
-  qrGeneratorLib: typeof import('qrcode'),
+  qrGeneratorLib: QrCodeLib,
   entries: Entry[],
 ) => {
   const qrPromises = entries.map(async (entry) => {
@@ -197,17 +199,11 @@ export const processImportLines = async (
  * @returns A promise that resolves to the encrypted data.
  */
 export const encryptExport = async (
-  openPgpLib: typeof import('openpgp'),
+  openPgpLib: OpenPgpLib,
   data: string,
   password: string,
 ): Promise<string> => {
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-  const encrypted = await openPgpLib.encrypt({
-    message: await openPgpLib.createMessage({ text: data }),
-    passwords: [password],
-    format: 'armored',
-  })
-  return encrypted as string
+  return openPgpLib.encrypt(data, password)
 }
 
 /**
@@ -218,13 +214,9 @@ export const encryptExport = async (
  * @returns A promise that resolves to the decrypted data.
  */
 export const decryptExport = async (
-  openPgpLib: typeof import('openpgp'),
+  openPgpLib: OpenPgpLib,
   data: string,
   password: string,
 ): Promise<string> => {
-  const decrypted = await openPgpLib.decrypt({
-    message: await openPgpLib.readMessage({ armoredMessage: data }),
-    passwords: [password],
-  })
-  return decrypted.data as string
+  return openPgpLib.decrypt(data, password)
 }

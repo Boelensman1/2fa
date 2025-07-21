@@ -1,13 +1,13 @@
 import { describe, expect, test } from 'vitest'
 import crypto from 'node:crypto'
 
-import BrowserCryptoProvider from '../../src/CryptoProviders/browser/index.mjs'
+import { browserProviders } from '../../src/platformProviders/browser/index.mjs'
 
 // @ts-expect-error node crypto and webcrypto don't have the exact same types
 globalThis.window = { crypto: crypto.webcrypto }
 
 describe('BrowserCryptoLib', () => {
-  const browserCrypto = new BrowserCryptoProvider()
+  const browserCrypto = new browserProviders.CryptoLib()
 
   test('successive calls to getRandomBytes should return different results', async () => {
     const bytes1 = await browserCrypto.getRandomBytes(16)

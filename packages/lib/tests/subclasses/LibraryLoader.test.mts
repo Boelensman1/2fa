@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import LibraryLoader from '../../src/subclasses/LibraryLoader.mjs'
-import CryptoLib from '../../src/interfaces/CryptoLib.mjs'
+import type CryptoLib from '../../src/interfaces/CryptoLib.mjs'
+import type { PlatformProviders } from '../../src/interfaces/PlatformProviders.mjs'
 import { InitializationError, TwoFALibError } from '../../src/TwoFALibError.mjs'
 
 // Mock the external libraries
@@ -15,6 +16,7 @@ vi.mock('whatwg-url', () => ({ default: { mockWhatwgUrl: true } }))
 
 describe('LibraryLoader', () => {
   let cryptoLib: CryptoLib
+  let platformProviders: PlatformProviders
   let libraryLoader: LibraryLoader
 
   beforeEach(() => {
@@ -30,20 +32,23 @@ describe('LibraryLoader', () => {
       createSyncKey: vi.fn(),
       createSymmetricKey: vi.fn(),
     }
-    libraryLoader = new LibraryLoader(cryptoLib)
+    platformProviders = {
+      CryptoLib: vi.fn(() => cryptoLib),
+    } as PlatformProviders
+    libraryLoader = new LibraryLoader(platformProviders)
   })
 
   it('should create a LibraryLoader instance', () => {
     expect(libraryLoader).toBeInstanceOf(LibraryLoader)
   })
 
-  it('should throw an error if CryptoLib is not provided', () => {
-    expect(() => new LibraryLoader(null as unknown as CryptoLib)).toThrow(
-      InitializationError,
-    )
-    expect(() => new LibraryLoader(null as unknown as CryptoLib)).toThrow(
-      'CryptoLib is required',
-    )
+  it('should throw an error if PlatformProviders is not provided', () => {
+    expect(
+      () => new LibraryLoader(null as unknown as PlatformProviders),
+    ).toThrow(InitializationError)
+    expect(
+      () => new LibraryLoader(null as unknown as PlatformProviders),
+    ).toThrow('PlatformProviders with CryptoLib is required')
   })
 
   it('should return the CryptoLib instance', () => {

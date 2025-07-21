@@ -17,7 +17,6 @@ import type {
   StartResilverClientMessage,
 } from 'favaserver/ClientMessage'
 import {
-  CryptoLib,
   EncryptedPrivateKey,
   EncryptedSymmetricKey,
   Salt,
@@ -27,6 +26,7 @@ import {
   SymmetricKey,
   PublicKey,
   EncryptedVaultStateString,
+  PlatformProviders,
 } from '../../src/main.mjs'
 
 import {
@@ -58,7 +58,7 @@ const serverBaseUrl = 'ws://localhost'
 
 describe('SyncManager', () => {
   let serverUrl: string
-  let cryptoLib: CryptoLib
+  let platformProviders: PlatformProviders
   let privateKey: PrivateKey
   let symmetricKey: SymmetricKey
   let publicKey: PublicKey
@@ -73,7 +73,7 @@ describe('SyncManager', () => {
 
   beforeAll(async () => {
     const result = await createTwoFaLibForTests()
-    cryptoLib = result.cryptoLib
+    platformProviders = result.platformProviders
     encryptedPrivateKey = result.encryptedPrivateKey
     encryptedSymmetricKey = result.encryptedSymmetricKey
     privateKey = result.privateKey
@@ -100,7 +100,7 @@ describe('SyncManager', () => {
 
     senderTwoFaLib = new TwoFaLib(
       'sender' as DeviceType,
-      cryptoLib,
+      platformProviders,
       ['test'],
       privateKey,
       symmetricKey,
@@ -122,7 +122,7 @@ describe('SyncManager', () => {
 
     receiverTwoFaLib = new TwoFaLib(
       'receiver' as DeviceType,
-      cryptoLib,
+      platformProviders,
       ['test'],
       privateKey,
       symmetricKey,
@@ -171,7 +171,7 @@ describe('SyncManager', () => {
 
     const disconnectedTwoFaLib = new TwoFaLib(
       'disconnected' as DeviceType,
-      cryptoLib,
+      platformProviders,
       ['test'],
       privateKey,
       symmetricKey,
@@ -431,7 +431,7 @@ describe('SyncManager', () => {
 
     const newTwoFaLib = new TwoFaLib(
       'newSender' as DeviceType,
-      cryptoLib,
+      platformProviders,
       ['test'],
       privateKey,
       symmetricKey,
@@ -546,7 +546,7 @@ describe('SyncManager', () => {
 
     const otherReceiverTwoFaLib = new TwoFaLib(
       'otherReceiver' as DeviceType,
-      cryptoLib,
+      platformProviders,
       ['test'],
       privateKey,
       symmetricKey,

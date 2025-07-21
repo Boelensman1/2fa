@@ -1,6 +1,6 @@
 /* eslint-disable no-restricted-globals */
 import { vi } from 'vitest'
-import NodeCryptoProvider from '../src/CryptoProviders/node/index.mjs'
+import { nodeProviders } from '../src/platformProviders/node/index.mjs'
 import type WS from 'vitest-websocket-mock'
 import {
   getTwoFaLibVaultCreationUtils,
@@ -65,14 +65,14 @@ export const passphraseExtraDict: PassphraseExtraDict = ['test']
  * @returns A promise that resolves to the TwoFaLib instance.
  */
 export const createTwoFaLibForTests = async (saveFunction?: SaveFunction) => {
-  const cryptoLib = new NodeCryptoProvider()
   const { createNewTwoFaLibVault } = getTwoFaLibVaultCreationUtils(
-    cryptoLib,
+    nodeProviders,
     deviceType,
     passphraseExtraDict,
     saveFunction,
   )
   const result = await createNewTwoFaLibVault(passphrase)
+  const cryptoLib = new nodeProviders.CryptoLib()
   const keys = await cryptoLib.decryptKeys(
     result.encryptedPrivateKey,
     result.encryptedSymmetricKey,
@@ -82,7 +82,7 @@ export const createTwoFaLibForTests = async (saveFunction?: SaveFunction) => {
 
   addTestLogEventListener(result.twoFaLib)
 
-  return { cryptoLib, passphrase, ...result, ...keys }
+  return { platformProviders: nodeProviders, passphrase, ...result, ...keys }
 }
 
 /**

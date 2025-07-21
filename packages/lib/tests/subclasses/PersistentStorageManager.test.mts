@@ -12,11 +12,11 @@ import {
   TwoFaLib,
   type LockedRepresentationString,
   type Passphrase,
-  type CryptoLib,
   type Salt,
   EncryptedPrivateKey,
   EncryptedSymmetricKey,
 } from '../../src/main.mjs'
+import { nodeProviders } from '../../src/platformProviders/node/index.mjs'
 import {
   clearEntries,
   createTwoFaLibForTests,
@@ -35,7 +35,6 @@ const getNthMockCallFirstArg = (mockFn: Mock, n: number) => {
 }
 
 describe('PersistentStorageManager', () => {
-  let cryptoLib: CryptoLib
   let twoFaLib: TwoFaLib
   let persistentStorageManager: PersistentStorageManager
   let passphrase: Passphrase
@@ -45,7 +44,6 @@ describe('PersistentStorageManager', () => {
 
   beforeAll(async () => {
     const result = await createTwoFaLibForTests()
-    cryptoLib = result.cryptoLib
     twoFaLib = result.twoFaLib
     passphrase = result.passphrase
     salt = result.salt
@@ -63,8 +61,12 @@ describe('PersistentStorageManager', () => {
   it('should return a locked representation', async () => {
     await twoFaLib.vault.addEntry(newTotpEntry)
 
+    // Get the internal cryptoLib instance used by persistentStorageManager
+    // @ts-expect-error: Using private property for testing
+    const internalCryptoLib = persistentStorageManager.cryptoLib
+
     // Store original implementations
-    const originalEncryptSymmetric = cryptoLib.encryptSymmetric
+    const originalEncryptSymmetric = internalCryptoLib.encryptSymmetric
 
     // mockEncryptSymmetric for easier testing
     const mockEncryptSymmetric = vi
@@ -72,8 +74,8 @@ describe('PersistentStorageManager', () => {
       .mockImplementation((_key: string, vaultState: string) => {
         return vaultState
       })
-    // Override the implementation
-    cryptoLib.encryptSymmetric = mockEncryptSymmetric
+    // Override the implementation on the internal cryptoLib
+    internalCryptoLib.encryptSymmetric = mockEncryptSymmetric
 
     // @ts-expect-error: Using private property for testing
     const mediator = persistentStorageManager.mediator
@@ -132,7 +134,7 @@ describe('PersistentStorageManager', () => {
     })
 
     // Restore original implementations
-    cryptoLib.encryptSymmetric = originalEncryptSymmetric
+    internalCryptoLib.encryptSymmetric = originalEncryptSymmetric
     mediator.unRegisterComponent('syncManager')
   })
 
@@ -206,7 +208,7 @@ describe('PersistentStorageManager', () => {
 
     // Create a new TwoFaLib instance with the saved data
     const { loadTwoFaLibFromLockedRepesentation } =
-      getTwoFaLibVaultCreationUtils(cryptoLib, deviceType, ['test'])
+      getTwoFaLibVaultCreationUtils(nodeProviders, deviceType, ['test'])
     const newTwoFaLib = await loadTwoFaLibFromLockedRepesentation(
       savedData,
       newPassphrase,

@@ -8,13 +8,13 @@
       "import": "./build/main.mjs",
       "types": "./build/main.d.mts"
     },
-    "./cryptoProviders/browser": {
-      "import": "./build/CryptoProviders/browser/index.mjs",
-      "types": "./build/CryptoProviders/browser/index.d.mts"
+    "./platformProviders/browser": {
+      "import": "./build/platformProviders/browser/index.mjs",
+      "types": "./build/platformProviders/browser/index.d.mts"
     },
-    "./cryptoProviders/node": {
-      "import": "./build/CryptoProviders/node/index.mjs",
-      "types": "./build/CryptoProviders/node/index.d.mts"
+    "./platformProviders/node": {
+      "import": "./build/platformProviders/node/index.mjs",
+      "types": "./build/platformProviders/node/index.d.mts"
     }
   },
   "types": "./build/main.d.mts",

@@ -34,6 +34,7 @@ import type {
   LockedRepresentationString,
 } from './interfaces/Vault.mjs'
 import type { SaveFunction } from './interfaces/SaveFunction.mjs'
+import type { PlatformProviders } from './interfaces/PlatformProviders.mjs'
 
 import {
   TwoFALibError,
@@ -83,4 +84,5 @@ export type {
   DeviceInfo,
   PublicSyncDevice,
   SaveFunction,
+  PlatformProviders,
 }

@@ -1,4 +1,5 @@
 import type CryptoLib from '../interfaces/CryptoLib.mjs'
+import type { PlatformProviders } from '../interfaces/PlatformProviders.mjs'
 import { InitializationError, TwoFALibError } from '../TwoFALibError.mjs'
 
 /**
@@ -7,6 +8,7 @@ import { InitializationError, TwoFALibError } from '../TwoFALibError.mjs'
  */
 class LibraryLoader {
   // libraries that are always loaded
+  private platformProviders: PlatformProviders
   private cryptoLib: CryptoLib
 
   // libraries that are loaded on demand
@@ -19,14 +21,17 @@ class LibraryLoader {
 
   /**
    * Constructs a new instance of LibraryLoader.
-   * @param cryptoLib - An instance of CryptoLib that is required for library operations.
-   * @throws {InitializationError} If the provided CryptoLib instance is invalid.
+   * @param platformProviders - Platform-specific providers containing CryptoLib and other providers.
+   * @throws {InitializationError} If the provided platform providers are invalid.
    */
-  constructor(cryptoLib: CryptoLib) {
-    if (!cryptoLib) {
-      throw new InitializationError('CryptoLib is required')
+  constructor(platformProviders: PlatformProviders) {
+    if (!platformProviders?.CryptoLib) {
+      throw new InitializationError(
+        'PlatformProviders with CryptoLib is required',
+      )
     }
-    this.cryptoLib = cryptoLib
+    this.platformProviders = platformProviders
+    this.cryptoLib = new platformProviders.CryptoLib()
   }
 
   /**
@@ -34,6 +39,13 @@ class LibraryLoader {
    */
   getCryptoLib() {
     return this.cryptoLib
+  }
+
+  /**
+   * @returns The PlatformProviders instance.
+   */
+  getPlatformProviders() {
+    return this.platformProviders
   }
 
   /**

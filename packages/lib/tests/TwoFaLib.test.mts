@@ -2,7 +2,6 @@ import { describe, it, expect, beforeEach, beforeAll, vi, Mock } from 'vitest'
 import WS from 'vitest-websocket-mock'
 
 import {
-  CryptoLib,
   DeviceType,
   EncryptedPrivateKey,
   EncryptedSymmetricKey,
@@ -13,6 +12,7 @@ import {
   PublicKey,
   TwoFaLibEvent,
   DeviceId,
+  PlatformProviders,
 } from '../src/main.mjs'
 
 import {
@@ -26,7 +26,7 @@ import {
 vi.mock('unws')
 
 describe('2falib', () => {
-  let cryptoLib: CryptoLib
+  let platformProviders: PlatformProviders
   let twoFaLib: TwoFaLib
   let mockPersistentStorageManager: { save: Mock; init: Mock }
   let privateKey: PrivateKey
@@ -39,7 +39,7 @@ describe('2falib', () => {
   beforeAll(async () => {
     const result = await createTwoFaLibForTests()
     twoFaLib = result.twoFaLib
-    cryptoLib = result.cryptoLib
+    platformProviders = result.platformProviders
     encryptedPrivateKey = result.encryptedPrivateKey
     encryptedSymmetricKey = result.encryptedSymmetricKey
     privateKey = result.privateKey
@@ -65,7 +65,7 @@ describe('2falib', () => {
         () =>
           new TwoFaLib(
             '' as DeviceType,
-            cryptoLib,
+            platformProviders,
             ['test'],
             privateKey,
             symmetricKey,
@@ -85,7 +85,7 @@ describe('2falib', () => {
         () =>
           new TwoFaLib(
             longDeviceIdentifier as DeviceType,
-            cryptoLib,
+            platformProviders,
             ['test'],
             privateKey,
             symmetricKey,
@@ -124,7 +124,7 @@ describe('2falib', () => {
         () =>
           new TwoFaLib(
             deviceType,
-            cryptoLib,
+            platformProviders,
             // @ts-expect-error empty array is not a valid argument
             [],
             privateKey,
@@ -142,7 +142,7 @@ describe('2falib', () => {
     it('should create a TwoFaLib instance with valid parameters', () => {
       const twoFaLib = new TwoFaLib(
         deviceType,
-        cryptoLib,
+        platformProviders,
         ['test'],
         privateKey,
         symmetricKey,
@@ -167,7 +167,7 @@ describe('2falib', () => {
   it('should emit ready event after loading', async () => {
     const twoFaLib = new TwoFaLib(
       deviceType,
-      cryptoLib,
+      platformProviders,
       ['test'],
       privateKey,
       symmetricKey,
@@ -199,7 +199,7 @@ describe('2falib', () => {
 
       const twoFaLib = new TwoFaLib(
         deviceType,
-        cryptoLib,
+        platformProviders,
         ['test'],
         privateKey,
         symmetricKey,
@@ -255,7 +255,7 @@ describe('2falib', () => {
 
       const twoFaLib = new TwoFaLib(
         deviceType,
-        cryptoLib,
+        platformProviders,
         ['test'],
         privateKey,
         symmetricKey,
@@ -290,7 +290,7 @@ describe('2falib', () => {
 
       const twoFaLib = new TwoFaLib(
         deviceType,
-        cryptoLib,
+        platformProviders,
         ['test'],
         privateKey,
         symmetricKey,

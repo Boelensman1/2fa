@@ -1,7 +1,7 @@
 import { v4 as genUuidV4 } from 'uuid'
 import type { ZxcvbnResult } from '@zxcvbn-ts/core'
 
-import type CryptoLib from '../interfaces/CryptoLib.mjs'
+import type { PlatformProviders } from '../interfaces/PlatformProviders.mjs'
 import type { Passphrase } from '../interfaces/CryptoLib.mjs'
 import type { DeviceId, DeviceType } from '../interfaces/SyncTypes.mjs'
 
@@ -98,6 +98,7 @@ const createNewTwoFaLibVault = async (
   passphrase: Passphrase,
 ) => {
   const cryptoLib = libraryLoader.getCryptoLib()
+  const platformProviders = libraryLoader.getPlatformProviders()
   const {
     publicKey,
     privateKey,
@@ -116,7 +117,7 @@ const createNewTwoFaLibVault = async (
   const deviceId = genUuidV4() as DeviceId
   const twoFaLib = new TwoFaLib(
     deviceType,
-    cryptoLib,
+    platformProviders,
     passphraseExtraDict,
     privateKey,
     symmetricKey,
@@ -165,6 +166,7 @@ const loadTwoFaLibFromLockedRepesentation = async (
   passphrase: Passphrase,
 ): Promise<TwoFaLib> => {
   const cryptoLib = libraryLoader.getCryptoLib()
+  const platformProviders = libraryLoader.getPlatformProviders()
   const lockedRepresentation = JSON.parse(lockedRepresentationString) as
     | Partial<LockedRepresentation>
     | undefined
@@ -208,7 +210,7 @@ const loadTwoFaLibFromLockedRepesentation = async (
 
   return new TwoFaLib(
     deviceType,
-    cryptoLib,
+    platformProviders,
     passphraseExtraDict,
     privateKey,
     symmetricKey,
@@ -228,7 +230,7 @@ const loadTwoFaLibFromLockedRepesentation = async (
 
 /**
  * Returns utility functions useful in creating a new twoFaLib vault
- * @param cryptoLib - An instance of CryptoLib that is compatible with the environment.
+ * @param platformProviders - The platform-specific providers containing CryptoLib and other providers.
  * @param deviceType - A unique identifier for this device type (e.g. 2fa-cli).
  * @param passphraseExtraDict - Additional words to be used for passphrase strength evaluation.
  * @param saveFunction - The function to save the data.
@@ -236,13 +238,13 @@ const loadTwoFaLibFromLockedRepesentation = async (
  * @returns An object with methods to evaluate passphrase strength and create a new TwoFaLib vault.
  */
 export const getTwoFaLibVaultCreationUtils = (
-  cryptoLib: CryptoLib,
+  platformProviders: PlatformProviders,
   deviceType: DeviceType,
   passphraseExtraDict: PassphraseExtraDict,
   saveFunction?: SaveFunction,
   serverUrl?: string,
 ) => {
-  const libraryLoader = new LibraryLoader(cryptoLib)
+  const libraryLoader = new LibraryLoader(platformProviders)
 
   return {
     getPassphraseStrength: getPassphraseStrength.bind(null, libraryLoader),

@@ -1,6 +1,6 @@
 import { TypedEventTarget } from 'typescript-event-target'
 
-import type CryptoLib from './interfaces/CryptoLib.mjs'
+import type { PlatformProviders } from './interfaces/PlatformProviders.mjs'
 import type {
   EncryptedPrivateKey,
   EncryptedSymmetricKey,
@@ -74,7 +74,7 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
   /**
    * Constructs a new instance of TwoFaLib. If a serverUrl is provided, the library will use it for its sync operations.
    * @param deviceType - The identifier for this device type (e.g. 2fa-cli).
-   * @param cryptoLib - An instance of CryptoLib that is compatible with the environment.
+   * @param platformProviders - The platform-specific providers containing CryptoLib and other providers.
    * @param passphraseExtraDict - Additional words to be used for passphrase strength evaluation.
    * @param privateKey - The private key used for cryptographic operations.
    * @param symmetricKey - The symmetric key used for cryptographic operations.
@@ -92,7 +92,7 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
    */
   constructor(
     deviceType: DeviceType,
-    cryptoLib: CryptoLib,
+    platformProviders: PlatformProviders,
     passphraseExtraDict: PassphraseExtraDict,
     privateKey: PrivateKey,
     symmetricKey: SymmetricKey,
@@ -137,7 +137,7 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
 
     this.mediator = new TwoFaLibMediator()
     this.mediator.registerComponents([
-      ['libraryLoader', new LibraryLoader(cryptoLib)],
+      ['libraryLoader', new LibraryLoader(platformProviders)],
       [
         'persistentStorageManager',
         new PersistentStorageManager(

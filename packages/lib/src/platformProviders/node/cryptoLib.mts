@@ -28,7 +28,7 @@ import type {
   SymmetricKey,
   SyncKey,
 } from '../../interfaces/CryptoLib.mjs'
-import { generatePassphraseHash } from '../browser/index.mjs'
+import { generatePassphraseHash } from '../browser/cryptoLib.mjs'
 
 const generateKeyPair = promisify(generateKeyPairCb)
 const generateKey = promisify(generateKeyCb)

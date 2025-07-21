@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeAll } from 'vitest'
 import {
   getTwoFaLibVaultCreationUtils,
-  type CryptoLib,
   type Passphrase,
   LockedRepresentationString,
 } from '../../src/main.mjs'
@@ -10,9 +9,9 @@ import {
   deviceType,
   passphraseExtraDict,
 } from '../testUtils.mjs'
+import { nodeProviders } from '../../src/platformProviders/node/index.mjs'
 
 describe('creationUtils', () => {
-  let cryptoLib: CryptoLib
   let creationUtils: ReturnType<typeof getTwoFaLibVaultCreationUtils>
   let lockedRepresentation: LockedRepresentationString
 
@@ -24,12 +23,11 @@ describe('creationUtils', () => {
     }
 
     const result = await createTwoFaLibForTests(saveFunction)
-    cryptoLib = result.cryptoLib
 
     await result.twoFaLib.storage.forceSave()
 
     creationUtils = getTwoFaLibVaultCreationUtils(
-      cryptoLib,
+      nodeProviders,
       deviceType,
       passphraseExtraDict,
     )

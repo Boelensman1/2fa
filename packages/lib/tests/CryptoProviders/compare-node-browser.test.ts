@@ -11,15 +11,15 @@ import {
   Salt,
 } from '../../src/main.mjs'
 
-import NodeCryptoProvider from '../../src/CryptoProviders/node/index.mjs'
-import BrowserCryptoProvider from '../../src/CryptoProviders/browser/index.mjs'
+import { nodeProviders } from '../../src/platformProviders/node/index.mjs'
+import { browserProviders } from '../../src/platformProviders/browser/index.mjs'
 
 // @ts-expect-error node crypto and webcrypto don't have the exact same types
 globalThis.window = { crypto: crypto.webcrypto }
 
 describe('Crypto Provider Comparison', () => {
-  const nodeCrypto = new NodeCryptoProvider()
-  const browserCrypto = new BrowserCryptoProvider()
+  const nodeCrypto = new nodeProviders.CryptoLib()
+  const browserCrypto = new browserProviders.CryptoLib()
   const testPassphrase = 'testPassphrase123' as Passphrase
   const testMessage = 'Hello, World!'
 
@@ -228,7 +228,7 @@ describe('Crypto Provider Comparison', () => {
 
     test('Node and Browser createSyncKey produce the same result', async () => {
       const sharedKey = new Uint8Array([1, 2, 3, 4, 5])
-      const salt = 'testSalt'
+      const salt = 'testSalt' as Salt
 
       const nodeSyncKey = await nodeCrypto.createSyncKey(sharedKey, salt)
       const browserSyncKey = await browserCrypto.createSyncKey(sharedKey, salt)

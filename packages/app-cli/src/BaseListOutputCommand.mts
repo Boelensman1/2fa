@@ -2,6 +2,7 @@ import { Option } from 'clipanion'
 import type { EntryMeta, EntryMetaWithToken } from 'favalib'
 
 import BaseCommand from './BaseCommand.mjs'
+import type { ErrorInCommand } from './BaseCommand.mjs'
 
 import generateEntriesTable from './utils/generateEntriesTable.mjs'
 import formatters from './formatters/index.mjs'
@@ -11,6 +12,7 @@ const formattersMap = new Map(formatters.map((f) => [f.name, f.formatter]))
 
 export type Formatter = (
   entries: (EntryMeta | EntryMetaWithToken)[],
+  errors: ErrorInCommand[],
 ) => Jsonifiable
 
 abstract class BaseListOutputCommand extends BaseCommand {
@@ -23,6 +25,8 @@ abstract class BaseListOutputCommand extends BaseCommand {
 
   // eslint-disable-next-line @typescript-eslint/require-await
   async exec() {
+    this.preFormattedOutput = this.format !== undefined
+
     let formatter: Formatter = (json: EntryMeta[]) =>
       json as unknown as JsonArray
 
@@ -37,11 +41,11 @@ abstract class BaseListOutputCommand extends BaseCommand {
     const list = this.getList()
     if (list.length === 0) {
       this.context.stdout.write('No entries\n')
-      return formatter([])
+      return formatter([], this.errors)
     }
 
     this.output(generateEntriesTable(list))
-    return formatter(list) as unknown as JsonArray
+    return formatter(list, this.errors) as unknown as JsonArray
   }
 }
 

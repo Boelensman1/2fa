@@ -12,6 +12,7 @@ import SyncResilver from './commands/sync/resilver.mjs'
 import SyncListDevices from './commands/sync/listDevices.mjs'
 import SyncSetFriendlyNameCommand from './commands/sync/setFriendlyName.mjs'
 import ExportTextCommand from './commands/export/text.mjs'
+import SyncGetInfoCommand from './commands/sync/getInfo.mjs'
 
 // check node version
 const nodeRuntimeMajorVersion = parseInt(process.version.split('.')[0])
@@ -24,7 +25,7 @@ const [, , ...args] = process.argv
 const cli = new Cli({
   binaryLabel: 'FavaCli',
   binaryName: `favacli`,
-  binaryVersion: '0.0.18',
+  binaryVersion: '0.0.21',
 })
 
 cli.register(VaultCreateCommand)
@@ -38,6 +39,7 @@ cli.register(SyncResilver)
 cli.register(SyncListDevices)
 cli.register(ExportTextCommand)
 cli.register(SyncSetFriendlyNameCommand)
+cli.register(SyncGetInfoCommand)
 
 cli.register(Builtins.HelpCommand)
 

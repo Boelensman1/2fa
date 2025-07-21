@@ -17,6 +17,7 @@ const cryptoLib = new NodeCryptoProvider()
 const loadVault = async (
   vaultData: LockedRepresentationString,
   settings: Settings,
+  addError: (err: Error) => void,
   verbose = false,
 ) => {
   const saveFunction: SaveFunction = async (newLockedRepresentationString) => {
@@ -64,8 +65,12 @@ const loadVault = async (
       passphrase,
     )
   twoFaLib.addEventListener(TwoFaLibEvent.Log, (ev) => {
+    if (ev.detail.severity === 'warning') {
+      addError(new Error(ev.detail.message))
+      return
+    }
     if (ev.detail.severity !== 'info' || verbose) {
-      console.log(ev.detail)
+      console.log(ev.detail.message)
     }
   })
 

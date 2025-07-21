@@ -18,7 +18,7 @@ const generateEntriesTable = (
     headers.push({ value: 'Token', align: 'left', width: 10 })
   }
 
-  const rows = entries.map((entry) => {
+  const rows = entries.map((entry: EntryMeta | EntryMetaWithToken) => {
     const row = [
       entry.id,
       entry.name || '-',

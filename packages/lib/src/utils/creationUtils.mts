@@ -2,7 +2,7 @@ import { v4 as genUuidV4 } from 'uuid'
 import type { ZxcvbnResult } from '@zxcvbn-ts/core'
 
 import type { PlatformProviders } from '../interfaces/PlatformProviders.mjs'
-import type { Passphrase } from '../interfaces/CryptoLib.mjs'
+import type { Password } from '../interfaces/CryptoLib.mjs'
 import type { DeviceId, DeviceType } from '../interfaces/SyncTypes.mjs'
 
 import TwoFaLib from '../TwoFaLib.mjs'
@@ -14,23 +14,23 @@ import type {
   LockedRepresentationString,
   VaultState,
 } from '../interfaces/Vault.mjs'
-import type { PassphraseExtraDict } from '../interfaces/PassphraseExtraDict.js'
+import type { PasswordExtraDict } from '../interfaces/PasswordExtraDict.js'
 import { SaveFunction } from '../interfaces/SaveFunction.mjs'
 
 /**
- * Evaluates the strength of a passphrase.
+ * Evaluates the strength of a password.
  * @param libraryLoader - An instance of LibraryLoader.
- * @param passphrase - The passphrase to evaluate.
- * @param passphraseExtraDict - Additional words to be used for passphrase strength evaluation.
- * @returns Promise resolving to the passphrase strength result.
+ * @param password - The password to evaluate.
+ * @param passwordExtraDict - Additional words to be used for password strength evaluation.
+ * @returns Promise resolving to the password strength result.
  */
-export const getPassphraseStrength = async (
+export const getPasswordStrength = async (
   libraryLoader: LibraryLoader,
-  passphrase: Passphrase,
-  passphraseExtraDict: PassphraseExtraDict,
+  password: Password,
+  passwordExtraDict: PasswordExtraDict,
 ): Promise<ZxcvbnResult> => {
   const zxcvbn = await libraryLoader.getZxcvbn()
-  return zxcvbn(passphrase, [
+  return zxcvbn(password, [
     'twofactor',
     'authentication',
     'token',
@@ -53,29 +53,29 @@ export const getPassphraseStrength = async (
     'key',
     'trust',
     'secure',
-    ...passphraseExtraDict,
+    ...passwordExtraDict,
   ])
 }
 
 /**
- * Validates the strength of a passphrase.
+ * Validates the strength of a password.
  * @param libraryLoader - An instance of LibraryLoader.
- * @param passphrase - The passphrase to validate.
- * @param passphraseExtraDict - Additional words to be used for passphrase strength evaluation.
- * @throws {InitializationError} If the passphrase is too weak.
+ * @param password - The password to validate.
+ * @param passwordExtraDict - Additional words to be used for password strength evaluation.
+ * @throws {InitializationError} If the password is too weak.
  */
-export const validatePassphraseStrength = async (
+export const validatePasswordStrength = async (
   libraryLoader: LibraryLoader,
-  passphrase: Passphrase,
-  passphraseExtraDict: PassphraseExtraDict,
+  password: Password,
+  passwordExtraDict: PasswordExtraDict,
 ) => {
-  const passphraseStrength = await getPassphraseStrength(
+  const passwordStrength = await getPasswordStrength(
     libraryLoader,
-    passphrase,
-    passphraseExtraDict,
+    password,
+    passwordExtraDict,
   )
-  if (passphraseStrength.score < 3) {
-    throw new TwoFALibError('Passphrase is too weak')
+  if (passwordStrength.score < 3) {
+    throw new TwoFALibError('Password is too weak')
   }
 }
 
@@ -84,18 +84,18 @@ export const validatePassphraseStrength = async (
  * @param libraryLoader - An instance of LibraryLoader.
  * @param deviceType - A unique identifier for the device type e.g. 2fa-cli.
  * @param serverUrl - The server URL for syncing.
- * @param passphraseExtraDict - Additional words to be used for passphrase strength evaluation.
+ * @param passwordExtraDict - Additional words to be used for password strength evaluation.
  * @param saveFunction - The function to save the data.
- * @param passphrase - The passphrase to be used to encrypt the private key.
+ * @param password - The password to be used to encrypt the private key.
  * @returns Promise resolving to an object containing the newly created TwoFaLib instance and related data.
  */
 const createNewTwoFaLibVault = async (
   libraryLoader: LibraryLoader,
   deviceType: DeviceType,
   serverUrl: string | undefined,
-  passphraseExtraDict: PassphraseExtraDict,
+  passwordExtraDict: PasswordExtraDict,
   saveFunction: SaveFunction | undefined,
-  passphrase: Passphrase,
+  password: Password,
 ) => {
   const cryptoLib = libraryLoader.getCryptoLib()
   const platformProviders = libraryLoader.getPlatformProviders()
@@ -106,19 +106,15 @@ const createNewTwoFaLibVault = async (
     encryptedPrivateKey,
     encryptedSymmetricKey,
     salt,
-  } = await cryptoLib.createKeys(passphrase)
+  } = await cryptoLib.createKeys(password)
 
-  await validatePassphraseStrength(
-    libraryLoader,
-    passphrase,
-    passphraseExtraDict,
-  )
+  await validatePasswordStrength(libraryLoader, password, passwordExtraDict)
 
   const deviceId = genUuidV4() as DeviceId
   const twoFaLib = new TwoFaLib(
     deviceType,
     platformProviders,
-    passphraseExtraDict,
+    passwordExtraDict,
     privateKey,
     symmetricKey,
     encryptedPrivateKey,
@@ -150,20 +146,20 @@ const createNewTwoFaLibVault = async (
  * Loads the library state from a previously locked representation.
  * @param libraryLoader - An instance of LibraryLoader.
  * @param deviceType - A unique identifier for this device type (e.g. 2fa-cli).
- * @param passphraseExtraDict - Additional words to be used for passphrase strength evaluation.
+ * @param passwordExtraDict - Additional words to be used for password strength evaluation.
  * @param saveFunction - The function to save the data.
  * @param lockedRepresentationString - The string representation of the locked library state representation.
- * @param passphrase - The passphrase for decrypting the keys.
+ * @param password - The password for decrypting the keys.
  * @returns A promise that resolves when loading is complete.
  * @throws {InitializationError} If loading fails due to invalid or corrupted data.
  */
 const loadTwoFaLibFromLockedRepesentation = async (
   libraryLoader: LibraryLoader,
   deviceType: DeviceType,
-  passphraseExtraDict: PassphraseExtraDict,
+  passwordExtraDict: PasswordExtraDict,
   saveFunction: SaveFunction | undefined,
   lockedRepresentationString: LockedRepresentationString,
-  passphrase: Passphrase,
+  password: Password,
 ): Promise<TwoFaLib> => {
   const cryptoLib = libraryLoader.getCryptoLib()
   const platformProviders = libraryLoader.getPlatformProviders()
@@ -187,7 +183,7 @@ const loadTwoFaLibFromLockedRepesentation = async (
     lockedRepresentation.encryptedPrivateKey,
     lockedRepresentation.encryptedSymmetricKey,
     lockedRepresentation.salt,
-    passphrase,
+    password,
   )
 
   const vaultState = JSON.parse(
@@ -211,7 +207,7 @@ const loadTwoFaLibFromLockedRepesentation = async (
   return new TwoFaLib(
     deviceType,
     platformProviders,
-    passphraseExtraDict,
+    passwordExtraDict,
     privateKey,
     symmetricKey,
     lockedRepresentation.encryptedPrivateKey,
@@ -232,28 +228,28 @@ const loadTwoFaLibFromLockedRepesentation = async (
  * Returns utility functions useful in creating a new twoFaLib vault
  * @param platformProviders - The platform-specific providers containing CryptoLib and other providers.
  * @param deviceType - A unique identifier for this device type (e.g. 2fa-cli).
- * @param passphraseExtraDict - Additional words to be used for passphrase strength evaluation.
+ * @param passwordExtraDict - Additional words to be used for password strength evaluation.
  * @param saveFunction - The function to save the data.
  * @param serverUrl - The server URL for syncing.
- * @returns An object with methods to evaluate passphrase strength and create a new TwoFaLib vault.
+ * @returns An object with methods to evaluate password strength and create a new TwoFaLib vault.
  */
 export const getTwoFaLibVaultCreationUtils = (
   platformProviders: PlatformProviders,
   deviceType: DeviceType,
-  passphraseExtraDict: PassphraseExtraDict,
+  passwordExtraDict: PasswordExtraDict,
   saveFunction?: SaveFunction,
   serverUrl?: string,
 ) => {
   const libraryLoader = new LibraryLoader(platformProviders)
 
   return {
-    getPassphraseStrength: getPassphraseStrength.bind(null, libraryLoader),
+    getPasswordStrength: getPasswordStrength.bind(null, libraryLoader),
     createNewTwoFaLibVault: createNewTwoFaLibVault.bind(
       null,
       libraryLoader,
       deviceType,
       serverUrl,
-      passphraseExtraDict,
+      passwordExtraDict,
       saveFunction,
     ),
     loadTwoFaLibFromLockedRepesentation:
@@ -261,7 +257,7 @@ export const getTwoFaLibVaultCreationUtils = (
         null,
         libraryLoader,
         deviceType,
-        passphraseExtraDict,
+        passwordExtraDict,
         saveFunction,
       ),
   }

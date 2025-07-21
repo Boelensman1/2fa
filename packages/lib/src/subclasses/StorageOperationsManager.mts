@@ -1,6 +1,6 @@
 import type TwoFaLibMediator from '../TwoFaLibMediator.mjs'
 
-import type { Passphrase } from '../interfaces/CryptoLib.mjs'
+import type { Password } from '../interfaces/CryptoLib.mjs'
 import type { SaveFunction } from '../interfaces/SaveFunction.mjs'
 
 /**
@@ -29,17 +29,17 @@ class StorageOperationsManager {
   }
 
   /**
-   * Changes the library's passphrase.
-   * @param oldPassphrase - The current passphrase.
-   * @param newPassphrase - The new passphrase to set.
-   * @returns A promise that resolves when the passphrase change is complete.
-   * @throws {AuthenticationError} If the provided old passphrase is incorrect.
+   * Changes the library's password.
+   * @param oldPassword - The current password.
+   * @param newPassword - The new password to set.
+   * @returns A promise that resolves when the password change is complete.
+   * @throws {AuthenticationError} If the provided old password is incorrect.
    */
-  async changePassphrase(
-    oldPassphrase: Passphrase,
-    newPassphrase: Passphrase,
+  async changePassword(
+    oldPassword: Password,
+    newPassword: Password,
   ): Promise<void> {
-    return this.persistentStorage.changePassphrase(oldPassphrase, newPassphrase)
+    return this.persistentStorage.changePassword(oldPassword, newPassword)
   }
 
   /**

@@ -1,8 +1,8 @@
 import { Component, For } from 'solid-js'
 import type { ZxcvbnResult } from '@zxcvbn-ts/core'
-import { Passphrase } from 'favalib'
+import { Password } from 'favalib'
 
-const passphraseGuessesToPercentage = (guessesLog10: number) => {
+const passwordGuessesToPercentage = (guessesLog10: number) => {
   return Math.min(100, Math.round(Math.max(0, guessesLog10 - 1)) * 10)
 }
 
@@ -18,7 +18,7 @@ const getPasswordStrengthColor = (score: number) => {
 }
 
 interface PasswordStrengthMeterProps {
-  password: Passphrase
+  password: Password
   passwordStrength: ZxcvbnResult | null
 }
 
@@ -54,7 +54,7 @@ const PasswordStrengthMeter: Component<PasswordStrengthMeterProps> = (
           Password strength:
         </span>
         <span class="text-xs font-medium text-gray-500">
-          {passphraseGuessesToPercentage(
+          {passwordGuessesToPercentage(
             props.passwordStrength?.guessesLog10 ?? 0,
           )}
           %
@@ -64,7 +64,7 @@ const PasswordStrengthMeter: Component<PasswordStrengthMeterProps> = (
         <div
           class={`${getPasswordStrengthColor(props.passwordStrength?.score ?? 0)} h-2.5 rounded-full transition-all duration-300`}
           style={{
-            width: `${passphraseGuessesToPercentage(
+            width: `${passwordGuessesToPercentage(
               props.passwordStrength?.guessesLog10 ?? 0,
             )}%`,
           }}

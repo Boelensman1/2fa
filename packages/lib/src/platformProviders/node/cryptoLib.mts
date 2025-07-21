@@ -21,14 +21,14 @@ import type {
   Encrypted,
   EncryptedPrivateKey,
   EncryptedSymmetricKey,
-  Passphrase,
+  Password,
   PrivateKey,
   PublicKey,
   Salt,
   SymmetricKey,
   SyncKey,
 } from '../../interfaces/CryptoLib.mjs'
-import { generatePassphraseHash } from '../browser/cryptoLib.mjs'
+import { generatePasswordHash } from '../browser/cryptoLib.mjs'
 
 const generateKeyPair = promisify(generateKeyPairCb)
 const generateKey = promisify(generateKeyCb)
@@ -47,12 +47,12 @@ class NodeCryptoLib implements CryptoLib {
   /**
    * @inheritdoc
    */
-  async createKeys(passphrase: Passphrase) {
+  async createKeys(password: Password) {
     // create random salt
     const salt = randomBytes(16).toString('base64') as Salt
 
     // create passwordHash
-    const passphraseHash = await generatePassphraseHash(salt, passphrase)
+    const passwordHash = await generatePasswordHash(salt, password)
 
     // Generate public/private key pair
     const { publicKey, privateKey: encryptedPrivateKey } =
@@ -66,7 +66,7 @@ class NodeCryptoLib implements CryptoLib {
           type: 'pkcs8',
           format: 'pem',
           cipher: 'aes-256-cbc',
-          passphrase: passphraseHash,
+          passphrase: passwordHash,
         },
       })
 
@@ -81,7 +81,7 @@ class NodeCryptoLib implements CryptoLib {
       encryptedPrivateKey as EncryptedPrivateKey,
       encryptedSymmetricKey,
       salt,
-      passphrase,
+      password,
     )
 
     return {
@@ -101,10 +101,10 @@ class NodeCryptoLib implements CryptoLib {
     privateKey: PrivateKey,
     symmetricKey: SymmetricKey,
     salt: Salt,
-    passphrase: Passphrase,
+    password: Password,
   ) {
     // recreate passwordHash
-    const passphraseHash = await generatePassphraseHash(salt, passphrase)
+    const passwordHash = await generatePasswordHash(salt, password)
 
     // Encrypt private key
     const privateKeyObject = createPrivateKey({
@@ -115,7 +115,7 @@ class NodeCryptoLib implements CryptoLib {
       type: 'pkcs8',
       format: 'pem',
       cipher: 'aes-256-cbc',
-      passphrase: passphraseHash,
+      passphrase: passwordHash,
     }) as EncryptedPrivateKey
 
     // Encrypt symmetric key with public key
@@ -139,10 +139,10 @@ class NodeCryptoLib implements CryptoLib {
     encryptedPrivateKey: EncryptedPrivateKey,
     encryptedSymmetricKey: EncryptedSymmetricKey,
     salt: Salt,
-    passphrase: Passphrase,
+    password: Password,
   ) {
     // recreate passwordHash
-    const passphraseHash = await generatePassphraseHash(salt, passphrase)
+    const passwordHash = await generatePasswordHash(salt, password)
 
     let privateKeyObject: KeyObject
     let privateKey: PrivateKey
@@ -151,7 +151,7 @@ class NodeCryptoLib implements CryptoLib {
         key: encryptedPrivateKey,
         type: 'pkcs8',
         format: 'pem',
-        passphrase: passphraseHash,
+        passphrase: passwordHash,
       })
       privateKey = privateKeyObject.export({
         type: 'pkcs8',
@@ -161,7 +161,7 @@ class NodeCryptoLib implements CryptoLib {
       // eslint-disable-next-line no-restricted-globals
       if (err instanceof Error && 'code' in err) {
         if (err.code === 'ERR_OSSL_BAD_DECRYPT') {
-          throw new CryptoError('Invalid passphrase')
+          throw new CryptoError('Invalid password')
         }
         if (err.code === 'ERR_OSSL_UNSUPPORTED') {
           throw new CryptoError('Invalid private key')

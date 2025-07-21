@@ -5,7 +5,7 @@ import * as t from 'typanion'
 import keytar from 'keytar'
 
 import BaseCommand from '../../BaseCommand.mjs'
-import { password, input } from '@inquirer/prompts'
+import { password as passwordInput, input } from '@inquirer/prompts'
 
 class ExportTextCommand extends BaseCommand {
   static override paths = [['export', 'text']]
@@ -16,8 +16,8 @@ class ExportTextCommand extends BaseCommand {
     description: 'File path for the export, if not set will output to stdout',
   })
 
-  passphraseSource = Option.String('--passphrase-source', {
-    description: 'Source of passphrase, either "stdin" or "stored"',
+  passwordSource = Option.String('--password-source', {
+    description: 'Source of password, either "stdin" or "stored"',
     validator: t.isEnum(['stdin', 'stored']),
   })
 
@@ -29,24 +29,21 @@ class ExportTextCommand extends BaseCommand {
 
       You can specify a file path for the export using the --path flag.
 
-      You can specify the passphrase source with --passphrase-source flag:
-      - "stdin": You'll be prompted to enter a passphrase
-      - "stored": Will use the previously stored passphrase, if none is found, will be promted for a passphrase
+      You can specify the password source with --password-source flag:
+      - "stdin": You'll be prompted to enter a password
+      - "stored": Will use the previously stored password, if none is found, will be promted for a password
 
-      If no passphrase source is specified, it will export without encryption (no passphrase).
+      If no password source is specified, it will export without encryption (no password).
 
-      WARNING: Exporting your 2FA secrets in plain text (without passphrase) is not secure.
+      WARNING: Exporting your 2FA secrets in plain text (without password) is not secure.
     `,
     examples: [
       ['Export entries as unencrypted text (UNSECURE)', 'export text'],
       ['Export to specific file', 'export text --path=/path/to/export.txt'],
+      ['Export using stored password', 'export text --password-source=stored'],
       [
-        'Export using stored passphrase',
-        'export text --passphrase-source=stored',
-      ],
-      [
-        'Export with manual passphrase entry',
-        'export text --passphrase-source=stdin',
+        'Export with manual password entry',
+        'export text --password-source=stdin',
       ],
     ],
   })
@@ -54,46 +51,46 @@ class ExportTextCommand extends BaseCommand {
   async exec() {
     const entriesCount = this.twoFaLib.vault.listEntries().length
 
-    // Get passphrase based on source
-    let passphrase: string | undefined | null = undefined
+    // Get password based on source
+    let password: string | undefined | null = undefined
 
-    // If passphrase source is "stored", try to get from keytar without prompting
-    if (this.passphraseSource === 'stored') {
+    // If password source is "stored", try to get from keytar without prompting
+    if (this.passwordSource === 'stored') {
       try {
-        passphrase = await keytar.getPassword('favacli', 'export-passphrase')
-        if (!passphrase) {
+        password = await keytar.getPassword('favacli', 'export-password')
+        if (!password) {
           this.context.stderr.write(
-            'No stored passphrase found. Please enter a passphrase to store.\n',
+            'No stored password found. Please enter a password to store.\n',
           )
-          passphrase = await password({
-            message: 'Enter passphrase to store and use for encryption:',
+          password = await passwordInput({
+            message: 'Enter password to store and use for encryption:',
           })
 
-          // Store the passphrase for future use
-          await keytar.setPassword('favacli', 'export-passphrase', passphrase)
-          this.context.stdout.write('Passphrase stored.\n')
+          // Store the password for future use
+          await keytar.setPassword('favacli', 'export-password', password)
+          this.context.stdout.write('Password stored.\n')
         }
       } catch (error) {
         if (error instanceof Error) {
           this.context.stderr.write(
-            `Failed to access stored passphrase: ${error.message}}\n`,
+            `Failed to access stored password: ${error.message}}\n`,
           )
         } else {
           this.context.stderr.write(
-            `Failed to access stored passphrase: Unknown error\n`,
+            `Failed to access stored password: Unknown error\n`,
           )
         }
         return { success: false }
       }
     }
     // Default behavior or explicit "stdin"
-    else if (this.passphraseSource === 'stdin') {
-      passphrase = await password({
-        message: 'Enter passphrase to use for encryption:',
+    else if (this.passwordSource === 'stdin') {
+      password = await passwordInput({
+        message: 'Enter password to use for encryption:',
       })
     }
-    // Add warning and confirmation if no passphrase is provided
-    else if (!this.passphraseSource) {
+    // Add warning and confirmation if no password is provided
+    else if (!this.passwordSource) {
       this.context.stderr.write(
         'WARNING: You are about to export 2FA secrets in plain text without encryption.\n',
       )
@@ -114,7 +111,7 @@ class ExportTextCommand extends BaseCommand {
 
     const content = await this.twoFaLib.exportImport.exportEntries(
       'text',
-      passphrase,
+      password,
       true,
     )
 

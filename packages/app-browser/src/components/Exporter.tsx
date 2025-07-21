@@ -1,14 +1,20 @@
 import { createSignal, Show, createEffect } from 'solid-js'
 import useStore from '../store/useStore'
 import PasswordStrengthMeter from './PasswordStrengthMeter'
-import type { Passphrase } from 'favalib'
+import type { Password } from 'favalib'
 import type { ZxcvbnResult } from '@zxcvbn-ts/core'
 import creationUtils from '../utils/creationUtils'
+
+const calculatePasswordStrength = async (
+  password: Password,
+): Promise<ZxcvbnResult> => {
+  return await creationUtils.getPasswordStrength(password, ['browser'])
+}
 
 const Exporter = () => {
   const [state] = useStore()
   const [format, setFormat] = createSignal<'html' | 'text'>('text')
-  const [password, setPassword] = createSignal<Passphrase>('' as Passphrase)
+  const [password, setPassword] = createSignal<Password>('' as Password)
   const [acknowledgedWarning, setAcknowledgedWarning] = createSignal(false)
   const [passwordStrength, setPasswordStrength] =
     createSignal<ZxcvbnResult | null>(null)
@@ -20,12 +26,6 @@ const Exporter = () => {
       setPasswordStrength(null)
     }
   })
-
-  const calculatePasswordStrength = async (
-    passphrase: Passphrase,
-  ): Promise<ZxcvbnResult> => {
-    return await creationUtils.getPassphraseStrength(passphrase, ['browser'])
-  }
 
   const handleExport = async () => {
     const { twoFaLib } = state
@@ -85,7 +85,7 @@ const Exporter = () => {
           <input
             type="password"
             value={password()}
-            onInput={(e) => setPassword(e.currentTarget.value as Passphrase)}
+            onInput={(e) => setPassword(e.currentTarget.value as Password)}
             class="ml-2 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </label>

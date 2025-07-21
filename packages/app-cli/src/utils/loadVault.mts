@@ -5,7 +5,7 @@ import {
   DeviceType,
   getTwoFaLibVaultCreationUtils,
   type LockedRepresentationString,
-  Passphrase,
+  Password,
   SaveFunction,
   TwoFaLibEvent,
 } from 'favalib'
@@ -52,15 +52,15 @@ const loadVault = async (
     saveFunction,
   )
 
-  const passphrase = (await keytar.getPassword(
+  const password = (await keytar.getPassword(
     'favacli',
-    'vault-passphrase',
-  )) as Passphrase
+    'vault-password',
+  )) as Password
 
   const twoFaLib =
     await twoFaLibVaultCreationUtils.loadTwoFaLibFromLockedRepesentation(
       vaultData,
-      passphrase,
+      password,
     )
   twoFaLib.addEventListener(TwoFaLibEvent.Log, (ev) => {
     if (ev.detail.severity === 'warning') {

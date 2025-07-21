@@ -3,9 +3,9 @@ import keytar from 'keytar'
 
 import BaseCommand from '../../BaseCommand.mjs'
 
-import { DeviceType, getTwoFaLibVaultCreationUtils, Passphrase } from 'favalib'
+import { DeviceType, getTwoFaLibVaultCreationUtils, Password } from 'favalib'
 import NodePlatformProvider from 'favalib/platformProviders/node'
-import { password } from '@inquirer/prompts'
+import { password as passwordInput } from '@inquirer/prompts'
 
 class VaultCreateCommand extends BaseCommand {
   static override paths = [['vault', 'create']]
@@ -18,8 +18,8 @@ class VaultCreateCommand extends BaseCommand {
     details: `
       This command creates a new encrypted vault file to store your 2FA entries.
 
-      You will be prompted to enter a passphrase that will be used to encrypt the vault.
-      The passphrase will be securely stored in your system's keychain.
+      You will be prompted to enter a password that will be used to encrypt the vault.
+      The password will be securely stored in your system's keychain.
     `,
     examples: [['Create a new vault', 'vault create']],
   })
@@ -36,26 +36,26 @@ class VaultCreateCommand extends BaseCommand {
         ),
     )
 
-    const passphrase = (await password({
-      message: 'Enter your vault passphrase:',
+    const password = (await passwordInput({
+      message: 'Enter your vault password:',
       mask: '*',
-    })) as Passphrase
+    })) as Password
 
-    const repeatPassphrase = (await password({
-      message: 'Repeat your vault passphrase:',
+    const repeatPassword = (await passwordInput({
+      message: 'Repeat your vault password:',
       mask: '*',
-    })) as Passphrase
+    })) as Password
 
-    if (passphrase != repeatPassphrase) {
-      throw new Error("Passphrases don't match")
+    if (password != repeatPassword) {
+      throw new Error("Passwords don't match")
     }
 
     const { twoFaLib } =
-      await twoFaLibVaultCreationUtils.createNewTwoFaLibVault(passphrase)
+      await twoFaLibVaultCreationUtils.createNewTwoFaLibVault(password)
 
     await Promise.all([
       twoFaLib.storage.forceSave(),
-      keytar.setPassword('favacli', 'vault-passphrase', passphrase),
+      keytar.setPassword('favacli', 'vault-password', password),
     ])
     return { success: true }
   }

@@ -116,7 +116,7 @@ describe('2falib', () => {
       ).toThrow('CryptoLib is required')
     })
 
-    it('should throw an error if passphrase extra dictionary is not provided', () => {
+    it('should throw an error if password extra dictionary is not provided', () => {
       expect(
         () =>
           new TwoFaLib(
@@ -133,7 +133,7 @@ describe('2falib', () => {
             { deviceId },
             [],
           ),
-      ).toThrow('Passphrase extra dictionary is required')
+      ).toThrow('Password extra dictionary is required')
     })
 
     it('should create a TwoFaLib instance with valid parameters', () => {

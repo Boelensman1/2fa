@@ -7,7 +7,7 @@ import {
   PublicKey,
   PrivateKey,
   SymmetricKey,
-  Passphrase,
+  Password,
   Salt,
 } from '../../src/main.mjs'
 
@@ -20,7 +20,7 @@ globalThis.window = { crypto: crypto.webcrypto }
 describe('Crypto Provider Comparison', () => {
   const nodeCrypto = new nodeProviders.CryptoLib()
   const browserCrypto = new browserProviders.CryptoLib()
-  const testPassphrase = 'testPassphrase123' as Passphrase
+  const testPassword = 'testPassword123' as Password
   const testMessage = 'Hello, World!'
 
   const runTests = (crypto: CryptoLib, name: string) => {
@@ -33,7 +33,7 @@ describe('Crypto Provider Comparison', () => {
 
     test(`${name}: full encryption cycle`, async () => {
       // Create keys
-      const keyResult = await crypto.createKeys(testPassphrase)
+      const keyResult = await crypto.createKeys(testPassword)
       encryptedPrivateKey = keyResult.encryptedPrivateKey
       encryptedSymmetricKey = keyResult.encryptedSymmetricKey
       publicKey = keyResult.publicKey
@@ -48,7 +48,7 @@ describe('Crypto Provider Comparison', () => {
         encryptedPrivateKey,
         encryptedSymmetricKey,
         salt,
-        testPassphrase,
+        testPassword,
       )
       privateKey = decryptResult.privateKey
       symmetricKey = decryptResult.symmetricKey
@@ -61,7 +61,7 @@ describe('Crypto Provider Comparison', () => {
         privateKey,
         symmetricKey,
         salt,
-        testPassphrase,
+        testPassword,
       )
       expect(reEncrypted.encryptedPrivateKey).toBeTruthy()
       expect(reEncrypted.encryptedSymmetricKey).toBeTruthy()
@@ -156,7 +156,7 @@ describe('Crypto Provider Comparison', () => {
         browserEncryptedPrivateKey,
         browserEncryptedSymmetricKey,
         browserSalt,
-        testPassphrase,
+        testPassword,
       )
       expect(result.privateKey).toBeTruthy()
       expect(result.symmetricKey).toBeTruthy()
@@ -174,7 +174,7 @@ describe('Crypto Provider Comparison', () => {
         nodeEncryptedPrivateKey,
         nodeEncryptedSymmetricKey,
         nodeSalt,
-        testPassphrase,
+        testPassword,
       )
       expect(result.privateKey).toBeTruthy()
       expect(result.symmetricKey).toBeTruthy()

@@ -19,7 +19,7 @@ import type {
   PrivateKey,
   SymmetricKey,
   PublicKey,
-  Passphrase,
+  Password,
   Salt,
 } from './interfaces/CryptoLib.mjs'
 import type {
@@ -76,7 +76,7 @@ export type {
   PrivateKey,
   SymmetricKey,
   PublicKey,
-  Passphrase,
+  Password,
   Salt,
   DeviceId,
   DeviceType,

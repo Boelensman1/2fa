@@ -2,7 +2,7 @@ import { type Component, createSignal } from 'solid-js'
 import {
   TwoFaLibEvent,
   type LockedRepresentationString,
-  type Passphrase,
+  type Password,
 } from 'favalib'
 import useStore from '../store/useStore'
 import actions from '../store/actions'
@@ -24,7 +24,7 @@ const Login: Component = () => {
 
     const twoFaLib = await creationUtils.loadTwoFaLibFromLockedRepesentation(
       lockedRepresentation as LockedRepresentationString,
-      password() as Passphrase,
+      password() as Password,
     )
 
     twoFaLib.storage.setSaveFunction((newLockedRepresentationString) => {

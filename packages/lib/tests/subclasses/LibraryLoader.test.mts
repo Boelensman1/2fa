@@ -34,7 +34,7 @@ describe('LibraryLoader', () => {
     }
     platformProviders = {
       CryptoLib: vi.fn(() => cryptoLib),
-      WebSocketLib: WebSocket,
+      WebSocketLib: () => WebSocket,
       QrCodeLib: vi.fn(),
       OpenPgpLib: vi.fn(),
     }

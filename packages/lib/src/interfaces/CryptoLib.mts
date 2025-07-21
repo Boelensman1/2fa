@@ -3,11 +3,11 @@ import type { Tagged } from 'type-fest'
 // `Encrypted<T>` tags the original string type to denote that is encrypted
 export type Encrypted<T extends string> = Tagged<T, 'Encrypted'>
 
-/** Represents a passphrase  */
-export type Passphrase = Tagged<string, 'Passphrase'>
+/** Represents a password  */
+export type Password = Tagged<string, 'Password'>
 
-/** Represents a passphraseHash  */
-export type PassphraseHash = Tagged<string, 'PassphraseHash'>
+/** Represents a passwordHash  */
+export type PasswordHash = Tagged<string, 'PasswordHash'>
 
 /** Represents a salt (base64 encoded) */
 export type Salt = Tagged<string, 'Salt'>
@@ -47,12 +47,12 @@ interface CryptoLib {
 
   /**
    * Creates the keys required for further operations.
-   * It first creates a public/private key pair, with the private key being encrypted using the passphrase.
+   * It first creates a public/private key pair, with the private key being encrypted using the password.
    * It then generates a symmetricKey. It will then encrypt this symmetricKey using the generated public key.
-   * @param passphrase - The passphrase to encrypt the private key with
+   * @param password - The password to encrypt the private key with
    * @returns A promise that resolves to an object containing the encrypted private key, encrypted symmetric key and public key
    */
-  createKeys: (passphrase: Passphrase) => Promise<{
+  createKeys: (password: Password) => Promise<{
     privateKey: PrivateKey
     symmetricKey: SymmetricKey
     encryptedPrivateKey: EncryptedPrivateKey
@@ -65,14 +65,14 @@ interface CryptoLib {
    * Decrypts the keys required for further operations
    * @param encryptedPrivateKey - The encrypted private key
    * @param encryptedSymmetricKey - The encrypted symmetric key
-   * @param passphrase - The passphrase to decrypt the private key with
+   * @param password - The password to decrypt the private key with
    * @returns A promise that resolves to an object containing the decrypted private, symmetric and public key
    */
   decryptKeys: (
     encryptedPrivateKey: EncryptedPrivateKey,
     encryptedSymmetricKey: EncryptedSymmetricKey,
     salt: Salt,
-    passphrase: Passphrase,
+    password: Password,
   ) => Promise<{
     privateKey: PrivateKey
     symmetricKey: SymmetricKey
@@ -83,14 +83,14 @@ interface CryptoLib {
    * Encrypts the keys required for further operation
    * @param privateKey - The private key to encrypt
    * @param symmetricKey - The symmetric key to encrypt
-   * @param passphrase - The passphrase to encrypt the private key with
+   * @param password - The password to encrypt the private key with
    * @returns A promise that resolves to an object containing the encrypted private and symmetricKey key
    */
   encryptKeys: (
     privateKey: PrivateKey,
     symmetricKey: SymmetricKey,
     salt: Salt,
-    passphrase: Passphrase,
+    password: Password,
   ) => Promise<{
     encryptedPrivateKey: EncryptedPrivateKey
     encryptedSymmetricKey: EncryptedSymmetricKey

@@ -7,14 +7,14 @@ import {
   DeviceId,
   DeviceType,
   type NewEntry,
-  type Passphrase,
+  type Password,
   type TwoFaLib,
   Entry,
   EntryId,
   TwoFaLibEvent,
 } from '../src/main.mjs'
 import type { Client as WsClient } from 'mock-socket'
-import { PassphraseExtraDict } from '../src/interfaces/PassphraseExtraDict.js'
+import { PasswordExtraDict } from '../src/interfaces/PasswordExtraDict.js'
 
 import type ServerMessage from 'favaserver/ServerMessage'
 import type {
@@ -55,9 +55,9 @@ export const anotherTotpEntry: Entry = {
 
 export const deviceId = 'device-id' as DeviceId
 export const deviceType = 'test-device' as DeviceType
-export const passphrase = 'w!22M@#GdRKqp#58#9&e' as Passphrase
+export const password = 'w!22M@#GdRKqp#58#9&e' as Password
 
-export const passphraseExtraDict: PassphraseExtraDict = ['test']
+export const passwordExtraDict: PasswordExtraDict = ['test']
 
 /**
  * Creates a TwoFaLib instance that can be used for testing.
@@ -68,21 +68,21 @@ export const createTwoFaLibForTests = async (saveFunction?: SaveFunction) => {
   const { createNewTwoFaLibVault } = getTwoFaLibVaultCreationUtils(
     nodeProviders,
     deviceType,
-    passphraseExtraDict,
+    passwordExtraDict,
     saveFunction,
   )
-  const result = await createNewTwoFaLibVault(passphrase)
+  const result = await createNewTwoFaLibVault(password)
   const cryptoLib = new nodeProviders.CryptoLib()
   const keys = await cryptoLib.decryptKeys(
     result.encryptedPrivateKey,
     result.encryptedSymmetricKey,
     result.salt,
-    passphrase,
+    password,
   )
 
   addTestLogEventListener(result.twoFaLib)
 
-  return { platformProviders: nodeProviders, passphrase, ...result, ...keys }
+  return { platformProviders: nodeProviders, password, ...result, ...keys }
 }
 
 /**

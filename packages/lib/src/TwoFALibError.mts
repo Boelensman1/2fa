@@ -19,7 +19,7 @@ export class TwoFALibError extends Error {
 export class InitializationError extends TwoFALibError {}
 
 /**
- * Error thrown during authentication, e.g. wrong passphrase for locked vault.
+ * Error thrown during authentication, e.g. wrong password for locked vault.
  */
 export class AuthenticationError extends TwoFALibError {}
 

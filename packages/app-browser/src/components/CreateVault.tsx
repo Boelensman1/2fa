@@ -1,5 +1,5 @@
 import { type Component, createSignal, createEffect } from 'solid-js'
-import { Passphrase, TwoFaLibEvent } from 'favalib'
+import { Password, TwoFaLibEvent } from 'favalib'
 import type { ZxcvbnResult } from '@zxcvbn-ts/core'
 
 import useStore from '../store/useStore'
@@ -11,15 +11,14 @@ import creationUtils from '../utils/creationUtils'
 
 const CreateVault: Component = () => {
   const [, dispatch] = useStore()
-  const [password, setPassword] = createSignal<Passphrase>('' as Passphrase)
+  const [password, setPassword] = createSignal<Password>('' as Password)
   const [mode, setMode] = createSignal<'create' | 'connect'>('create')
   const syncStoreWithLib = useSyncStoreWithLib()
   const [passwordStrength, setPasswordStrength] =
     createSignal<ZxcvbnResult | null>(null)
 
   const createVault = async () => {
-    const passphrase = password()
-    const { twoFaLib } = await creationUtils.createNewTwoFaLibVault(passphrase)
+    const { twoFaLib } = await creationUtils.createNewTwoFaLibVault(password())
 
     twoFaLib.storage.setSaveFunction((newLockedRepresentationString) => {
       saveFunction(newLockedRepresentationString)
@@ -46,9 +45,9 @@ const CreateVault: Component = () => {
   }
 
   const calculatePasswordStrength = async (
-    passphrase: Passphrase,
+    password: Password,
   ): Promise<ZxcvbnResult> => {
-    return await creationUtils.getPassphraseStrength(passphrase, ['browser'])
+    return await creationUtils.getPasswordStrength(password, ['browser'])
   }
 
   createEffect(() => {
@@ -74,7 +73,7 @@ const CreateVault: Component = () => {
           type="password"
           id="password"
           value={password()}
-          onInput={(e) => setPassword(e.currentTarget.value as Passphrase)}
+          onInput={(e) => setPassword(e.currentTarget.value as Password)}
           class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           autocomplete="new-password"
           required

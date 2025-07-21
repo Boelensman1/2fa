@@ -1,13 +1,13 @@
 import { describe, it, expect, beforeAll } from 'vitest'
 import {
   getTwoFaLibVaultCreationUtils,
-  type Passphrase,
+  type Password,
   LockedRepresentationString,
 } from '../../src/main.mjs'
 import {
   createTwoFaLibForTests,
   deviceType,
-  passphraseExtraDict,
+  passwordExtraDict,
 } from '../testUtils.mjs'
 import { nodeProviders } from '../../src/platformProviders/node/index.mjs'
 
@@ -29,17 +29,17 @@ describe('creationUtils', () => {
     creationUtils = getTwoFaLibVaultCreationUtils(
       nodeProviders,
       deviceType,
-      passphraseExtraDict,
+      passwordExtraDict,
     )
   })
 
   // Your existing tests
-  it('should throw an error on invalid passphrase', async () => {
+  it('should throw an error on invalid password', async () => {
     await expect(
       creationUtils.loadTwoFaLibFromLockedRepesentation(
         lockedRepresentation,
-        'not-the-passphrase' as Passphrase,
+        'not-the-password' as Password,
       ),
-    ).rejects.toThrow('Invalid passphrase')
+    ).rejects.toThrow('Invalid password')
   })
 })

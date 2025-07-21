@@ -3,7 +3,7 @@ import { AuthenticationError } from '../TwoFALibError.mjs'
 import type {
   EncryptedPrivateKey,
   EncryptedSymmetricKey,
-  Passphrase,
+  Password,
   PrivateKey,
   Salt,
   SymmetricKey,
@@ -18,12 +18,12 @@ import {
 
 import type TwoFaLibMediator from '../TwoFaLibMediator.mjs'
 import type { FavaMeta } from '../interfaces/FavaMeta.mjs'
-import type { PassphraseExtraDict } from '../interfaces/PassphraseExtraDict.js'
+import type { PasswordExtraDict } from '../interfaces/PasswordExtraDict.js'
 import type { SaveFunction } from '../interfaces/SaveFunction.mjs'
 import type { DeviceId, VaultStateSend } from '../interfaces/SyncTypes.mjs'
 
 import TwoFaLib from '../TwoFaLib.mjs'
-import { validatePassphraseStrength } from '../utils/creationUtils.mjs'
+import { validatePasswordStrength } from '../utils/creationUtils.mjs'
 
 /**
  * Manages all storage of data that should be persistent.
@@ -35,7 +35,7 @@ class PersistentStorageManager {
   /**
    * Constructs a new instance of PersistentStorageManager.
    * @param mediator - The mediator for accessing other components.
-   * @param passphraseExtraDict - Additional words to be used for passphrase strength evaluation.
+   * @param passwordExtraDict - Additional words to be used for password strength evaluation.
    * @param favaMeta - Meta info containing at least a unique identifier for this device.
    * @param privateKey - The private key used for cryptographic operations.
    * @param symmetricKey - The symmetric key used for cryptographic operations.
@@ -46,7 +46,7 @@ class PersistentStorageManager {
    */
   constructor(
     private mediator: TwoFaLibMediator,
-    private readonly passphraseExtraDict: PassphraseExtraDict,
+    private readonly passwordExtraDict: PasswordExtraDict,
     private readonly favaMeta: FavaMeta,
     private readonly privateKey: PrivateKey,
     private readonly symmetricKey: SymmetricKey,
@@ -103,7 +103,7 @@ class PersistentStorageManager {
 
   /**
    * Creates a partially encrypted representation of all data, except for
-   * the passphrase, that is needed to load the library. This can be used
+   * the password, that is needed to load the library. This can be used
    * for secure storage of the library's data.
    * @returns A promise that resolves with a json encoded string of
    * the partially encrypted library's data.
@@ -165,21 +165,18 @@ class PersistentStorageManager {
   }
 
   /**
-   * Validates the provided passphrase against the current library passphrase.
+   * Validates the provided password against the current library password.
    * @param salt - The salt used for key derivation.
-   * @param passphrase - The passphrase to validate.
-   * @returns A promise that resolves with a boolean indicating whether the passphrase is valid.
+   * @param password - The password to validate.
+   * @returns A promise that resolves with a boolean indicating whether the password is valid.
    */
-  async validatePassphrase(
-    salt: Salt,
-    passphrase: Passphrase,
-  ): Promise<boolean> {
+  async validatePassword(salt: Salt, password: Password): Promise<boolean> {
     try {
       await this.cryptoLib.decryptKeys(
         this.encryptedPrivateKey,
         this.encryptedSymmetricKey,
         salt,
-        passphrase,
+        password,
       )
       return true
     } catch {
@@ -188,24 +185,24 @@ class PersistentStorageManager {
   }
 
   /**
-   * Changes the library's passphrase.
-   * @param oldPassphrase - The current passphrase.
-   * @param newPassphrase - The new passphrase to set.
-   * @returns A promise that resolves when the passphrase change is complete.
-   * @throws {AuthenticationError} If the provided old passphrase is incorrect.
+   * Changes the library's password.
+   * @param oldPassword - The current password.
+   * @param newPassword - The new password to set.
+   * @returns A promise that resolves when the password change is complete.
+   * @throws {AuthenticationError} If the provided old password is incorrect.
    */
-  async changePassphrase(
-    oldPassphrase: Passphrase,
-    newPassphrase: Passphrase,
+  async changePassword(
+    oldPassword: Password,
+    newPassword: Password,
   ): Promise<void> {
-    await validatePassphraseStrength(
+    await validatePasswordStrength(
       this.mediator.getComponent('libraryLoader'),
-      newPassphrase,
-      this.passphraseExtraDict,
+      newPassword,
+      this.passwordExtraDict,
     )
 
-    const isValid = await this.validatePassphrase(this.salt, oldPassphrase)
-    if (!isValid) throw new AuthenticationError('Invalid old passphrase')
+    const isValid = await this.validatePassword(this.salt, oldPassword)
+    if (!isValid) throw new AuthenticationError('Invalid old password')
 
     const {
       encryptedPrivateKey: newEncryptedPrivateKey,
@@ -214,7 +211,7 @@ class PersistentStorageManager {
       this.privateKey,
       this.symmetricKey,
       this.salt,
-      newPassphrase,
+      newPassword,
     )
 
     this.encryptedPrivateKey = newEncryptedPrivateKey

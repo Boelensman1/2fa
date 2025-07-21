@@ -14,7 +14,7 @@ import type {
   TwoFaLibEventMap,
   TwoFaLibEventMapEvents,
 } from './interfaces/Events.mjs'
-import type { PassphraseExtraDict } from './interfaces/PassphraseExtraDict.js'
+import type { PasswordExtraDict } from './interfaces/PasswordExtraDict.js'
 import type {
   Vault,
   VaultSyncState,
@@ -75,7 +75,7 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
    * Constructs a new instance of TwoFaLib. If a serverUrl is provided, the library will use it for its sync operations.
    * @param deviceType - The identifier for this device type (e.g. 2fa-cli).
    * @param platformProviders - The platform-specific providers containing CryptoLib and other providers.
-   * @param passphraseExtraDict - Additional words to be used for passphrase strength evaluation.
+   * @param passwordExtraDict - Additional words to be used for password strength evaluation.
    * @param privateKey - The private key used for cryptographic operations.
    * @param symmetricKey - The symmetric key used for cryptographic operations.
    * @param encryptedPrivateKey - The encrypted private key
@@ -88,12 +88,12 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
    * @param syncState - The state of the sync, includes the serverUrl
    * @returns A promise that resolves when initialization is complete.
    * @throws {InitializationError} If some parameter has an invalid value
-   * @throws {AuthenticationError} If the provided passphrase is incorrect.
+   * @throws {AuthenticationError} If the provided password is incorrect.
    */
   constructor(
     deviceType: DeviceType,
     platformProviders: PlatformProviders,
-    passphraseExtraDict: PassphraseExtraDict,
+    passwordExtraDict: PasswordExtraDict,
     privateKey: PrivateKey,
     symmetricKey: SymmetricKey,
     encryptedPrivateKey: EncryptedPrivateKey,
@@ -125,9 +125,9 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
         'Device friendly name is too long, max 256 characters',
       )
     }
-    if (passphraseExtraDict?.length === 0) {
+    if (passwordExtraDict?.length === 0) {
       throw new InitializationError(
-        'Passphrase extra dictionary is required and must contain at least one element (eg phone)',
+        'Password extra dictionary is required and must contain at least one element (eg phone)',
       )
     }
     this.favaMeta = favaMeta
@@ -142,7 +142,7 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
         'persistentStorageManager',
         new PersistentStorageManager(
           this.mediator,
-          passphraseExtraDict,
+          passwordExtraDict,
           favaMeta,
           privateKey,
           symmetricKey,
@@ -158,7 +158,7 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
       ['storageOperationsManager', new StorageOperationsManager(this.mediator)],
       [
         'exportImportManager',
-        new ExportImportManager(this.mediator, passphraseExtraDict),
+        new ExportImportManager(this.mediator, passwordExtraDict),
       ],
       ['dispatchLibEvent', this.dispatchLibEvent.bind(this)],
       ['log', this.log.bind(this)],

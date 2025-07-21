@@ -11,7 +11,7 @@ import {
   getTwoFaLibVaultCreationUtils,
   TwoFaLib,
   type LockedRepresentationString,
-  type Passphrase,
+  type Password,
   type Salt,
   EncryptedPrivateKey,
   EncryptedSymmetricKey,
@@ -37,7 +37,7 @@ const getNthMockCallFirstArg = (mockFn: Mock, n: number) => {
 describe('PersistentStorageManager', () => {
   let twoFaLib: TwoFaLib
   let persistentStorageManager: PersistentStorageManager
-  let passphrase: Passphrase
+  let password: Password
   let salt: Salt
   let encryptedPrivateKey: EncryptedPrivateKey
   let encryptedSymmetricKey: EncryptedSymmetricKey
@@ -45,7 +45,7 @@ describe('PersistentStorageManager', () => {
   beforeAll(async () => {
     const result = await createTwoFaLibForTests()
     twoFaLib = result.twoFaLib
-    passphrase = result.passphrase
+    password = result.password
     salt = result.salt
     encryptedPrivateKey = result.encryptedPrivateKey
     encryptedSymmetricKey = result.encryptedSymmetricKey
@@ -182,9 +182,9 @@ describe('PersistentStorageManager', () => {
     expect(firstCall).not.toEqual(secondCall)
   }, 15000) // long running test
 
-  it('should change passphrase', async () => {
-    const oldPassphrase = passphrase
-    const newPassphrase = '8ySml!DK6QxJP6e6l$Cf' as Passphrase
+  it('should change password', async () => {
+    const oldPassword = password
+    const newPassword = '8ySml!DK6QxJP6e6l$Cf' as Password
     let savedData: LockedRepresentationString
 
     const mockSaveFunction = vi.fn((data: LockedRepresentationString) => {
@@ -193,10 +193,7 @@ describe('PersistentStorageManager', () => {
 
     persistentStorageManager.setSaveFunction(mockSaveFunction)
 
-    await persistentStorageManager.changePassphrase(
-      oldPassphrase,
-      newPassphrase,
-    )
+    await persistentStorageManager.changePassword(oldPassword, newPassword)
 
     // Verify that the save function was called
     expect(mockSaveFunction).toHaveBeenCalled()
@@ -211,57 +208,54 @@ describe('PersistentStorageManager', () => {
       getTwoFaLibVaultCreationUtils(nodeProviders, deviceType, ['test'])
     const newTwoFaLib = await loadTwoFaLibFromLockedRepesentation(
       savedData,
-      newPassphrase,
+      newPassword,
     )
 
     // eslint-disable-next-line @typescript-eslint/dot-notation
     const newPersistentStorageManager = newTwoFaLib['persistentStorageManager']
 
-    // Verify that the new passphrase works
+    // Verify that the new password works
     await expect(
-      newPersistentStorageManager.validatePassphrase(salt, newPassphrase),
+      newPersistentStorageManager.validatePassword(salt, newPassword),
     ).resolves.toBe(true)
 
-    // Verify that the old passphrase no longer works
+    // Verify that the old password no longer works
     await expect(
-      newPersistentStorageManager.validatePassphrase(salt, oldPassphrase),
+      newPersistentStorageManager.validatePassword(salt, oldPassword),
     ).resolves.toBe(false)
 
-    // change back the passphrase for the next tests
-    await persistentStorageManager.changePassphrase(
-      newPassphrase,
-      oldPassphrase,
-    )
+    // change back the password for the next tests
+    await persistentStorageManager.changePassword(newPassword, oldPassword)
   }, 15000) // long running test
 
-  it('should throw an error when changing to a weak passphrase', async () => {
-    const oldPassphrase = passphrase
-    const weakPassphrase = 'test123' as Passphrase
+  it('should throw an error when changing to a weak password', async () => {
+    const oldPassword = password
+    const weakPassword = 'test123' as Password
 
     await expect(
-      persistentStorageManager.changePassphrase(oldPassphrase, weakPassphrase),
-    ).rejects.toThrow('Passphrase is too weak')
+      persistentStorageManager.changePassword(oldPassword, weakPassword),
+    ).rejects.toThrow('Password is too weak')
 
-    // Verify that the old passphrase still works
-    const isValid = await persistentStorageManager.validatePassphrase(
+    // Verify that the old password still works
+    const isValid = await persistentStorageManager.validatePassword(
       salt,
-      oldPassphrase,
+      oldPassword,
     )
     expect(isValid).toBe(true)
   })
 
-  it('should validate correct passphrase', async () => {
-    const isValid = await persistentStorageManager.validatePassphrase(
+  it('should validate correct password', async () => {
+    const isValid = await persistentStorageManager.validatePassword(
       salt,
-      passphrase,
+      password,
     )
     expect(isValid).toBe(true)
   })
 
-  it('should invalidate incorrect passphrase', async () => {
-    const isValid = await persistentStorageManager.validatePassphrase(
+  it('should invalidate incorrect password', async () => {
+    const isValid = await persistentStorageManager.validatePassword(
       salt,
-      'wrongpassword!' as Passphrase,
+      'wrongpassword!' as Password,
     )
     expect(isValid).toBe(false)
   })

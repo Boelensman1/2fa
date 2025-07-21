@@ -13,8 +13,8 @@ import type {
   Encrypted,
   EncryptedPrivateKey,
   EncryptedSymmetricKey,
-  Passphrase,
-  PassphraseHash,
+  Password,
+  PasswordHash,
   PrivateKey,
   PublicKey,
   Salt,
@@ -35,22 +35,22 @@ const normalizeLineEndings = (str: string): string => {
 /**
  * Create a password hash
  * @param salt - The salt to use
- * @param passphrase - The passphrase to hash
+ * @param password - The password to hash
  * @returns The calculated password hash
  */
-export const generatePassphraseHash = (
+export const generatePasswordHash = (
   salt: Salt,
-  passphrase: string,
-): Promise<PassphraseHash> => {
+  password: string,
+): Promise<PasswordHash> => {
   return argon2id({
-    password: passphrase,
+    password,
     salt,
     parallelism: 1,
     iterations: 256,
     memorySize: 512,
     hashLength: 64,
     outputType: 'hex',
-  }) as Promise<PassphraseHash>
+  }) as Promise<PasswordHash>
 }
 
 /**
@@ -67,17 +67,17 @@ class BrowserCryptoLib implements CryptoLib {
   /**
    * @inheritdoc
    */
-  async createKeys(passphrase: Passphrase) {
+  async createKeys(password: Password) {
     // create random salt
     const salt = uint8ArrayToBase64(
       window.crypto.getRandomValues(new Uint8Array(16)),
     ) as Salt
 
     // create passwordHash
-    const passphraseHash = await generatePassphraseHash(salt, passphrase)
+    const passwordHash = await generatePasswordHash(salt, password)
 
     const { privateKey, encryptedPrivateKey, publicKey } =
-      await this.createKeyPair(passphraseHash)
+      await this.createKeyPair(passwordHash)
     const symmetricKey = await this.createSymmetricKey()
     const encryptedSymmetricKey = await this.encrypt(publicKey, symmetricKey)
 
@@ -98,14 +98,14 @@ class BrowserCryptoLib implements CryptoLib {
     privateKey: PrivateKey,
     symmetricKey: SymmetricKey,
     salt: Salt,
-    passphrase: Passphrase,
+    password: Password,
   ) {
     // recreate passwordHash
-    const passphraseHash = await generatePassphraseHash(salt, passphrase)
+    const passwordHash = await generatePasswordHash(salt, password)
 
     const encryptedPrivateKey = await this.encryptPrivateKey(
       privateKey,
-      passphraseHash,
+      passwordHash,
     )
     const publicKey = await this.getPublicKeyFromPrivateKey(privateKey)
     const encryptedSymmetricKey = await this.encrypt(publicKey, symmetricKey)
@@ -123,14 +123,14 @@ class BrowserCryptoLib implements CryptoLib {
     encryptedPrivateKey: EncryptedPrivateKey,
     encryptedSymmetricKey: EncryptedSymmetricKey,
     salt: Salt,
-    passphrase: Passphrase,
+    password: Password,
   ) {
     // recreate passwordHash
-    const passphraseHash = await generatePassphraseHash(salt, passphrase)
+    const passwordHash = await generatePasswordHash(salt, password)
 
     const { privateKey, publicKey } = await this.decryptPrivateKey(
       encryptedPrivateKey,
-      passphraseHash,
+      passwordHash,
     )
     const symmetricKey = (await this.decrypt(
       privateKey,
@@ -248,12 +248,12 @@ class BrowserCryptoLib implements CryptoLib {
 
   private async encryptPrivateKey(
     privateKey: PrivateKey,
-    passphraseHash: PassphraseHash,
+    passwordHash: PasswordHash,
   ): Promise<EncryptedPrivateKey> {
     const privateKeyObj = forge.pki.privateKeyFromPem(privateKey as string)
     const encryptedPrivateKey = forge.pki.encryptRsaPrivateKey(
       privateKeyObj,
-      passphraseHash,
+      passwordHash,
       {
         algorithm: 'aes256',
       },
@@ -263,15 +263,15 @@ class BrowserCryptoLib implements CryptoLib {
 
   private async decryptPrivateKey(
     encryptedPrivateKey: EncryptedPrivateKey,
-    passphraseHash: PassphraseHash,
+    passwordHash: PasswordHash,
   ): Promise<{ privateKey: PrivateKey; publicKey: PublicKey }> {
     try {
       const privateKeyPem = forge.pki.decryptRsaPrivateKey(
         encryptedPrivateKey,
-        passphraseHash,
+        passwordHash,
       )
       if (!privateKeyPem) {
-        throw new CryptoError('Invalid passphrase')
+        throw new CryptoError('Invalid password')
       }
       const privateKey = forge.pki.privateKeyToPem(privateKeyPem)
       const publicKey = forge.pki.publicKeyToPem(
@@ -284,8 +284,8 @@ class BrowserCryptoLib implements CryptoLib {
     } catch (err) {
       // eslint-disable-next-line no-restricted-globals
       if (err instanceof Error) {
-        if (err.message === 'Invalid passphrase') {
-          throw new CryptoError('Invalid passphrase')
+        if (err.message === 'Invalid password') {
+          throw new CryptoError('Invalid password')
         }
         if (err.message.includes('Unsupported private key')) {
           throw new CryptoError('Invalid private key')
@@ -295,7 +295,7 @@ class BrowserCryptoLib implements CryptoLib {
     }
   }
 
-  private async createKeyPair(passphrase: string): Promise<{
+  private async createKeyPair(password: string): Promise<{
     privateKey: PrivateKey
     encryptedPrivateKey: EncryptedPrivateKey
     publicKey: PublicKey
@@ -309,7 +309,7 @@ class BrowserCryptoLib implements CryptoLib {
           const privateKey = forge.pki.privateKeyToPem(keyPair.privateKey)
           const encryptedPrivateKey = forge.pki.encryptRsaPrivateKey(
             keyPair.privateKey,
-            passphrase,
+            password,
             {
               algorithm: 'aes256',
             },

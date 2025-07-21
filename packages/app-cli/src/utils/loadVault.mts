@@ -9,10 +9,8 @@ import {
   SaveFunction,
   TwoFaLibEvent,
 } from 'favalib'
-import NodeCryptoProvider from 'favalib/cryptoProviders/node'
+import NodePlatformProvider from 'favalib/platformProviders/node'
 import { Settings } from './init.mjs'
-
-const cryptoLib = new NodeCryptoProvider()
 
 const loadVault = async (
   vaultData: LockedRepresentationString,
@@ -48,7 +46,7 @@ const loadVault = async (
   }
 
   const twoFaLibVaultCreationUtils = getTwoFaLibVaultCreationUtils(
-    cryptoLib,
+    NodePlatformProvider,
     'cli' as DeviceType,
     ['cli'],
     saveFunction,

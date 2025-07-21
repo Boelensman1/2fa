@@ -1,11 +1,10 @@
 import { getTwoFaLibVaultCreationUtils } from 'favalib'
-import BrowserCryptoProvider from 'favalib/cryptoProviders/browser'
+import BrowserPlatformProvider from 'favalib/platformProviders/browser'
 
 import { deviceType, passphraseExtraDict, syncServerUrl } from '../parameters'
 
-const cryptoLib = new BrowserCryptoProvider()
 const twoFaLibVaultCreationUtils = getTwoFaLibVaultCreationUtils(
-  cryptoLib,
+  BrowserPlatformProvider,
   deviceType,
   passphraseExtraDict,
   () => {

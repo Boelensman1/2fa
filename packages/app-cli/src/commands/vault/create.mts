@@ -4,10 +4,8 @@ import keytar from 'keytar'
 import BaseCommand from '../../BaseCommand.mjs'
 
 import { DeviceType, getTwoFaLibVaultCreationUtils, Passphrase } from 'favalib'
-import NodeCryptoProvider from 'favalib/cryptoProviders/node'
+import NodePlatformProvider from 'favalib/platformProviders/node'
 import { password } from '@inquirer/prompts'
-
-const cryptoLib = new NodeCryptoProvider()
 
 class VaultCreateCommand extends BaseCommand {
   static override paths = [['vault', 'create']]
@@ -28,7 +26,7 @@ class VaultCreateCommand extends BaseCommand {
 
   async exec() {
     const twoFaLibVaultCreationUtils = getTwoFaLibVaultCreationUtils(
-      cryptoLib,
+      NodePlatformProvider,
       'cli' as DeviceType,
       ['cli'],
       (newLockedRepresentationString) =>

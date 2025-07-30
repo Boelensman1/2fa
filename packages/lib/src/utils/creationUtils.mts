@@ -1,4 +1,3 @@
-import { v4 as genUuidV4 } from 'uuid'
 import type { ZxcvbnResult } from '@zxcvbn-ts/core'
 
 import type { PlatformProviders } from '../interfaces/PlatformProviders.mjs'
@@ -110,7 +109,7 @@ const createNewTwoFaLibVault = async (
 
   await validatePasswordStrength(libraryLoader, passwordExtraDict, password)
 
-  const deviceId = genUuidV4() as DeviceId
+  const deviceId = platformProviders.genUuidV4() as DeviceId
   const twoFaLib = new TwoFaLib(
     deviceType,
     platformProviders,

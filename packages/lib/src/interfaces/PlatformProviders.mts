@@ -23,6 +23,10 @@ export interface PlatformProviders {
    * OpenPGP encryption library
    */
   OpenPgpLib: new () => OpenPgpLib
+  /**
+   * genUuidV4 function
+   */
+  genUuidV4: () => string
 }
 
 export default PlatformProviders

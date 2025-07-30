@@ -1,5 +1,3 @@
-import { v4 as genUuidV4 } from 'uuid'
-
 import type Entry from '../interfaces/Entry.mjs'
 import type {
   EntryId,
@@ -29,6 +27,10 @@ const getMetaForEntry = (entry: Entry) => ({
  * Manages the public operations related to the vault, including adding, deleting, and updating entries.
  */
 class VaultOperationsManager {
+  private get platformProviders() {
+    return this.mediator.getComponent('libraryLoader').getPlatformProviders()
+  }
+
   /**
    * Constructs a new instance of VaultManager.
    * @param mediator - The mediator for accessing other components.
@@ -168,7 +170,7 @@ class VaultOperationsManager {
    * @throws {InvalidCommandError} If the provided entry data is invalid or incomplete.
    */
   async addEntry(entry: NewEntry): Promise<EntryId> {
-    const newId = genUuidV4() as EntryId
+    const newId = this.platformProviders.genUuidV4() as EntryId
     const newEntry: Entry = {
       ...entry,
       id: newId,

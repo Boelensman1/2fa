@@ -6,8 +6,8 @@ import type {
   Salt,
 } from './CryptoLib.mjs'
 import type Entry from './Entry.mjs'
-import { DeviceFriendlyName, DeviceId, SyncDevice } from './SyncTypes.mjs'
-import { SyncCommandFromClient } from 'favaserver/ClientMessage'
+import type { DeviceFriendlyName, DeviceId, SyncDevice } from './SyncTypes.mjs'
+import type { SyncCommandFromClient } from 'favaserver/ClientMessage'
 
 export type Vault = Entry[]
 

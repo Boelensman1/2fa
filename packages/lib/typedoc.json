@@ -1,0 +1,56 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "entryPoints": [
+    "src/main.mts",
+    "src/platformProviders/browser/index.mts",
+    "src/platformProviders/node/index.mts"
+  ],
+  "out": "docs",
+  "theme": "default",
+  "name": "FavaLib Documentation",
+  "readme": "none",
+  "includeVersion": true,
+  "excludePrivate": true,
+  "excludeProtected": false,
+  "excludeInternal": false,
+  "categorizeByGroup": false,
+  "defaultCategory": "Other",
+  "categoryOrder": [
+    "Main",
+    "Platform Providers",
+    "Commands",
+    "Interfaces",
+    "Utilities",
+    "*"
+  ],
+  "sort": ["source-order"],
+  "kindSortOrder": [
+    "Document",
+    "Project",
+    "Module",
+    "Namespace",
+    "Enum",
+    "EnumMember",
+    "Class",
+    "Interface",
+    "TypeAlias",
+    "Constructor",
+    "Property",
+    "Variable",
+    "Function",
+    "Accessor",
+    "Method",
+    "Parameter",
+    "TypeParameter",
+    "TypeLiteral",
+    "CallSignature",
+    "ConstructorSignature",
+    "IndexSignature",
+    "GetSignature",
+    "SetSignature"
+  ],
+  "navigation": {
+    "includeCategories": true,
+    "includeGroups": true
+  }
+}

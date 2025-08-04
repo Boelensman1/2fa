@@ -29,6 +29,14 @@ test-debug: $(INSTALL_DEPS)
 coverage: $(INSTALL_DEPS) $(SRC_FILES) $(TEST_FILES)
 	CI=1 npx --no-install vitest --coverage --coverage.exclude=build --coverage.exclude=tests --coverage.exclude=__mocks__
 
+docs: $(INSTALL_DEPS) $(SRC_FILES) typedoc.json
+	npx --no-install typedoc
+
+docs-serve: docs
+	@echo "Serving documentation at http://localhost:8485"
+	@echo "Press Ctrl+C to stop the server"
+	python3 -m http.server 8485 --directory docs
+
 lint: $(INSTALL_DEPS)
 	npx --no-install prettier --check --ignore-path=../../.gitignore .
 	npx --no-install tsc --noEmit
@@ -37,4 +45,4 @@ lint: $(INSTALL_DEPS)
 publish: build
 	npm publish
 
-.PHONY: clean lint test test-debug all publish
+.PHONY: clean lint test test-debug docs docs-serve all publish

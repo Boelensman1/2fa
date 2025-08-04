@@ -37,6 +37,7 @@ describe('LibraryLoader', () => {
       WebSocketLib: () => WebSocket,
       QrCodeLib: vi.fn(),
       OpenPgpLib: vi.fn(),
+      genUuidV4: vi.fn(() => 'test-uuid'),
     }
     libraryLoader = new LibraryLoader(platformProviders)
   })

@@ -1,0 +1,16 @@
+{
+  "extends": "@wtflegal/dev-configs/tsconfigs/node/tsconfig.json",
+  "include": [
+    "eslint.config.mjs",
+    "src/**/*",
+    "package.json",
+    "vite.config.ts"
+  ],
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "noEmit": true,
+    "lib": ["DOM", "DOM.Iterable", "ESNext"],
+    "module": "ESNext",
+    "moduleResolution": "bundler"
+  }
+}

@@ -7,12 +7,12 @@ import type {
   Token,
 } from '../interfaces/Entry.mjs'
 
-import type TwoFaLibMediator from '../TwoFaLibMediator.mjs'
+import type FavaLibMediator from '../FavaLibMediator.mjs'
 
 import AddEntryCommand from '../Command/commands/AddEntryCommand.mjs'
 import DeleteEntryCommand from '../Command/commands/DeleteEntryCommand.mjs'
 import UpdateEntryCommand from '../Command/commands/UpdateEntryCommand.mjs'
-import { EntryNotFoundError } from '../TwoFALibError.mjs'
+import { EntryNotFoundError } from '../FavaLibError.mjs'
 
 const getMetaForEntry = (entry: Entry) => ({
   id: entry.id,
@@ -35,7 +35,7 @@ class VaultOperationsManager {
    * Constructs a new instance of VaultManager.
    * @param mediator - The mediator for accessing other components.
    */
-  constructor(private readonly mediator: TwoFaLibMediator) {}
+  constructor(private readonly mediator: FavaLibMediator) {}
 
   private get vaultDataManager() {
     return this.mediator.getComponent('vaultDataManager')

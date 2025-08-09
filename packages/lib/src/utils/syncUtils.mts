@@ -1,7 +1,7 @@
 import { base64ToString } from 'uint8array-extras'
 
 import { InitiateAddDeviceFlowResult } from '../interfaces/SyncTypes.mjs'
-import { SyncError } from '../TwoFALibError.mjs'
+import { SyncError } from '../FavaLibError.mjs'
 import type { QrCodeLib } from '../interfaces/QrCodeLib.mjs'
 
 /**

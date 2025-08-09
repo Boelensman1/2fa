@@ -1,5 +1,5 @@
-import { InvalidCommandError } from '../../TwoFALibError.mjs'
-import type TwoFaLibMediator from '../../TwoFaLibMediator.mjs'
+import { InvalidCommandError } from '../../FavaLibError.mjs'
+import type FavaLibMediator from '../../FavaLibMediator.mjs'
 import Command from '../BaseCommand.mjs'
 import type Entry from '../../interfaces/Entry.mjs'
 import DeleteEntryCommand from './DeleteEntryCommand.mjs'
@@ -30,7 +30,7 @@ class AddEntryCommand extends Command<AddEntryData> {
    * @inheritdoc
    * @throws {InvalidCommandError} If the command data is invalid.
    */
-  async execute(mediator: TwoFaLibMediator) {
+  async execute(mediator: FavaLibMediator) {
     const vault = mediator.getComponent('vaultDataManager')
     if (!this.validate()) {
       throw new InvalidCommandError('Invalid AddEntry command')

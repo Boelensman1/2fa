@@ -33,7 +33,7 @@ const App: Component = () => {
   return (
     <div class="container mx-auto p-4">
       <Show when={state.vaultExists} fallback={<CreateVault />}>
-        <Show when={state.twoFaLib} fallback={<Login />}>
+        <Show when={state.favaLib} fallback={<Login />}>
           <Show
             when={!state.isConnectingToExistingVault}
             fallback={<ConnectToExistingVault />}

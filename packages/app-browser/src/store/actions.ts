@@ -1,4 +1,4 @@
-import type { EntryMeta, TwoFaLib } from 'favalib'
+import type { EntryMeta, FavaLib } from 'favalib'
 
 import type {} from './types/Action'
 import Action from './types/Action'
@@ -21,9 +21,9 @@ const actions = {
     type: types.SET_CONNECTING_TO_EXISTING_VAULT,
     payload: connecting,
   }),
-  initialize: (twoFaLib: TwoFaLib): Action => ({
+  initialize: (favaLib: FavaLib): Action => ({
     type: types.INITIALIZE,
-    payload: twoFaLib,
+    payload: favaLib,
   }),
   setSettings: (settings: State['settings']): Action => {
     // Update localStorage

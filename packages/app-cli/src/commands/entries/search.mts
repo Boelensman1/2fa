@@ -23,7 +23,7 @@ class EntriesSearchCommand extends BaseListOutputCommand {
     ],
   })
 
-  requireTwoFaLib = true
+  requireFavaLib = true
 
   withTokens = Option.Boolean('--withTokens', {
     description: 'Include current TOTP tokens in the output',
@@ -33,9 +33,9 @@ class EntriesSearchCommand extends BaseListOutputCommand {
 
   getList() {
     if (this.withTokens) {
-      return this.twoFaLib.vault.searchEntriesMetas(this.query, true)
+      return this.favaLib.vault.searchEntriesMetas(this.query, true)
     } else {
-      return this.twoFaLib.vault.searchEntriesMetas(this.query, false)
+      return this.favaLib.vault.searchEntriesMetas(this.query, false)
     }
   }
 }

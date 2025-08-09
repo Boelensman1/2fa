@@ -1,5 +1,5 @@
-import { InvalidCommandError, TwoFALibError } from '../../TwoFALibError.mjs'
-import type TwoFaLibMediator from '../../TwoFaLibMediator.mjs'
+import { InvalidCommandError, FavaLibError } from '../../FavaLibError.mjs'
+import type FavaLibMediator from '../../FavaLibMediator.mjs'
 import Command from '../BaseCommand.mjs'
 import type { DeviceId, DeviceInfo } from '../../interfaces/SyncTypes.mjs'
 import type { PublicKey } from '../../interfaces/CryptoLib.mjs'
@@ -34,7 +34,7 @@ class AddSyncDeviceCommand extends Command<AddSyncDeviceData> {
    * @inheritdoc
    * @throws {InvalidCommandError} If the command data is invalid.
    */
-  async execute(mediator: TwoFaLibMediator) {
+  async execute(mediator: FavaLibMediator) {
     const syncManager = mediator.getComponent('syncManager')
     if (!this.validate()) {
       throw new InvalidCommandError('Invalid AddEntry command')
@@ -46,7 +46,7 @@ class AddSyncDeviceCommand extends Command<AddSyncDeviceData> {
    * @inheritdoc
    */
   createUndoCommand(): Command {
-    throw new TwoFALibError('Not implemented yet')
+    throw new FavaLibError('Not implemented yet')
   }
 
   /**

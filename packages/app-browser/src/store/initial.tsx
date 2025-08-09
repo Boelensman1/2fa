@@ -2,7 +2,7 @@ import State from './types/State'
 
 const initial: State = {
   entries: [],
-  twoFaLib: null,
+  favaLib: null,
   vaultExists: false,
   isConnectingToExistingVault: false,
   settings: {

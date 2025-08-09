@@ -1,5 +1,5 @@
-import { InvalidCommandError } from '../../TwoFALibError.mjs'
-import type TwoFaLibMediator from '../../TwoFaLibMediator.mjs'
+import { InvalidCommandError } from '../../FavaLibError.mjs'
+import type FavaLibMediator from '../../FavaLibMediator.mjs'
 import Command from '../BaseCommand.mjs'
 import type Entry from '../../interfaces/Entry.mjs'
 import { EntryId } from '../../interfaces/Entry.mjs'
@@ -36,7 +36,7 @@ class UpdateEntryCommand extends Command<UpdateEntryData> {
    * @inheritdoc
    * @throws {InvalidCommandError} If the command data is invalid.
    */
-  async execute(mediator: TwoFaLibMediator) {
+  async execute(mediator: FavaLibMediator) {
     if (!this.validate()) {
       throw new InvalidCommandError('Invalid UpdateEntry command')
     }

@@ -1,4 +1,4 @@
-import { AuthenticationError } from '../TwoFALibError.mjs'
+import { AuthenticationError } from '../FavaLibError.mjs'
 
 import type {
   EncryptedPrivateKey,
@@ -16,13 +16,13 @@ import {
   VaultStateString,
 } from '../interfaces/Vault.mjs'
 
-import type TwoFaLibMediator from '../TwoFaLibMediator.mjs'
+import type FavaLibMediator from '../FavaLibMediator.mjs'
 import type { FavaMeta } from '../interfaces/FavaMeta.mjs'
 import type { PasswordExtraDict } from '../interfaces/PasswordExtraDict.js'
 import type { SaveFunction } from '../interfaces/SaveFunction.mjs'
 import type { DeviceId, VaultStateSend } from '../interfaces/SyncTypes.mjs'
 
-import TwoFaLib from '../TwoFaLib.mjs'
+import FavaLib from '../FavaLib.mjs'
 import { validatePasswordStrength } from '../utils/creationUtils.mjs'
 
 /**
@@ -45,7 +45,7 @@ class PersistentStorageManager {
    * @param saveFunction - The function to save the data.
    */
   constructor(
-    private mediator: TwoFaLibMediator,
+    private mediator: FavaLibMediator,
     private readonly passwordExtraDict: PasswordExtraDict,
     private readonly favaMeta: FavaMeta,
     private readonly privateKey: PrivateKey,
@@ -112,7 +112,7 @@ class PersistentStorageManager {
     const encryptedVaultState = await this.getEncryptedVaultState()
 
     const lockedRepresentation: LockedRepresentation = {
-      libVersion: TwoFaLib.version,
+      libVersion: FavaLib.version,
       storageVersion: PersistentStorageManager.storageVersion,
       encryptedPrivateKey: this.encryptedPrivateKey,
       encryptedSymmetricKey: this.encryptedSymmetricKey,

@@ -10,7 +10,7 @@ import { password as passwordInput, input } from '@inquirer/prompts'
 class ExportTextCommand extends BaseCommand {
   static override paths = [['export', 'text']]
 
-  requireTwoFaLib = true
+  requireFavaLib = true
 
   pathOption = Option.String('--path', {
     description: 'File path for the export, if not set will output to stdout',
@@ -49,7 +49,7 @@ class ExportTextCommand extends BaseCommand {
   })
 
   async exec() {
-    const entriesCount = this.twoFaLib.vault.listEntries().length
+    const entriesCount = this.favaLib.vault.listEntries().length
 
     // Get password based on source
     let password: string | undefined | null = undefined
@@ -109,7 +109,7 @@ class ExportTextCommand extends BaseCommand {
       }
     }
 
-    const content = await this.twoFaLib.exportImport.exportEntries(
+    const content = await this.favaLib.exportImport.exportEntries(
       'text',
       password,
       true,

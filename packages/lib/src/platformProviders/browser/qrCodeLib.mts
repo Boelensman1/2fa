@@ -1,6 +1,6 @@
 import type { ImageData } from 'canvas'
 import type { QrCodeLib } from '../../interfaces/QrCodeLib.mjs'
-import { TwoFALibError } from '../../TwoFALibError.mjs'
+import { FavaLibError } from '../../FavaLibError.mjs'
 
 /**
  * Gets the ImageData from an image, for browser environments.
@@ -14,7 +14,7 @@ export const getImageDataFromInput = (
   return new Promise((resolve, reject) => {
     if (input instanceof Uint8Array) {
       reject(
-        new TwoFALibError(
+        new FavaLibError(
           'Uint8Array input not supported in browser environment',
         ),
       )
@@ -28,13 +28,13 @@ export const getImageDataFromInput = (
       canvas.height = img.height
       const ctx = canvas.getContext('2d')
       if (!ctx) {
-        reject(new TwoFALibError('Could not create canvas context'))
+        reject(new FavaLibError('Could not create canvas context'))
         return
       }
       ctx.drawImage(img, 0, 0)
       resolve(ctx.getImageData(0, 0, img.width, img.height))
     }
-    img.onerror = () => reject(new TwoFALibError('Failed to load image'))
+    img.onerror = () => reject(new FavaLibError('Failed to load image'))
 
     if (typeof input === 'string') {
       // URL or Data URL
@@ -45,7 +45,7 @@ export const getImageDataFromInput = (
       reader.onload = (e) => {
         img.src = e.target?.result as string
       }
-      reader.onerror = () => reject(new TwoFALibError('Failed to read file'))
+      reader.onerror = () => reject(new FavaLibError('Failed to read file'))
       reader.readAsDataURL(input)
     }
   })

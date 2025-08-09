@@ -20,9 +20,9 @@ const Importer = () => {
     e.preventDefault()
     setIsDragging(false)
 
-    const { twoFaLib } = state
-    if (!twoFaLib) {
-      throw new Error('twoFaLib not loaded')
+    const { favaLib } = state
+    if (!favaLib) {
+      throw new Error('favaLib not loaded')
     }
 
     const file = e.dataTransfer?.files[0]
@@ -32,7 +32,7 @@ const Importer = () => {
         // eslint-disable-next-line @typescript-eslint/no-base-to-string
         const fileContents = reader.result?.toString()
         if (fileContents) {
-          void twoFaLib.exportImport
+          void favaLib.exportImport
             .importFromTextFile(fileContents)
             .then((results) => {
               results.forEach((result) => {
@@ -43,7 +43,7 @@ const Importer = () => {
                   )
                 }
               })
-              syncStoreWithLib(twoFaLib)
+              syncStoreWithLib(favaLib)
             })
         }
       }

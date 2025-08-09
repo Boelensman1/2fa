@@ -1,4 +1,4 @@
-import type TwoFaLibMediator from '../TwoFaLibMediator.mjs'
+import type FavaLibMediator from '../FavaLibMediator.mjs'
 
 import type { Password } from '../interfaces/CryptoLib.mjs'
 import type { SaveFunction } from '../interfaces/SaveFunction.mjs'
@@ -11,7 +11,7 @@ class StorageOperationsManager {
    * Constructs a new instance of StorageOperationsManager.
    * @param mediator - The mediator for accessing other components.
    */
-  constructor(private readonly mediator: TwoFaLibMediator) {}
+  constructor(private readonly mediator: FavaLibMediator) {}
 
   /**
    * @returns The persistent storage manager instance which can be used to store data.

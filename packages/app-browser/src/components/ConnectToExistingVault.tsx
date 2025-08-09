@@ -7,11 +7,11 @@ const ConnectToExistingVault = () => {
 
   const handlePaste = (event: ClipboardEvent) => {
     const [state] = useStore()
-    const { twoFaLib } = state
-    if (!twoFaLib) {
-      throw new Error('twoFaLib not loaded')
+    const { favaLib } = state
+    if (!favaLib) {
+      throw new Error('favaLib not loaded')
     }
-    if (!twoFaLib.sync) {
+    if (!favaLib.sync) {
       throw new Error('sync not loaded / no server connection')
     }
 
@@ -40,14 +40,14 @@ const ConnectToExistingVault = () => {
       return
     }
 
-    void twoFaLib.sync.respondToAddDeviceFlow(blob, 'qr')
+    void favaLib.sync.respondToAddDeviceFlow(blob, 'qr')
   }
 
   const handleTextSubmit = () => {
     const [state] = useStore()
-    const { twoFaLib } = state
-    if (!twoFaLib?.sync) {
-      setErrorMessage('Error: twoFaLib not loaded or no server connection')
+    const { favaLib } = state
+    if (!favaLib?.sync) {
+      setErrorMessage('Error: favaLib not loaded or no server connection')
       return
     }
 
@@ -58,7 +58,7 @@ const ConnectToExistingVault = () => {
     }
 
     setErrorMessage(null)
-    void twoFaLib.sync.respondToAddDeviceFlow(text, 'text')
+    void favaLib.sync.respondToAddDeviceFlow(text, 'text')
   }
 
   return (

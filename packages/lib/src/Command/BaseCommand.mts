@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from 'uuid'
-import type TwoFaLibMediator from '../TwoFaLibMediator.mjs'
+import type FavaLibMediator from '../FavaLibMediator.mjs'
 
 import { CommandData } from '../interfaces/CommandTypes.mjs'
 
@@ -42,18 +42,18 @@ abstract class BaseCommand<T extends CommandData = CommandData> {
 
   /**
    * Executes the command using the provided mediator, which can be used to access the other classes.
-   * @param VaultDataManager - The TwoFaLibMediator instance to use for execution.
+   * @param VaultDataManager - The FavaLibMediator instance to use for execution.
    * @returns A Promise that resolves when the execution is complete.
    */
-  abstract execute(twoFaLibMediator: TwoFaLibMediator): Promise<void>
+  abstract execute(favaLibMediator: FavaLibMediator): Promise<void>
 
   /**
    * Creates an undo command that, when executed, reverses the effects of this command.
-   * @param VaultDataManager - The TwoFaLibMediator instance to use for creating the undo command.
+   * @param VaultDataManager - The FavaLibMediator instance to use for creating the undo command.
    * @returns A BaseCommand instance that undoes this command or false if this command has no undo.
    */
   abstract createUndoCommand(
-    TwoFaLibMediator: TwoFaLibMediator,
+    FavaLibMediator: FavaLibMediator,
   ): BaseCommand | false
 
   /**

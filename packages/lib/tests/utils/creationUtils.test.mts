@@ -1,18 +1,18 @@
 import { describe, it, expect, beforeAll } from 'vitest'
 import {
-  getTwoFaLibVaultCreationUtils,
+  getFavaLibVaultCreationUtils,
   type Password,
   LockedRepresentationString,
 } from '../../src/main.mjs'
 import {
-  createTwoFaLibForTests,
+  createFavaLibForTests,
   deviceType,
   passwordExtraDict,
 } from '../testUtils.mjs'
 import { nodeProviders } from '../../src/platformProviders/node/index.mjs'
 
 describe('creationUtils', () => {
-  let creationUtils: ReturnType<typeof getTwoFaLibVaultCreationUtils>
+  let creationUtils: ReturnType<typeof getFavaLibVaultCreationUtils>
   let lockedRepresentation: LockedRepresentationString
 
   beforeAll(async () => {
@@ -22,11 +22,11 @@ describe('creationUtils', () => {
       lockedRepresentation = newLockedRepresentation
     }
 
-    const result = await createTwoFaLibForTests(saveFunction)
+    const result = await createFavaLibForTests(saveFunction)
 
-    await result.twoFaLib.storage.forceSave()
+    await result.favaLib.storage.forceSave()
 
-    creationUtils = getTwoFaLibVaultCreationUtils(
+    creationUtils = getFavaLibVaultCreationUtils(
       nodeProviders,
       deviceType,
       passwordExtraDict,
@@ -36,7 +36,7 @@ describe('creationUtils', () => {
   // Your existing tests
   it('should throw an error on invalid password', async () => {
     await expect(
-      creationUtils.loadTwoFaLibFromLockedRepesentation(
+      creationUtils.loadFavaLibFromLockedRepesentation(
         lockedRepresentation,
         'not-the-password' as Password,
       ),

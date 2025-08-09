@@ -1,4 +1,4 @@
-import { TwoFALibError } from '../TwoFALibError.mjs'
+import { FavaLibError } from '../FavaLibError.mjs'
 import Command from './BaseCommand.mjs'
 
 /**
@@ -27,11 +27,11 @@ class CommandQueue {
   /**
    * Removes and returns the first command from the queue.
    * @returns The first command in the queue, or undefined if the queue is empty.
-   * @throws {TwoFALibError} If the queue is empty.
+   * @throws {FavaLibError} If the queue is empty.
    */
   dequeue(): Command | undefined {
     if (this.isEmpty()) {
-      throw new TwoFALibError('Command queue is empty')
+      throw new FavaLibError('Command queue is empty')
     }
     return this.queue.shift()
   }

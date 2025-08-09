@@ -7,7 +7,7 @@ import {
 } from 'uint8array-extras'
 import { argon2id } from 'hash-wasm'
 
-import { CryptoError } from '../../TwoFALibError.mjs'
+import { CryptoError } from '../../FavaLibError.mjs'
 import type CryptoLib from '../../interfaces/CryptoLib.mjs'
 import type {
   Encrypted,

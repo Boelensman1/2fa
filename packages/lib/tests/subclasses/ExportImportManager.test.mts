@@ -3,22 +3,22 @@ import fs from 'fs/promises'
 import path from 'path'
 import * as openpgp from 'openpgp'
 
-import { TwoFaLib } from '../../src/main.mjs'
+import { FavaLib } from '../../src/main.mjs'
 
 import {
   anotherNewTotpEntry,
   newTotpEntry,
   clearEntries,
-  createTwoFaLibForTests,
+  createFavaLibForTests,
   password,
 } from '../testUtils.mjs'
 
 describe('ExportImportManager', () => {
-  let twoFaLib: TwoFaLib
+  let favaLib: FavaLib
   let qrImageDataUrl: string
 
   beforeAll(async () => {
-    twoFaLib = (await createTwoFaLibForTests()).twoFaLib
+    favaLib = (await createFavaLibForTests()).favaLib
 
     // Read the QR code image file
     const qrImageBuffer = await fs.readFile(path.join(__dirname, '../qr.png'))
@@ -26,17 +26,17 @@ describe('ExportImportManager', () => {
   })
 
   beforeEach(async () => {
-    await clearEntries(twoFaLib)
+    await clearEntries(favaLib)
   })
 
   describe('exportEntries', () => {
     beforeEach(async () => {
-      await twoFaLib.vault.addEntry(newTotpEntry)
-      await twoFaLib.vault.addEntry(anotherNewTotpEntry)
+      await favaLib.vault.addEntry(newTotpEntry)
+      await favaLib.vault.addEntry(anotherNewTotpEntry)
     })
 
     it('should export entries in text format', async () => {
-      const result = await twoFaLib.exportImport.exportEntries(
+      const result = await favaLib.exportImport.exportEntries(
         'text',
         undefined,
         true,
@@ -50,7 +50,7 @@ describe('ExportImportManager', () => {
     })
 
     it('should export entries in HTML format', async () => {
-      const result = await twoFaLib.exportImport.exportEntries(
+      const result = await favaLib.exportImport.exportEntries(
         'html',
         undefined,
         true,
@@ -64,7 +64,7 @@ describe('ExportImportManager', () => {
 
     it('should throw an error for invalid format', async () => {
       await expect(
-        twoFaLib.exportImport.exportEntries(
+        favaLib.exportImport.exportEntries(
           'invalid' as 'html',
           undefined,
           true,
@@ -73,7 +73,7 @@ describe('ExportImportManager', () => {
     })
 
     it('should encrypt the export when password is provided', async () => {
-      const result = await twoFaLib.exportImport.exportEntries('text', password)
+      const result = await favaLib.exportImport.exportEntries('text', password)
 
       expect(result).not.toContain('Test TOTP')
       expect(result).not.toContain('TESTSECRET')
@@ -92,7 +92,7 @@ describe('ExportImportManager', () => {
     })
 
     it('should encrypt HTML export when password is provided', async () => {
-      const result = await twoFaLib.exportImport.exportEntries('html', password)
+      const result = await favaLib.exportImport.exportEntries('html', password)
 
       expect(result).not.toContain('<html>')
       expect(result).not.toContain('Test TOTP')
@@ -107,19 +107,19 @@ describe('ExportImportManager', () => {
     })
 
     it('should throw an error when user was not warned about exporting unencrypted', async () => {
-      await expect(twoFaLib.exportImport.exportEntries('text')).rejects.toThrow(
+      await expect(favaLib.exportImport.exportEntries('text')).rejects.toThrow(
         'User was not warned about the dangers of unencrypted exporting',
       )
     })
 
     it('should throw an error when password is too weak', async () => {
-      await twoFaLib.vault.addEntry(newTotpEntry)
-      await twoFaLib.vault.addEntry(anotherNewTotpEntry)
+      await favaLib.vault.addEntry(newTotpEntry)
+      await favaLib.vault.addEntry(anotherNewTotpEntry)
 
       const weakPassword = 'weak'
 
       await expect(
-        twoFaLib.exportImport.exportEntries('text', weakPassword),
+        favaLib.exportImport.exportEntries('text', weakPassword),
       ).rejects.toThrow('Password is too weak')
     })
   })
@@ -127,9 +127,9 @@ describe('ExportImportManager', () => {
   it('should import a TOTP entry from a QR code image', async () => {
     // contains the same data as totpEntry
     const importedEntryId =
-      await twoFaLib.exportImport.importFromQRCode(qrImageDataUrl)
+      await favaLib.exportImport.importFromQRCode(qrImageDataUrl)
 
-    const importedEntry = twoFaLib.vault.getEntryMeta(importedEntryId)
+    const importedEntry = favaLib.vault.getEntryMeta(importedEntryId)
 
     expect(importedEntry).toEqual(
       expect.objectContaining({
@@ -140,7 +140,7 @@ describe('ExportImportManager', () => {
     )
 
     // Generate a token for the imported entry
-    const token = twoFaLib.vault.generateTokenForEntry(importedEntryId)
+    const token = favaLib.vault.generateTokenForEntry(importedEntryId)
 
     expect(token).toEqual({
       otp: expect.any(String) as string,
@@ -155,7 +155,7 @@ describe('ExportImportManager', () => {
     const invalidQrData = new Uint8Array([1, 2, 3])
 
     await expect(
-      twoFaLib.exportImport.importFromQRCode(invalidQrData),
+      favaLib.exportImport.importFromQRCode(invalidQrData),
     ).rejects.toThrow('Unsupported image type')
   })
 
@@ -164,13 +164,13 @@ describe('ExportImportManager', () => {
       const otpUri =
         'otpauth://totp/Example:alice@google.com?secret=JBSWY3DPEHPK3PXP&issuer=Example'
 
-      const entryId = await twoFaLib.exportImport.importFromUri(otpUri)
+      const entryId = await favaLib.exportImport.importFromUri(otpUri)
 
       // Verify that an entry was added
       expect(entryId).toBeDefined()
 
       // Retrieve the entry and check its properties
-      const entry = twoFaLib.vault.getEntryMeta(entryId)
+      const entry = favaLib.vault.getEntryMeta(entryId)
 
       expect(entry).toEqual(
         expect.objectContaining({
@@ -181,7 +181,7 @@ describe('ExportImportManager', () => {
       )
 
       // Generate a token to ensure the entry is valid
-      const token = twoFaLib.vault.generateTokenForEntry(entryId)
+      const token = favaLib.vault.generateTokenForEntry(entryId)
       expect(token).toEqual(
         expect.objectContaining({
           otp: expect.any(String) as string,
@@ -196,7 +196,7 @@ describe('ExportImportManager', () => {
       const invalidUri = 'https://example.com'
 
       await expect(
-        twoFaLib.exportImport.importFromUri(invalidUri),
+        favaLib.exportImport.importFromUri(invalidUri),
       ).rejects.toThrow('Invalid OTP URI')
     })
 
@@ -204,7 +204,7 @@ describe('ExportImportManager', () => {
       const hotp =
         'otpauth://hotp/Example:alice@google.com?secret=JBSWY3DPEHPK3PXP&issuer=Example'
 
-      await expect(twoFaLib.exportImport.importFromUri(hotp)).rejects.toThrow(
+      await expect(favaLib.exportImport.importFromUri(hotp)).rejects.toThrow(
         'Unsupported OTP type "hotp"',
       )
     })
@@ -212,8 +212,8 @@ describe('ExportImportManager', () => {
     it('should handle URIs with missing optional parameters', async () => {
       const minimalUri = 'otpauth://totp/Minimal?secret=JBSWY3DPEHPK3PXP'
 
-      const entryId = await twoFaLib.exportImport.importFromUri(minimalUri)
-      const entry = twoFaLib.vault.getEntryMeta(entryId)
+      const entryId = await favaLib.exportImport.importFromUri(minimalUri)
+      const entry = favaLib.vault.getEntryMeta(entryId)
 
       expect(entry).toEqual(
         expect.objectContaining({
@@ -223,7 +223,7 @@ describe('ExportImportManager', () => {
         }),
       )
 
-      const token = twoFaLib.vault.generateTokenForEntry(entryId)
+      const token = favaLib.vault.generateTokenForEntry(entryId)
       expect(token.otp).toHaveLength(6) // Default digit length
     })
 
@@ -260,7 +260,7 @@ describe('ExportImportManager', () => {
       ]
 
       const entryIds = await Promise.all(
-        testCases.map((tc) => twoFaLib.exportImport.importFromUri(tc.uri)),
+        testCases.map((tc) => favaLib.exportImport.importFromUri(tc.uri)),
       )
 
       // Verify that entries were added
@@ -268,7 +268,7 @@ describe('ExportImportManager', () => {
       entryIds.forEach((id) => expect(id).toBeDefined())
 
       // Retrieve the entries and check their properties
-      const entries = entryIds.map((id) => twoFaLib.vault.getEntryMeta(id))
+      const entries = entryIds.map((id) => favaLib.vault.getEntryMeta(id))
 
       testCases.forEach((tc, index) => {
         expect(entries[index]).toEqual(expect.objectContaining(tc.expected))
@@ -276,7 +276,7 @@ describe('ExportImportManager', () => {
 
       // Generate tokens to ensure the entries are valid
       const tokens = entryIds.map((id) =>
-        twoFaLib.vault.generateTokenForEntry(id),
+        favaLib.vault.generateTokenForEntry(id),
       )
 
       tokens.forEach((token, index) => {
@@ -294,7 +294,7 @@ describe('ExportImportManager', () => {
 
   describe('importFromTextFile', () => {
     beforeEach(async () => {
-      await clearEntries(twoFaLib)
+      await clearEntries(favaLib)
     })
 
     it('should import valid entries from a text file', async () => {
@@ -303,8 +303,7 @@ describe('ExportImportManager', () => {
         otpauth://totp/Another%20Issuer:Another%20TOTP?secret=ANOTHERSECRET&issuer=Another%20Issuer&algorithm=SHA-256&digits=8&period=60
       `.trim()
 
-      const result =
-        await twoFaLib.exportImport.importFromTextFile(fileContents)
+      const result = await favaLib.exportImport.importFromTextFile(fileContents)
 
       expect(result).toHaveLength(2)
       expect(result[0].entryId).toBeTruthy()
@@ -312,7 +311,7 @@ describe('ExportImportManager', () => {
       expect(result[1].entryId).toBeTruthy()
       expect(result[1].error).toBeNull()
 
-      const entries = twoFaLib.vault.listEntriesMetas()
+      const entries = favaLib.vault.listEntriesMetas()
       expect(entries).toHaveLength(2)
       expect(entries[0]).toMatchObject({
         name: 'Test TOTP',
@@ -333,8 +332,7 @@ describe('ExportImportManager', () => {
         otpauth://hotp/Invalid:HOTP?secret=INVALIDSECRET&issuer=Invalid&algorithm=SHA-1&digits=6&counter=0
       `.trim()
 
-      const result =
-        await twoFaLib.exportImport.importFromTextFile(fileContents)
+      const result = await favaLib.exportImport.importFromTextFile(fileContents)
 
       expect(result).toHaveLength(3)
       expect(result[0].entryId).toBeTruthy()
@@ -344,7 +342,7 @@ describe('ExportImportManager', () => {
       expect(result[2].entryId).toBeNull()
       expect(result[2].error).toBeTruthy()
 
-      const entries = twoFaLib.vault.listEntriesMetas()
+      const entries = favaLib.vault.listEntriesMetas()
       expect(entries).toHaveLength(1)
       expect(entries[0]).toMatchObject({
         name: 'Test TOTP',
@@ -354,19 +352,19 @@ describe('ExportImportManager', () => {
     })
 
     it('should give no errors on importing empty file', async () => {
-      const contents = await twoFaLib.exportImport.exportEntries(
+      const contents = await favaLib.exportImport.exportEntries(
         'text',
         undefined,
         true,
       )
-      const result = await twoFaLib.exportImport.importFromTextFile(contents)
+      const result = await favaLib.exportImport.importFromTextFile(contents)
       expect(result).toHaveLength(0)
 
-      const encryptedContents = await twoFaLib.exportImport.exportEntries(
+      const encryptedContents = await favaLib.exportImport.exportEntries(
         'text',
         password,
       )
-      const resultEncrypted = await twoFaLib.exportImport.importFromTextFile(
+      const resultEncrypted = await favaLib.exportImport.importFromTextFile(
         encryptedContents,
         password,
       )
@@ -374,17 +372,17 @@ describe('ExportImportManager', () => {
     })
 
     it('should import entries from an encrypted text file', async () => {
-      await twoFaLib.vault.addEntry(newTotpEntry)
-      await twoFaLib.vault.addEntry(anotherNewTotpEntry)
+      await favaLib.vault.addEntry(newTotpEntry)
+      await favaLib.vault.addEntry(anotherNewTotpEntry)
 
-      const encryptedContents = await twoFaLib.exportImport.exportEntries(
+      const encryptedContents = await favaLib.exportImport.exportEntries(
         'text',
         password,
       )
 
-      await clearEntries(twoFaLib)
+      await clearEntries(favaLib)
 
-      const result = await twoFaLib.exportImport.importFromTextFile(
+      const result = await favaLib.exportImport.importFromTextFile(
         encryptedContents,
         password,
       )
@@ -395,7 +393,7 @@ describe('ExportImportManager', () => {
       expect(result[1].entryId).toBeTruthy()
       expect(result[1].error).toBeNull()
 
-      const entries = twoFaLib.vault.listEntriesMetas()
+      const entries = favaLib.vault.listEntriesMetas()
       expect(entries).toHaveLength(2)
       expect(entries[0]).toMatchObject({
         name: 'Test TOTP',
@@ -412,13 +410,13 @@ describe('ExportImportManager', () => {
     it('should throw an error when trying to decrypt with an incorrect password', async () => {
       const correctPassword = password
       const incorrectPassword = 'incorrectPassword'
-      const encryptedContents = await twoFaLib.exportImport.exportEntries(
+      const encryptedContents = await favaLib.exportImport.exportEntries(
         'text',
         correctPassword,
       )
 
       await expect(
-        twoFaLib.exportImport.importFromTextFile(
+        favaLib.exportImport.importFromTextFile(
           encryptedContents,
           incorrectPassword,
         ),

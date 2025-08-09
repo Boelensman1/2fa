@@ -1,10 +1,10 @@
 import { input } from '@inquirer/prompts'
 import BaseCommand from '../../BaseCommand.mjs'
-import { TwoFaLibEvent } from 'favalib'
+import { FavaLibEvent } from 'favalib'
 
 class ConnectCommand extends BaseCommand {
   static override paths = [['sync', 'connect']]
-  requireTwoFaLib = true
+  requireFavaLib = true
 
   static usage = BaseCommand.Usage({
     category: 'Sync',
@@ -18,7 +18,7 @@ class ConnectCommand extends BaseCommand {
   })
 
   async exec() {
-    if (!this.twoFaLib.sync) {
+    if (!this.favaLib.sync) {
       throw new Error('No server url set')
     }
 
@@ -27,15 +27,15 @@ class ConnectCommand extends BaseCommand {
     })
 
     const connectFinished = new Promise<void>((resolve) => {
-      this.twoFaLib.addEventListener(
-        TwoFaLibEvent.ConnectToExistingVaultFinished,
+      this.favaLib.addEventListener(
+        FavaLibEvent.ConnectToExistingVaultFinished,
         () => {
           resolve()
         },
       )
     })
 
-    await this.twoFaLib.sync.respondToAddDeviceFlow(connectionString, 'text')
+    await this.favaLib.sync.respondToAddDeviceFlow(connectionString, 'text')
 
     await connectFinished
 

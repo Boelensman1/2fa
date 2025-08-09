@@ -1,6 +1,6 @@
 import { type Component, createSignal } from 'solid-js'
 import {
-  TwoFaLibEvent,
+  FavaLibEvent,
   type LockedRepresentationString,
   type Password,
 } from 'favalib'
@@ -22,17 +22,17 @@ const Login: Component = () => {
       throw new Error('localStorage is not complete')
     }
 
-    const twoFaLib = await creationUtils.loadTwoFaLibFromLockedRepesentation(
+    const favaLib = await creationUtils.loadFavaLibFromLockedRepesentation(
       lockedRepresentation as LockedRepresentationString,
       password() as Password,
     )
 
-    twoFaLib.storage.setSaveFunction((newLockedRepresentationString) => {
+    favaLib.storage.setSaveFunction((newLockedRepresentationString) => {
       saveFunction(newLockedRepresentationString)
-      syncStoreWithLib(twoFaLib)
+      syncStoreWithLib(favaLib)
     })
 
-    twoFaLib.addEventListener(TwoFaLibEvent.Log, (event) => {
+    favaLib.addEventListener(FavaLibEvent.Log, (event) => {
       switch (event.detail.severity) {
         case 'info':
           console.log(event.detail.message)
@@ -43,8 +43,8 @@ const Login: Component = () => {
       }
     })
 
-    syncStoreWithLib(twoFaLib)
-    dispatch(actions.initialize(twoFaLib))
+    syncStoreWithLib(favaLib)
+    dispatch(actions.initialize(favaLib))
   }
 
   const onSubmit = (e: Event) => {

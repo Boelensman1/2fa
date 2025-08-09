@@ -1,5 +1,5 @@
 import { type Component, createSignal, createEffect } from 'solid-js'
-import { Password, TwoFaLibEvent } from 'favalib'
+import { Password, FavaLibEvent } from 'favalib'
 import type { ZxcvbnResult } from '@zxcvbn-ts/core'
 
 import useStore from '../store/useStore'
@@ -18,25 +18,25 @@ const CreateVault: Component = () => {
     createSignal<ZxcvbnResult | null>(null)
 
   const createVault = async () => {
-    const { twoFaLib } = await creationUtils.createNewTwoFaLibVault(password())
+    const { favaLib } = await creationUtils.createNewFavaLibVault(password())
 
-    twoFaLib.storage.setSaveFunction((newLockedRepresentationString) => {
+    favaLib.storage.setSaveFunction((newLockedRepresentationString) => {
       saveFunction(newLockedRepresentationString)
-      syncStoreWithLib(twoFaLib)
+      syncStoreWithLib(favaLib)
     })
 
-    twoFaLib.addEventListener(
-      TwoFaLibEvent.ConnectToExistingVaultFinished,
+    favaLib.addEventListener(
+      FavaLibEvent.ConnectToExistingVaultFinished,
       () => {
         dispatch(actions.setConnectingToExistingVault(false))
       },
     )
     if (mode() === 'create') {
-      void twoFaLib.storage.forceSave()
+      void favaLib.storage.forceSave()
     }
 
     dispatch(actions.setConnectingToExistingVault(mode() === 'connect'))
-    dispatch(actions.initialize(twoFaLib))
+    dispatch(actions.initialize(favaLib))
   }
 
   const onSubmit = (e: Event) => {

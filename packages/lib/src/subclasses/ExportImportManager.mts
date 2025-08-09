@@ -11,8 +11,8 @@ import { EntryId } from '../interfaces/Entry.mjs'
 import type { Password } from '../interfaces/CryptoLib.mjs'
 import type { PasswordExtraDict } from '../interfaces/PasswordExtraDict.js'
 
-import type TwoFaLibMediator from '../TwoFaLibMediator.mjs'
-import { ExportImportError } from '../TwoFALibError.mjs'
+import type FavaLibMediator from '../FavaLibMediator.mjs'
+import { ExportImportError } from '../FavaLibError.mjs'
 import { validatePasswordStrength } from '../utils/creationUtils.mjs'
 
 /**
@@ -25,7 +25,7 @@ class ExportImportManager {
    * @param passwordExtraDict - Additional words to be used for password strength evaluation.
    */
   constructor(
-    private readonly mediator: TwoFaLibMediator,
+    private readonly mediator: FavaLibMediator,
     private readonly passwordExtraDict: PasswordExtraDict,
   ) {}
 

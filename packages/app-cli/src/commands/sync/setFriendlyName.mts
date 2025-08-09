@@ -5,7 +5,7 @@ import BaseCommand from '../../BaseCommand.mjs'
 
 class SetFriendlyNameCommand extends BaseCommand {
   static override paths = [['sync', 'set-friendly-name']]
-  requireTwoFaLib = true
+  requireFavaLib = true
 
   static usage = BaseCommand.Usage({
     category: 'Sync',
@@ -20,11 +20,11 @@ class SetFriendlyNameCommand extends BaseCommand {
   name = Option.String('--name', { required: true })
 
   async exec() {
-    if (!this.twoFaLib.sync) {
+    if (!this.favaLib.sync) {
       throw new Error('No server url set')
     }
 
-    await this.twoFaLib.setDeviceFriendlyName(this.name as DeviceFriendlyName)
+    await this.favaLib.setDeviceFriendlyName(this.name as DeviceFriendlyName)
 
     this.output(`Device name set to: ${this.name}\n`)
 

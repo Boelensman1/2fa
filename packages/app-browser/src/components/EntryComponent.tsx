@@ -9,13 +9,15 @@ const EntryComponent = (props: {
 }) => {
   const [state] = useStore()
   const syncStoreWithLib = useSyncStoreWithLib()
-  const twoFaLib = state.twoFaLib!
+  const favaLib = state.favaLib!
   const [copyStatus, setCopyStatus] = createSignal('')
 
   const generateTOTP = (entryId: EntryId, timestamp: number) => {
     try {
-      const { otp, validFrom, validTill } =
-        twoFaLib.vault.generateTokenForEntry(entryId, timestamp)
+      const { otp, validFrom, validTill } = favaLib.vault.generateTokenForEntry(
+        entryId,
+        timestamp,
+      )
       const totalTime = validTill - validFrom
       const remainingTime = validTill - timestamp
       const progress = (remainingTime / totalTime) * 100
@@ -46,8 +48,8 @@ const EntryComponent = (props: {
     )
 
     if (confirmDelete) {
-      void twoFaLib.vault.deleteEntry(props.entry.id).then(() => {
-        syncStoreWithLib(twoFaLib)
+      void favaLib.vault.deleteEntry(props.entry.id).then(() => {
+        syncStoreWithLib(favaLib)
       })
     }
   }

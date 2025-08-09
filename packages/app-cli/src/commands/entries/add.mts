@@ -25,7 +25,7 @@ class EntriesAddCommand extends BaseCommand {
     ],
   })
 
-  requireTwoFaLib = true
+  requireFavaLib = true
 
   name = Option.String('--name', { required: true })
   issuer = Option.String('--issuer', { required: true })
@@ -35,7 +35,7 @@ class EntriesAddCommand extends BaseCommand {
   algorithm = Option.String('--algorithm', 'SHA-1')
 
   async exec() {
-    await this.twoFaLib.vault.addEntry({
+    await this.favaLib.vault.addEntry({
       name: this.name,
       issuer: this.issuer,
       type: 'TOTP',

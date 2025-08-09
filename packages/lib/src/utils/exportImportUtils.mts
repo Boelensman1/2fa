@@ -4,7 +4,7 @@ import type { SupportedAlgorithmsType } from './constants.mjs'
 import type { EntryId } from '../interfaces/Entry.mjs'
 import type { QrCodeLib } from '../interfaces/QrCodeLib.mjs'
 import type { OpenPgpLib } from '../interfaces/OpenPgpLib.mjs'
-import { ExportImportError } from '../TwoFALibError.mjs'
+import { ExportImportError } from '../FavaLibError.mjs'
 
 /**
  * Determines the hashing algorithm based on the input string.

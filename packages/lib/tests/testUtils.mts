@@ -3,15 +3,15 @@ import { vi } from 'vitest'
 import { nodeProviders } from '../src/platformProviders/node/index.mjs'
 import type WS from 'vitest-websocket-mock'
 import {
-  getTwoFaLibVaultCreationUtils,
+  getFavaLibVaultCreationUtils,
   DeviceId,
   DeviceType,
   type NewEntry,
   type Password,
-  type TwoFaLib,
+  type FavaLib,
   Entry,
   EntryId,
-  TwoFaLibEvent,
+  FavaLibEvent,
 } from '../src/main.mjs'
 import type { Client as WsClient } from 'mock-socket'
 import { PasswordExtraDict } from '../src/interfaces/PasswordExtraDict.js'
@@ -60,18 +60,18 @@ export const password = 'w!22M@#GdRKqp#58#9&e' as Password
 export const passwordExtraDict: PasswordExtraDict = ['test']
 
 /**
- * Creates a TwoFaLib instance that can be used for testing.
+ * Creates a FavaLib instance that can be used for testing.
  * @param saveFunction - The function to save the data.
- * @returns A promise that resolves to the TwoFaLib instance.
+ * @returns A promise that resolves to the FavaLib instance.
  */
-export const createTwoFaLibForTests = async (saveFunction?: SaveFunction) => {
-  const { createNewTwoFaLibVault } = getTwoFaLibVaultCreationUtils(
+export const createFavaLibForTests = async (saveFunction?: SaveFunction) => {
+  const { createNewFavaLibVault } = getFavaLibVaultCreationUtils(
     nodeProviders,
     deviceType,
     passwordExtraDict,
     saveFunction,
   )
-  const result = await createNewTwoFaLibVault(password)
+  const result = await createNewFavaLibVault(password)
   const cryptoLib = new nodeProviders.CryptoLib()
   const keys = await cryptoLib.decryptKeys(
     result.encryptedPrivateKey,
@@ -80,19 +80,19 @@ export const createTwoFaLibForTests = async (saveFunction?: SaveFunction) => {
     password,
   )
 
-  addTestLogEventListener(result.twoFaLib)
+  addTestLogEventListener(result.favaLib)
 
   return { platformProviders: nodeProviders, password, ...result, ...keys }
 }
 
 /**
  * Clears all entries from the vault.
- * @param twoFaLib - The TwoFaLib instance.
+ * @param favaLib - The FavaLib instance.
  */
-export const clearEntries = async (twoFaLib: TwoFaLib) => {
-  const entries = twoFaLib.vault.listEntries()
+export const clearEntries = async (favaLib: FavaLib) => {
+  const entries = favaLib.vault.listEntries()
   for (const entryId of entries) {
-    await twoFaLib.vault.deleteEntry(entryId)
+    await favaLib.vault.deleteEntry(entryId)
   }
 }
 
@@ -106,10 +106,10 @@ export const omit = (obj: Record<string, unknown>, ...keys: string[]) =>
   Object.fromEntries(Object.entries(obj).filter(([k]) => !keys.includes(k)))
 
 /**
- * Connects two TwoFaLib instances for syncing
+ * Connects two FavaLib instances for syncing
  * @param params - The connection parameters
- * @param params.senderTwoFaLib - The TwoFaLib instance initiating the connection
- * @param params.receiverTwoFaLib - The TwoFaLib instance being added
+ * @param params.senderFavaLib - The FavaLib instance initiating the connection
+ * @param params.receiverFavaLib - The FavaLib instance being added
  * @param params.server - The WebSocket mock server
  * @param params.senderWsInstance - The sender's WebSocket client
  * @param params.receiverWsInstance - The receiver's WebSocket client
@@ -117,29 +117,29 @@ export const omit = (obj: Record<string, unknown>, ...keys: string[]) =>
  * @throws If sync manager is not initialized or connection fails
  */
 export async function connectDevices({
-  senderTwoFaLib,
-  receiverTwoFaLib,
+  senderFavaLib,
+  receiverFavaLib,
   server,
   wsInstancesMap,
 }: {
-  senderTwoFaLib: TwoFaLib
-  receiverTwoFaLib: TwoFaLib
+  senderFavaLib: FavaLib
+  receiverFavaLib: FavaLib
   server: WS
   wsInstancesMap: Map<DeviceId, WsClient>
 }) {
-  if (!senderTwoFaLib.sync || !receiverTwoFaLib.sync) {
+  if (!senderFavaLib.sync || !receiverFavaLib.sync) {
     throw new Error('Sync manager not initialized')
   }
 
-  const senderWsInstance = wsInstancesMap.get(senderTwoFaLib.meta.deviceId)
-  const receiverWsInstance = wsInstancesMap.get(receiverTwoFaLib.meta.deviceId)
+  const senderWsInstance = wsInstancesMap.get(senderFavaLib.meta.deviceId)
+  const receiverWsInstance = wsInstancesMap.get(receiverFavaLib.meta.deviceId)
 
   if (!senderWsInstance || !receiverWsInstance) {
     throw new Error('Sender/receiver ws instance not found')
   }
 
   // Initiate add device flow
-  const initiateResultPromise = senderTwoFaLib.sync.initiateAddDeviceFlow({
+  const initiateResultPromise = senderFavaLib.sync.initiateAddDeviceFlow({
     qr: false,
     text: true,
   })
@@ -149,10 +149,7 @@ export async function connectDevices({
 
   // Connect the devices
   const initiateResult = await initiateResultPromise
-  await receiverTwoFaLib.sync.respondToAddDeviceFlow(
-    initiateResult.text,
-    'text',
-  )
+  await receiverFavaLib.sync.respondToAddDeviceFlow(initiateResult.text, 'text')
 
   // Connect the devices
   // Handle the message flow
@@ -169,20 +166,20 @@ export async function connectDevices({
   }
 
   // Wait for connection to complete
-  await vi.waitUntil(() => !receiverTwoFaLib.sync?.inAddDeviceFlow, {
+  await vi.waitUntil(() => !receiverFavaLib.sync?.inAddDeviceFlow, {
     timeout: 200,
     interval: 5,
   })
 
   // Verify connection was successful
   if (
-    senderTwoFaLib.sync.inAddDeviceFlow ||
-    receiverTwoFaLib.sync.inAddDeviceFlow
+    senderFavaLib.sync.inAddDeviceFlow ||
+    receiverFavaLib.sync.inAddDeviceFlow
   ) {
     throw new Error('Device connection failed')
   }
 
-  await handleSyncCommands(server, senderTwoFaLib.meta.deviceId, wsInstancesMap)
+  await handleSyncCommands(server, senderFavaLib.meta.deviceId, wsInstancesMap)
 }
 
 /**
@@ -201,10 +198,10 @@ export const send = <T extends ServerMessage['type']>(
 
 /**
  * Adds an event listener to relay warning logs
- * @param lib - The TwoFaLib to add the event listener to
+ * @param lib - The FavaLib to add the event listener to
  */
-export const addTestLogEventListener = (lib: TwoFaLib) => {
-  lib.addEventListener(TwoFaLibEvent.Log, (event) => {
+export const addTestLogEventListener = (lib: FavaLib) => {
+  lib.addEventListener(FavaLibEvent.Log, (event) => {
     if (event.detail.severity !== 'info') {
       console.log(event.detail.message)
     }

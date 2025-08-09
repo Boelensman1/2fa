@@ -1,5 +1,5 @@
 import type { types } from '../actions'
-import type { TwoFaLib, EntryMeta } from 'favalib'
+import type { FavaLib, EntryMeta } from 'favalib'
 
 interface SetEntriesAction {
   type: typeof types.SET_ENTRIES
@@ -13,7 +13,7 @@ interface SetConnectingToExistingVault {
 
 interface InitializeAction {
   type: typeof types.INITIALIZE
-  payload: TwoFaLib
+  payload: FavaLib
 }
 
 interface SetSettingsAction {

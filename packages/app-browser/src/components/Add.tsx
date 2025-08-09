@@ -14,11 +14,11 @@ const Add = () => {
     }
 
     const [state] = useStore()
-    const { twoFaLib } = state
-    if (!twoFaLib) {
-      throw new Error('twoFaLib not loaded')
+    const { favaLib } = state
+    if (!favaLib) {
+      throw new Error('favaLib not loaded')
     }
-    await twoFaLib.vault.addEntry({
+    await favaLib.vault.addEntry({
       name: name(),
       type: 'TOTP',
       issuer: issuer(),
@@ -42,13 +42,13 @@ const Add = () => {
 
   const importFromQRCode = async (blob: File) => {
     const [state] = useStore()
-    const { twoFaLib } = state
-    if (!twoFaLib) {
-      throw new Error('twoFaLib not loaded')
+    const { favaLib } = state
+    if (!favaLib) {
+      throw new Error('favaLib not loaded')
     }
 
     try {
-      await twoFaLib.exportImport.importFromQRCode(blob)
+      await favaLib.exportImport.importFromQRCode(blob)
     } catch (error) {
       if (error instanceof Error) {
         setErrorMessage(`Failed to add entry: ${error.message}`)

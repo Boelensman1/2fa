@@ -1,4 +1,4 @@
-import { TwoFALibError } from '../TwoFALibError.mjs'
+import { FavaLibError } from '../FavaLibError.mjs'
 import LibraryLoader from '../subclasses/LibraryLoader.mjs'
 
 /**
@@ -18,7 +18,7 @@ export const getDataFromQRImage = async (
   const imageData = await qrLib.getImageDataFromInput(imageInput)
   const qrCodeResult = jsQr(imageData.data, imageData.width, imageData.height)
   if (!qrCodeResult) {
-    throw new TwoFALibError("Couldn't read QR code data from image")
+    throw new FavaLibError("Couldn't read QR code data from image")
   }
   return qrCodeResult.data
 }

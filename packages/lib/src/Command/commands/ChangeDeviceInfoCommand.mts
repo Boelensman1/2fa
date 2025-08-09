@@ -1,5 +1,5 @@
-import { InvalidCommandError, TwoFALibError } from '../../TwoFALibError.mjs'
-import type TwoFaLibMediator from '../../TwoFaLibMediator.mjs'
+import { InvalidCommandError, FavaLibError } from '../../FavaLibError.mjs'
+import type FavaLibMediator from '../../FavaLibMediator.mjs'
 import Command from '../BaseCommand.mjs'
 import type {
   DeviceFriendlyName,
@@ -39,7 +39,7 @@ class ChangeDeviceInfoCommand extends Command<ChangeDeviceInfoData> {
    * @inheritdoc
    * @throws {InvalidCommandError} If the referenced device cannot be found
    */
-  async execute(mediator: TwoFaLibMediator) {
+  async execute(mediator: FavaLibMediator) {
     if (!this.validate(mediator)) {
       throw new InvalidCommandError(
         'Failed to validate ChangeDeviceInfo command',
@@ -75,14 +75,14 @@ class ChangeDeviceInfoCommand extends Command<ChangeDeviceInfoData> {
    * @inheritdoc
    */
   createUndoCommand(): Command {
-    throw new TwoFALibError('Not implemented yet')
+    throw new FavaLibError('Not implemented yet')
   }
 
   /**
    * Validates the command data.
    * @inheritdoc
    */
-  validate(mediator: TwoFaLibMediator): boolean {
+  validate(mediator: FavaLibMediator): boolean {
     const lib = mediator.getComponent('lib')
     if (this.fromRemote) {
       // we can only validate this command locally

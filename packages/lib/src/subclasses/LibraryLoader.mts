@@ -2,7 +2,7 @@ import type CryptoLib from '../interfaces/CryptoLib.mjs'
 import type { PlatformProviders } from '../interfaces/PlatformProviders.mjs'
 import type { QrCodeLib } from '../interfaces/QrCodeLib.mjs'
 import type { OpenPgpLib } from '../interfaces/OpenPgpLib.mjs'
-import { InitializationError } from '../TwoFALibError.mjs'
+import { InitializationError } from '../FavaLibError.mjs'
 
 /**
  * Class responsible for loading various external (big) libraries required by the application.

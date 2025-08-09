@@ -1,9 +1,9 @@
-import { getTwoFaLibVaultCreationUtils } from 'favalib'
+import { getFavaLibVaultCreationUtils } from 'favalib'
 import BrowserPlatformProvider from 'favalib/platformProviders/browser'
 
 import { deviceType, passwordExtraDict, syncServerUrl } from '../parameters'
 
-const twoFaLibVaultCreationUtils = getTwoFaLibVaultCreationUtils(
+const favaLibVaultCreationUtils = getFavaLibVaultCreationUtils(
   BrowserPlatformProvider,
   deviceType,
   passwordExtraDict,
@@ -13,4 +13,4 @@ const twoFaLibVaultCreationUtils = getTwoFaLibVaultCreationUtils(
   syncServerUrl,
 )
 
-export default twoFaLibVaultCreationUtils
+export default favaLibVaultCreationUtils

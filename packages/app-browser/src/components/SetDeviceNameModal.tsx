@@ -8,14 +8,12 @@ interface SetDeviceNameModalProps {
 
 const SetDeviceNameModal: Component<SetDeviceNameModalProps> = (props) => {
   const [state] = useStore()
-  const { twoFaLib } = state
-  const [newName, setNewName] = createSignal(twoFaLib!.meta.deviceFriendlyName)
+  const { favaLib } = state
+  const [newName, setNewName] = createSignal(favaLib!.meta.deviceFriendlyName)
 
   const handleSetName = () => {
-    if (twoFaLib?.meta && newName().trim()) {
-      void twoFaLib.setDeviceFriendlyName(
-        newName().trim() as DeviceFriendlyName,
-      )
+    if (favaLib?.meta && newName().trim()) {
+      void favaLib.setDeviceFriendlyName(newName().trim() as DeviceFriendlyName)
       props.onClose()
     }
   }

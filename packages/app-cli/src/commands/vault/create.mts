@@ -3,14 +3,14 @@ import keytar from 'keytar'
 
 import BaseCommand from '../../BaseCommand.mjs'
 
-import { DeviceType, getTwoFaLibVaultCreationUtils, Password } from 'favalib'
+import { DeviceType, getFavaLibVaultCreationUtils, Password } from 'favalib'
 import NodePlatformProvider from 'favalib/platformProviders/node'
 import { password as passwordInput } from '@inquirer/prompts'
 
 class VaultCreateCommand extends BaseCommand {
   static override paths = [['vault', 'create']]
 
-  requireTwoFaLib = false
+  requireFavaLib = false
 
   static usage = BaseCommand.Usage({
     category: 'Vault',
@@ -25,7 +25,7 @@ class VaultCreateCommand extends BaseCommand {
   })
 
   async exec() {
-    const twoFaLibVaultCreationUtils = getTwoFaLibVaultCreationUtils(
+    const favaLibVaultCreationUtils = getFavaLibVaultCreationUtils(
       NodePlatformProvider,
       'cli' as DeviceType,
       ['cli'],
@@ -50,11 +50,11 @@ class VaultCreateCommand extends BaseCommand {
       throw new Error("Passwords don't match")
     }
 
-    const { twoFaLib } =
-      await twoFaLibVaultCreationUtils.createNewTwoFaLibVault(password)
+    const { favaLib } =
+      await favaLibVaultCreationUtils.createNewFavaLibVault(password)
 
     await Promise.all([
-      twoFaLib.storage.forceSave(),
+      favaLib.storage.forceSave(),
       keytar.setPassword('favacli', 'vault-password', password),
     ])
     return { success: true }

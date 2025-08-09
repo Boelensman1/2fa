@@ -2,7 +2,7 @@ import BaseCommand from '../../BaseCommand.mjs'
 
 class GetInfoCommand extends BaseCommand {
   static override paths = [['sync', 'get-info']]
-  requireTwoFaLib = true
+  requireFavaLib = true
 
   static usage = BaseCommand.Usage({
     category: 'Sync',
@@ -12,12 +12,12 @@ class GetInfoCommand extends BaseCommand {
   })
 
   exec() {
-    if (!this.twoFaLib.sync) {
+    if (!this.favaLib.sync) {
       throw new Error('No server url set')
     }
-    const connected = this.twoFaLib.sync.webSocketConnected || false
-    const friendlyName = this.twoFaLib.meta.deviceFriendlyName || '(none)'
-    const serverUrl = this.twoFaLib.sync.serverUrl || '(none)'
+    const connected = this.favaLib.sync.webSocketConnected || false
+    const friendlyName = this.favaLib.meta.deviceFriendlyName || '(none)'
+    const serverUrl = this.favaLib.sync.serverUrl || '(none)'
 
     this.output(`Connected: ${connected ? 'yes' : 'no'}\n`)
     this.output(`Device friendly name: ${friendlyName}\n`)

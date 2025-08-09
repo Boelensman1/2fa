@@ -17,7 +17,7 @@ class SetServerUrlCommand extends BaseCommand {
     ],
   })
 
-  requireTwoFaLib = true
+  requireFavaLib = true
 
   serverUrl = Option.String({ required: true })
   force = Option.Boolean('--force', {
@@ -25,7 +25,7 @@ class SetServerUrlCommand extends BaseCommand {
   })
 
   async exec() {
-    await this.twoFaLib.setSyncServerUrl(this.serverUrl, this.force)
+    await this.favaLib.setSyncServerUrl(this.serverUrl, this.force)
     return { success: true }
   }
 }

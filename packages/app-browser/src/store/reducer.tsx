@@ -10,7 +10,7 @@ const reducer = (action: Action, draft: State) => {
       break
     }
     case types.INITIALIZE: {
-      draft.twoFaLib = action.payload
+      draft.favaLib = action.payload
       draft.vaultExists = true
       break
     }

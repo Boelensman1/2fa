@@ -19,7 +19,7 @@ class EntriesListCommand extends BaseListOutputCommand {
     ],
   })
 
-  requireTwoFaLib = true
+  requireFavaLib = true
 
   withTokens = Option.Boolean('--withTokens', {
     description: 'Include current TOTP tokens in the output',
@@ -27,9 +27,9 @@ class EntriesListCommand extends BaseListOutputCommand {
 
   getList() {
     if (this.withTokens) {
-      return this.twoFaLib.vault.listEntriesMetas(true)
+      return this.favaLib.vault.listEntriesMetas(true)
     } else {
-      return this.twoFaLib.vault.listEntriesMetas(false)
+      return this.favaLib.vault.listEntriesMetas(false)
     }
   }
 }

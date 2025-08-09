@@ -6,7 +6,7 @@ import SetDeviceNameModal from './SetDeviceNameModal'
 
 const SyncOptions: Component = () => {
   const [state] = useStore()
-  const { twoFaLib } = state
+  const { favaLib } = state
 
   const [showAddDevice, setShowAddDevice] = createSignal(false)
   const [showListDevices, setShowListDevices] = createSignal(false)
@@ -20,7 +20,7 @@ const SyncOptions: Component = () => {
             const newShowAddDevice = !showAddDevice()
             setShowAddDevice(newShowAddDevice)
             if (!newShowAddDevice) {
-              twoFaLib?.sync?.cancelAddSyncDevice()
+              favaLib?.sync?.cancelAddSyncDevice()
             }
           }}
           class="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded transition duration-200"
@@ -37,8 +37,8 @@ const SyncOptions: Component = () => {
         </button>
         <button
           onClick={() => {
-            if (twoFaLib?.sync) {
-              void twoFaLib.sync.requestResilver()
+            if (favaLib?.sync) {
+              void favaLib.sync.requestResilver()
             }
           }}
           class="bg-pink-500 hover:bg-pink-600 text-white font-bold py-2 px-4 rounded transition duration-200"
@@ -66,7 +66,7 @@ const SyncOptions: Component = () => {
       </Show>
 
       <div class="fixed bottom-2 right-2 text-xs text-gray-500">
-        deviceId {twoFaLib?.meta.deviceId}
+        deviceId {favaLib?.meta.deviceId}
       </div>
     </div>
   )

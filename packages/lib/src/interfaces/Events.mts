@@ -1,21 +1,21 @@
 import type { EmptyObject } from 'type-fest'
-import type { TwoFaLibEvent } from '../TwoFaLibEvent.mjs'
+import type { FavaLibEvent } from '../FavaLibEvent.mjs'
 import type { ConnectionStatus } from '../subclasses/SyncManager.mjs'
 
-export interface TwoFaLibEventMap {
-  [TwoFaLibEvent.Changed]: EmptyObject
-  [TwoFaLibEvent.LoadedFromLockedRepresentation]: EmptyObject
-  [TwoFaLibEvent.ConnectToExistingVaultFinished]: EmptyObject
-  [TwoFaLibEvent.ConnectionToSyncServerStatusChanged]: {
+export interface FavaLibEventMap {
+  [FavaLibEvent.Changed]: EmptyObject
+  [FavaLibEvent.LoadedFromLockedRepresentation]: EmptyObject
+  [FavaLibEvent.ConnectToExistingVaultFinished]: EmptyObject
+  [FavaLibEvent.ConnectionToSyncServerStatusChanged]: {
     newStatus: ConnectionStatus
   }
-  [TwoFaLibEvent.Log]: {
+  [FavaLibEvent.Log]: {
     severity: 'info' | 'warning'
     message: string
   }
-  [TwoFaLibEvent.Ready]: EmptyObject
+  [FavaLibEvent.Ready]: EmptyObject
 }
 
-export type TwoFaLibEventMapEvents = {
-  [K in keyof TwoFaLibEventMap]: CustomEvent<TwoFaLibEventMap[K]>
+export type FavaLibEventMapEvents = {
+  [K in keyof FavaLibEventMap]: CustomEvent<FavaLibEventMap[K]>
 }

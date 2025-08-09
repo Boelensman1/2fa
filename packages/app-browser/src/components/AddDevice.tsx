@@ -9,15 +9,15 @@ const AddDevice = () => {
 
   const createQr = async () => {
     try {
-      const { twoFaLib } = state
-      if (!twoFaLib) {
-        throw new Error('twoFaLib not loaded')
+      const { favaLib } = state
+      if (!favaLib) {
+        throw new Error('favaLib not loaded')
       }
-      if (!twoFaLib.sync) {
+      if (!favaLib.sync) {
         throw new Error('sync not loaded / no server connection')
       }
 
-      const result = await twoFaLib.sync.initiateAddDeviceFlow({
+      const result = await favaLib.sync.initiateAddDeviceFlow({
         qr: true,
         text: true,
       })

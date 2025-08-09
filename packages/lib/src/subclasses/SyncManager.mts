@@ -14,7 +14,7 @@ import {
 import type ServerMessage from 'favaserver/ServerMessage'
 import type ClientMessage from 'favaserver/ClientMessage'
 
-import { TwoFaLibEvent } from '../TwoFaLibEvent.mjs'
+import { FavaLibEvent } from '../FavaLibEvent.mjs'
 import {
   ActiveAddDeviceFlow,
   InitiateAddDeviceFlowResult,
@@ -37,7 +37,7 @@ import type {
 import type { SyncCommand } from '../interfaces/CommandTypes.mjs'
 import type Command from '../Command/BaseCommand.mjs'
 
-import type TwoFaLibMediator from '../TwoFaLibMediator.mjs'
+import type FavaLibMediator from '../FavaLibMediator.mjs'
 
 import {
   InitializationError,
@@ -45,8 +45,8 @@ import {
   SyncError,
   SyncInWrongStateError,
   SyncNoServerConnectionError,
-  TwoFALibError,
-} from '../TwoFALibError.mjs'
+  FavaLibError,
+} from '../FavaLibError.mjs'
 import {
   EncryptedVaultStateString,
   VaultSyncStateWithServerUrl,
@@ -141,7 +141,7 @@ class SyncManager {
    * @throws {InitializationError} If initialization fails (e.g., if the server URL is invalid).
    */
   constructor(
-    private readonly mediator: TwoFaLibMediator,
+    private readonly mediator: FavaLibMediator,
     private readonly publicKey: PublicKey,
     private readonly privateKey: PrivateKey,
     private readonly favaMeta: FavaMeta,
@@ -176,10 +176,10 @@ class SyncManager {
     this.connectionFailedTimeout = setTimeout(() => {
       if (!this.readyEventEmitted && !this.webSocketConnected) {
         this.log('warning', 'Failed to connect to sync backend')
-        this.dispatchLibEvent(TwoFaLibEvent.Ready)
+        this.dispatchLibEvent(FavaLibEvent.Ready)
 
         this.dispatchLibEvent(
-          TwoFaLibEvent.ConnectionToSyncServerStatusChanged,
+          FavaLibEvent.ConnectionToSyncServerStatusChanged,
           {
             newStatus: ConnectionStatus.FAILED,
           },
@@ -280,7 +280,7 @@ class SyncManager {
     ws.addEventListener('open', () => {
       this.log('info', 'Connected to server.')
       this.sendToServer('connect', { deviceId: syncManager.deviceId })
-      this.dispatchLibEvent(TwoFaLibEvent.ConnectionToSyncServerStatusChanged, {
+      this.dispatchLibEvent(FavaLibEvent.ConnectionToSyncServerStatusChanged, {
         newStatus: ConnectionStatus.CONNECTED,
       })
 
@@ -296,7 +296,7 @@ class SyncManager {
   }
   private handleWebSocketClose(event: CloseEvent) {
     if (this.shouldReconnect) {
-      this.dispatchLibEvent(TwoFaLibEvent.ConnectionToSyncServerStatusChanged, {
+      this.dispatchLibEvent(FavaLibEvent.ConnectionToSyncServerStatusChanged, {
         newStatus: ConnectionStatus.CONNECTING,
       })
 
@@ -304,7 +304,7 @@ class SyncManager {
       this.log('warning', `WebSocket closed: ${event.code} ${event.reason}`)
       this.attemptReconnect()
     } else {
-      this.dispatchLibEvent(TwoFaLibEvent.ConnectionToSyncServerStatusChanged, {
+      this.dispatchLibEvent(FavaLibEvent.ConnectionToSyncServerStatusChanged, {
         newStatus: ConnectionStatus.NOT_CONNECTED,
       })
 
@@ -488,7 +488,7 @@ class SyncManager {
       const timeout = setTimeout(() => {
         if (this.activeAddDeviceFlow?.state === 'initiator:initiated') {
           reject(
-            new TwoFALibError(
+            new FavaLibError(
               'Timeout of registerAddDeviceFlowRequest, no response',
             ),
           )
@@ -787,7 +787,7 @@ class SyncManager {
 
     // Reset the active add device flow
     this.activeAddDeviceFlow = undefined
-    this.dispatchLibEvent(TwoFaLibEvent.ConnectToExistingVaultFinished)
+    this.dispatchLibEvent(FavaLibEvent.ConnectToExistingVaultFinished)
   }
 
   private async importVaultState(
@@ -840,7 +840,7 @@ class SyncManager {
     })
     // Reset the active add device flow
     this.activeAddDeviceFlow = undefined
-    this.dispatchLibEvent(TwoFaLibEvent.ConnectToExistingVaultFinished)
+    this.dispatchLibEvent(FavaLibEvent.ConnectToExistingVaultFinished)
   }
 
   /**
@@ -957,7 +957,7 @@ class SyncManager {
     // we can signal that we're done loading after the commands where processed
     if (!this.readyEventEmitted) {
       this.readyEventEmitted = true
-      this.dispatchLibEvent(TwoFaLibEvent.Ready)
+      this.dispatchLibEvent(FavaLibEvent.Ready)
     }
 
     if (commandsExecutedIds.length > 0) {

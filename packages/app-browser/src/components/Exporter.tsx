@@ -28,13 +28,13 @@ const Exporter = () => {
   })
 
   const handleExport = async () => {
-    const { twoFaLib } = state
-    if (!twoFaLib) {
-      throw new Error('twoFaLib not loaded')
+    const { favaLib } = state
+    if (!favaLib) {
+      throw new Error('favaLib not loaded')
     }
 
     try {
-      const result = await twoFaLib.exportImport.exportEntries(
+      const result = await favaLib.exportImport.exportEntries(
         format(),
         password() || undefined,
         acknowledgedWarning(),

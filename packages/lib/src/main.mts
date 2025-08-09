@@ -1,4 +1,4 @@
-import TwoFaLib from './TwoFaLib.mjs'
+import FavaLib from './FavaLib.mjs'
 
 import type Entry from './interfaces/Entry.mjs'
 import type {
@@ -37,24 +37,24 @@ import type { SaveFunction } from './interfaces/SaveFunction.mjs'
 import type { PlatformProviders } from './interfaces/PlatformProviders.mjs'
 
 import {
-  TwoFALibError,
+  FavaLibError,
   InitializationError,
   AuthenticationError,
   EntryNotFoundError,
   TokenGenerationError,
-} from './TwoFALibError.mjs'
-import { TwoFaLibEvent } from './TwoFaLibEvent.mjs'
-import { getTwoFaLibVaultCreationUtils } from './utils/creationUtils.mjs'
+} from './FavaLibError.mjs'
+import { FavaLibEvent } from './FavaLibEvent.mjs'
+import { getFavaLibVaultCreationUtils } from './utils/creationUtils.mjs'
 
 export {
-  TwoFaLib,
-  TwoFALibError,
-  getTwoFaLibVaultCreationUtils,
+  FavaLib,
+  FavaLibError,
+  getFavaLibVaultCreationUtils,
   InitializationError,
   AuthenticationError,
   EntryNotFoundError,
   TokenGenerationError,
-  TwoFaLibEvent,
+  FavaLibEvent,
 }
 
 export type {

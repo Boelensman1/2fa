@@ -5,7 +5,7 @@ import type { PublicSyncDevice } from 'favalib'
 
 class ListDevicesCommand extends BaseCommand {
   static override paths = [['sync', 'list-devices']]
-  requireTwoFaLib = true
+  requireFavaLib = true
 
   static usage = BaseCommand.Usage({
     category: 'Sync',
@@ -15,11 +15,11 @@ class ListDevicesCommand extends BaseCommand {
   })
 
   async exec(): Promise<{ devices: PublicSyncDevice[] }> {
-    if (!this.twoFaLib.sync) {
+    if (!this.favaLib.sync) {
       throw new Error('No server url set')
     }
 
-    const devices = this.twoFaLib.sync.getSyncDevices()
+    const devices = this.favaLib.sync.getSyncDevices()
 
     const headers = [
       { value: 'deviceId', align: 'left', width: 38 },

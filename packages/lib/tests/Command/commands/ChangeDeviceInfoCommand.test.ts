@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
-import type TwoFaLibMediator from '../../../src/TwoFaLibMediator.mjs'
+import type FavaLibMediator from '../../../src/FavaLibMediator.mjs'
 import ChangeDeviceInfoCommand from '../../../src/Command/commands/ChangeDeviceInfoCommand.mjs'
-import { InvalidCommandError } from '../../../src/TwoFALibError.mjs'
+import { InvalidCommandError } from '../../../src/FavaLibError.mjs'
 import type {
   DeviceId,
   DeviceType,
@@ -39,7 +39,7 @@ describe('ChangeDeviceInfoCommand', () => {
     save: vi.fn(),
   }
 
-  const mockTwoFaLibMediator = {
+  const mockFavaLibMediator = {
     getComponent: (component: string) => {
       switch (component) {
         case 'lib':
@@ -52,7 +52,7 @@ describe('ChangeDeviceInfoCommand', () => {
           return undefined
       }
     },
-  } as unknown as TwoFaLibMediator
+  } as unknown as FavaLibMediator
 
   const commandData = {
     deviceId: mockDeviceId,
@@ -71,7 +71,7 @@ describe('ChangeDeviceInfoCommand', () => {
 
   it('should execute the command for local device', async () => {
     const command = new ChangeDeviceInfoCommand(commandData)
-    await command.execute(mockTwoFaLibMediator)
+    await command.execute(mockFavaLibMediator)
     expect(mockLib.favaMeta.deviceFriendlyName).toBe(mockNewFriendlyName)
     expect(mockSyncManager.syncDevices[0].deviceInfo.deviceFriendlyName).toBe(
       mockNewFriendlyName,
@@ -103,7 +103,7 @@ describe('ChangeDeviceInfoCommand', () => {
       true,
     )
 
-    await command.execute(mockTwoFaLibMediator)
+    await command.execute(mockFavaLibMediator)
     expect(mockSyncManager.syncDevices[1].deviceInfo.deviceFriendlyName).toBe(
       'New Remote Name',
     )
@@ -125,7 +125,7 @@ describe('ChangeDeviceInfoCommand', () => {
       true,
     )
 
-    await expect(command.execute(mockTwoFaLibMediator)).rejects.toThrow(
+    await expect(command.execute(mockFavaLibMediator)).rejects.toThrow(
       InvalidCommandError,
     )
   })
@@ -133,7 +133,7 @@ describe('ChangeDeviceInfoCommand', () => {
   it('should validate command data correctly', () => {
     // Valid command
     const validCommand = new ChangeDeviceInfoCommand(commandData)
-    expect(validCommand.validate(mockTwoFaLibMediator)).toBe(true)
+    expect(validCommand.validate(mockFavaLibMediator)).toBe(true)
 
     // Invalid command - different device type
     const invalidDeviceTypeCommand = new ChangeDeviceInfoCommand({
@@ -143,7 +143,7 @@ describe('ChangeDeviceInfoCommand', () => {
         deviceFriendlyName: mockNewFriendlyName,
       },
     })
-    expect(invalidDeviceTypeCommand.validate(mockTwoFaLibMediator)).toBe(false)
+    expect(invalidDeviceTypeCommand.validate(mockFavaLibMediator)).toBe(false)
 
     // Invalid command - empty friendly name
     const emptyFriendlyNameCommand = new ChangeDeviceInfoCommand({
@@ -153,7 +153,7 @@ describe('ChangeDeviceInfoCommand', () => {
         deviceFriendlyName: '' as DeviceFriendlyName,
       },
     })
-    expect(emptyFriendlyNameCommand.validate(mockTwoFaLibMediator)).toBe(false)
+    expect(emptyFriendlyNameCommand.validate(mockFavaLibMediator)).toBe(false)
 
     // Invalid command - too long friendly name
     const longFriendlyNameCommand = new ChangeDeviceInfoCommand({
@@ -163,7 +163,7 @@ describe('ChangeDeviceInfoCommand', () => {
         deviceFriendlyName: 'a'.repeat(257) as DeviceFriendlyName,
       },
     })
-    expect(longFriendlyNameCommand.validate(mockTwoFaLibMediator)).toBe(false)
+    expect(longFriendlyNameCommand.validate(mockFavaLibMediator)).toBe(false)
   })
 
   it('should throw an error when executing with invalid data', async () => {
@@ -175,7 +175,7 @@ describe('ChangeDeviceInfoCommand', () => {
       },
     })
 
-    await expect(invalidCommand.execute(mockTwoFaLibMediator)).rejects.toThrow(
+    await expect(invalidCommand.execute(mockFavaLibMediator)).rejects.toThrow(
       InvalidCommandError,
     )
   })
@@ -188,6 +188,6 @@ describe('ChangeDeviceInfoCommand', () => {
       undefined,
       true,
     )
-    expect(command.validate(mockTwoFaLibMediator)).toBe(true)
+    expect(command.validate(mockFavaLibMediator)).toBe(true)
   })
 })

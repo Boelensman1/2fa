@@ -1,5 +1,5 @@
-import { InvalidCommandError } from '../TwoFALibError.mjs'
-import type TwoFaLibMediator from '../TwoFaLibMediator.mjs'
+import { InvalidCommandError } from '../FavaLibError.mjs'
+import type FavaLibMediator from '../FavaLibMediator.mjs'
 
 import commandConstructors from '../Command/commandConstructors.mjs'
 import type Command from '../Command/BaseCommand.mjs'
@@ -23,7 +23,7 @@ class CommandManager {
    * Constructs a new CommandManager instance.
    * @param mediator - The mediator for accessing other components.
    */
-  constructor(private readonly mediator: TwoFaLibMediator) {}
+  constructor(private readonly mediator: FavaLibMediator) {}
 
   private get syncManager() {
     if (!this.mediator.componentIsInitialised('syncManager')) {

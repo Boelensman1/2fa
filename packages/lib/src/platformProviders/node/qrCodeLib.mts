@@ -1,6 +1,6 @@
 import type { ImageData } from 'canvas'
 import type { QrCodeLib } from '../../interfaces/QrCodeLib.mjs'
-import { TwoFALibError } from '../../TwoFALibError.mjs'
+import { FavaLibError } from '../../FavaLibError.mjs'
 import { isUint8Array } from 'uint8array-extras'
 
 /**
@@ -13,7 +13,7 @@ export const getImageDataFromInput = async (
   inputImage: string | File | Uint8Array,
 ): Promise<ImageData> => {
   if (inputImage instanceof File) {
-    throw new TwoFALibError(
+    throw new FavaLibError(
       'Getting data from QR where image type is "File" is not supported in the node environment',
     )
   }

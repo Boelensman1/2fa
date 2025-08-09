@@ -1,24 +1,24 @@
 import { createSignal, createEffect, For } from 'solid-js'
 import useStore from '../store/useStore'
-import { PublicSyncDevice, TwoFaLibEvent } from 'favalib'
+import { PublicSyncDevice, FavaLibEvent } from 'favalib'
 
 const ListSyncDevices = () => {
   const [state] = useStore()
   const [devices, setDevices] = createSignal<PublicSyncDevice[]>([])
 
   createEffect(() => {
-    const { twoFaLib } = state
-    if (twoFaLib) {
+    const { favaLib } = state
+    if (favaLib) {
       const updateDevices = () => {
-        const currentDevices = twoFaLib.sync?.getSyncDevices()
+        const currentDevices = favaLib.sync?.getSyncDevices()
         setDevices(currentDevices ?? [])
       }
 
-      twoFaLib.addEventListener(TwoFaLibEvent.Changed, updateDevices)
+      favaLib.addEventListener(FavaLibEvent.Changed, updateDevices)
       updateDevices() // Initial load
 
       return () => {
-        twoFaLib.removeEventListener(TwoFaLibEvent.Changed, updateDevices)
+        favaLib.removeEventListener(FavaLibEvent.Changed, updateDevices)
       }
     }
   })

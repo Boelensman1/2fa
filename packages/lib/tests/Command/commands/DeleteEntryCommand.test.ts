@@ -1,9 +1,9 @@
 import { describe, it, expect, vi } from 'vitest'
 import { EntryId } from '../../../src/main.mjs'
-import type TwoFaLibMediator from '../../../src/TwoFaLibMediator.mjs'
+import type FavaLibMediator from '../../../src/FavaLibMediator.mjs'
 import DeleteEntryCommand from '../../../src/Command/commands/DeleteEntryCommand.mjs'
 import AddEntryCommand from '../../../src/Command/commands/AddEntryCommand.mjs'
-import { InvalidCommandError } from '../../../src/TwoFALibError.mjs'
+import { InvalidCommandError } from '../../../src/FavaLibError.mjs'
 import type VaultDataManager from '../../../src/subclasses/VaultDataManager.mjs'
 
 import { totpEntry } from '../../testUtils.mjs'
@@ -15,9 +15,9 @@ describe('DeleteEntryCommand', () => {
     deleteEntry,
     getFullEntry,
   } as unknown as VaultDataManager
-  const mockTwoFaLibMediator = {
+  const mockFavaLibMediator = {
     getComponent: () => mockVaultManager,
-  } as unknown as TwoFaLibMediator
+  } as unknown as FavaLibMediator
 
   it('should create a DeleteEntryCommand instance', () => {
     const command = new DeleteEntryCommand({ entryId: totpEntry.id })
@@ -28,13 +28,13 @@ describe('DeleteEntryCommand', () => {
 
   it('should execute the command', async () => {
     const command = new DeleteEntryCommand({ entryId: totpEntry.id })
-    await command.execute(mockTwoFaLibMediator)
+    await command.execute(mockFavaLibMediator)
     expect(deleteEntry).toHaveBeenCalledWith(totpEntry.id)
   })
 
   it('should create an undo command', async () => {
     const command = new DeleteEntryCommand({ entryId: totpEntry.id })
-    await command.execute(mockTwoFaLibMediator)
+    await command.execute(mockFavaLibMediator)
     const undoCommand = command.createUndoCommand()
     expect(undoCommand).toBeInstanceOf(AddEntryCommand)
     expect((undoCommand as AddEntryCommand).data).toEqual(totpEntry)
@@ -54,7 +54,7 @@ describe('DeleteEntryCommand', () => {
     const invalidCommand = new DeleteEntryCommand({
       entryId: undefined as unknown as EntryId,
     })
-    await expect(invalidCommand.execute(mockTwoFaLibMediator)).rejects.toThrow(
+    await expect(invalidCommand.execute(mockFavaLibMediator)).rejects.toThrow(
       InvalidCommandError,
     )
   })
@@ -63,7 +63,7 @@ describe('DeleteEntryCommand', () => {
     const nonExistentEntryId = '9999' as EntryId
     const command = new DeleteEntryCommand({ entryId: nonExistentEntryId })
     getFullEntry.mockReturnValueOnce(undefined)
-    await expect(command.execute(mockTwoFaLibMediator)).rejects.toThrow(
+    await expect(command.execute(mockFavaLibMediator)).rejects.toThrow(
       InvalidCommandError,
     )
   })

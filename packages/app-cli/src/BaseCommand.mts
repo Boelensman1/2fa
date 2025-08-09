@@ -1,6 +1,6 @@
 import { Command, Option } from 'clipanion'
 import type { Jsonifiable } from 'type-fest'
-import type { LockedRepresentationString, TwoFaLib } from 'favalib'
+import type { LockedRepresentationString, FavaLib } from 'favalib'
 
 import loadVault from './utils/loadVault.mjs'
 import init, { Settings } from './utils/init.mjs'
@@ -13,7 +13,7 @@ export interface ErrorInCommand {
 abstract class BaseCommand extends Command {
   abstract exec(): Promise<Jsonifiable>
 
-  abstract requireTwoFaLib: boolean
+  abstract requireFavaLib: boolean
 
   errors: ErrorInCommand[] = []
 
@@ -28,7 +28,7 @@ abstract class BaseCommand extends Command {
 
   lockedRepresentationString!: LockedRepresentationString
   settings!: Settings
-  twoFaLib!: TwoFaLib
+  favaLib!: FavaLib
 
   output(string: string) {
     if (!this.json) {
@@ -41,22 +41,22 @@ abstract class BaseCommand extends Command {
 
     this.settings = settings
 
-    if (lockedRepresentationString && this.requireTwoFaLib) {
-      this.twoFaLib = await loadVault(
+    if (lockedRepresentationString && this.requireFavaLib) {
+      this.favaLib = await loadVault(
         lockedRepresentationString,
         settings,
         this.addError.bind(this),
         this.verbose,
       )
     } else {
-      if (this.requireTwoFaLib) {
+      if (this.requireFavaLib) {
         throw new Error('No vault loaded, was it created?')
       }
     }
 
     const result = await this.exec()
-    if (this.twoFaLib?.sync) {
-      this.twoFaLib.sync.closeServerConnection()
+    if (this.favaLib?.sync) {
+      this.favaLib.sync.closeServerConnection()
     }
 
     if (this.json) {

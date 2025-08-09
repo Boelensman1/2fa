@@ -4,8 +4,8 @@ import type { PlatformProviders } from '../interfaces/PlatformProviders.mjs'
 import type { Password } from '../interfaces/CryptoLib.mjs'
 import type { DeviceId, DeviceType } from '../interfaces/SyncTypes.mjs'
 
-import TwoFaLib from '../TwoFaLib.mjs'
-import { InitializationError, TwoFALibError } from '../TwoFALibError.mjs'
+import FavaLib from '../FavaLib.mjs'
+import { InitializationError, FavaLibError } from '../FavaLibError.mjs'
 
 import LibraryLoader from '../subclasses/LibraryLoader.mjs'
 import type {
@@ -74,21 +74,21 @@ export const validatePasswordStrength = async (
     password,
   )
   if (passwordStrength.score < 3) {
-    throw new TwoFALibError('Password is too weak')
+    throw new FavaLibError('Password is too weak')
   }
 }
 
 /**
- * Creates a new TwoFaLib vault.
+ * Creates a new FavaLib vault.
  * @param libraryLoader - An instance of LibraryLoader.
  * @param deviceType - A unique identifier for the device type e.g. 2fa-cli.
  * @param serverUrl - The server URL for syncing.
  * @param passwordExtraDict - Additional words to be used for password strength evaluation.
  * @param saveFunction - The function to save the data.
  * @param password - The password to be used to encrypt the private key.
- * @returns Promise resolving to an object containing the newly created TwoFaLib instance and related data.
+ * @returns Promise resolving to an object containing the newly created FavaLib instance and related data.
  */
-const createNewTwoFaLibVault = async (
+const createNewFavaLibVault = async (
   libraryLoader: LibraryLoader,
   deviceType: DeviceType,
   serverUrl: string | undefined,
@@ -110,7 +110,7 @@ const createNewTwoFaLibVault = async (
   await validatePasswordStrength(libraryLoader, passwordExtraDict, password)
 
   const deviceId = platformProviders.genUuidV4() as DeviceId
-  const twoFaLib = new TwoFaLib(
+  const favaLib = new FavaLib(
     deviceType,
     platformProviders,
     passwordExtraDict,
@@ -133,7 +133,7 @@ const createNewTwoFaLibVault = async (
   )
 
   return {
-    twoFaLib,
+    favaLib,
     publicKey,
     encryptedPrivateKey,
     encryptedSymmetricKey,
@@ -152,14 +152,14 @@ const createNewTwoFaLibVault = async (
  * @returns A promise that resolves when loading is complete.
  * @throws {InitializationError} If loading fails due to invalid or corrupted data.
  */
-const loadTwoFaLibFromLockedRepesentation = async (
+const loadFavaLibFromLockedRepesentation = async (
   libraryLoader: LibraryLoader,
   deviceType: DeviceType,
   passwordExtraDict: PasswordExtraDict,
   saveFunction: SaveFunction | undefined,
   lockedRepresentationString: LockedRepresentationString,
   password: Password,
-): Promise<TwoFaLib> => {
+): Promise<FavaLib> => {
   const cryptoLib = libraryLoader.getCryptoLib()
   const platformProviders = libraryLoader.getPlatformProviders()
   const lockedRepresentation = JSON.parse(lockedRepresentationString) as
@@ -203,7 +203,7 @@ const loadTwoFaLibFromLockedRepesentation = async (
     )
   }
 
-  return new TwoFaLib(
+  return new FavaLib(
     deviceType,
     platformProviders,
     passwordExtraDict,
@@ -224,15 +224,15 @@ const loadTwoFaLibFromLockedRepesentation = async (
 }
 
 /**
- * Returns utility functions useful in creating a new twoFaLib vault
+ * Returns utility functions useful in creating a new favaLib vault
  * @param platformProviders - The platform-specific providers containing CryptoLib and other providers.
  * @param deviceType - A unique identifier for this device type (e.g. 2fa-cli).
  * @param passwordExtraDict - Additional words to be used for password strength evaluation.
  * @param saveFunction - The function to save the data.
  * @param serverUrl - The server URL for syncing.
- * @returns An object with methods to evaluate password strength and create a new TwoFaLib vault.
+ * @returns An object with methods to evaluate password strength and create a new FavaLib vault.
  */
-export const getTwoFaLibVaultCreationUtils = (
+export const getFavaLibVaultCreationUtils = (
   platformProviders: PlatformProviders,
   deviceType: DeviceType,
   passwordExtraDict: PasswordExtraDict,
@@ -247,7 +247,7 @@ export const getTwoFaLibVaultCreationUtils = (
       libraryLoader,
       passwordExtraDict,
     ),
-    createNewTwoFaLibVault: createNewTwoFaLibVault.bind(
+    createNewFavaLibVault: createNewFavaLibVault.bind(
       null,
       libraryLoader,
       deviceType,
@@ -255,13 +255,12 @@ export const getTwoFaLibVaultCreationUtils = (
       passwordExtraDict,
       saveFunction,
     ),
-    loadTwoFaLibFromLockedRepesentation:
-      loadTwoFaLibFromLockedRepesentation.bind(
-        null,
-        libraryLoader,
-        deviceType,
-        passwordExtraDict,
-        saveFunction,
-      ),
+    loadFavaLibFromLockedRepesentation: loadFavaLibFromLockedRepesentation.bind(
+      null,
+      libraryLoader,
+      deviceType,
+      passwordExtraDict,
+      saveFunction,
+    ),
   }
 }

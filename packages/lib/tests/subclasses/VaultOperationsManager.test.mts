@@ -2,34 +2,34 @@ import { describe, it, expect, beforeEach, beforeAll, vi } from 'vitest'
 
 import {
   EntryNotFoundError,
-  TwoFaLibEvent,
+  FavaLibEvent,
   type EntryId,
   type NewEntry,
-  type TwoFaLib,
+  type FavaLib,
 } from '../../src/main.mjs'
 
 import {
   anotherNewTotpEntry,
   newTotpEntry,
   clearEntries,
-  createTwoFaLibForTests,
+  createFavaLibForTests,
   omit,
 } from '../testUtils.mjs'
 
 describe('VaultManager', () => {
-  let twoFaLib: TwoFaLib
+  let favaLib: FavaLib
 
   beforeAll(async () => {
-    twoFaLib = (await createTwoFaLibForTests()).twoFaLib
+    favaLib = (await createFavaLibForTests()).favaLib
   })
 
   beforeEach(async () => {
-    await clearEntries(twoFaLib)
+    await clearEntries(favaLib)
   })
 
   it('should add and retrieve a Entry', async () => {
-    const entryId = await twoFaLib.vault.addEntry(newTotpEntry)
-    const retrieved = twoFaLib.vault.getEntryMeta(entryId)
+    const entryId = await favaLib.vault.addEntry(newTotpEntry)
+    const retrieved = favaLib.vault.getEntryMeta(entryId)
 
     expect(retrieved).toEqual(
       omit(
@@ -45,8 +45,8 @@ describe('VaultManager', () => {
   })
 
   it('should generate an otp', async () => {
-    const id = await twoFaLib.vault.addEntry(newTotpEntry)
-    const otp = twoFaLib.vault.generateTokenForEntry(id, new Date(0).getTime())
+    const id = await favaLib.vault.addEntry(newTotpEntry)
+    const otp = favaLib.vault.generateTokenForEntry(id, new Date(0).getTime())
 
     expect(otp).toEqual({
       otp: '810290',
@@ -61,44 +61,44 @@ describe('VaultManager', () => {
       payload: { ...newTotpEntry.payload, secret: 'Secret2' },
     }
 
-    const id1 = await twoFaLib.vault.addEntry(newTotpEntry)
-    const id2 = await twoFaLib.vault.addEntry(totpEntry2)
+    const id1 = await favaLib.vault.addEntry(newTotpEntry)
+    const id2 = await favaLib.vault.addEntry(totpEntry2)
 
-    const allEntries = twoFaLib.vault.listEntries()
+    const allEntries = favaLib.vault.listEntries()
     expect(allEntries).toHaveLength(2)
     expect(allEntries[0]).toEqual(id1)
     expect(allEntries[1]).toEqual(id2)
   })
 
   it('should delete a Entry', async () => {
-    const id = await twoFaLib.vault.addEntry(newTotpEntry)
-    expect(twoFaLib.vault.listEntries()).toHaveLength(1)
+    const id = await favaLib.vault.addEntry(newTotpEntry)
+    expect(favaLib.vault.listEntries()).toHaveLength(1)
 
-    await twoFaLib.vault.deleteEntry(id)
-    expect(twoFaLib.vault.listEntries()).toHaveLength(0)
+    await favaLib.vault.deleteEntry(id)
+    expect(favaLib.vault.listEntries()).toHaveLength(0)
   })
 
   it('should throw an error when getting a non-existent Entry', () => {
-    expect(() =>
-      twoFaLib.vault.getEntryMeta('non-existing' as EntryId),
-    ).toThrow('Entry not found')
+    expect(() => favaLib.vault.getEntryMeta('non-existing' as EntryId)).toThrow(
+      'Entry not found',
+    )
   })
 
   it('should throw an error when deleting a non-existent Entry', async () => {
     await expect(() =>
-      twoFaLib.vault.deleteEntry('non-existing' as EntryId),
+      favaLib.vault.deleteEntry('non-existing' as EntryId),
     ).rejects.toThrow('Entry not found')
   })
 
   it('should update an existing entry', async () => {
-    const entryId = await twoFaLib.vault.addEntry(newTotpEntry)
+    const entryId = await favaLib.vault.addEntry(newTotpEntry)
     const updatedEntry = {
       ...newTotpEntry,
       name: 'Updated TOTP',
       issuer: 'Updated Issuer',
     }
 
-    const updated = await twoFaLib.vault.updateEntry(entryId, updatedEntry)
+    const updated = await favaLib.vault.updateEntry(entryId, updatedEntry)
 
     expect(updated).toEqual(
       expect.objectContaining({
@@ -108,34 +108,34 @@ describe('VaultManager', () => {
       }),
     )
 
-    const retrieved = twoFaLib.vault.getEntryMeta(entryId)
+    const retrieved = favaLib.vault.getEntryMeta(entryId)
     expect(retrieved).toEqual(updated)
   })
 
   it('should throw an error when updating a non-existent entry', async () => {
     await expect(
-      twoFaLib.vault.updateEntry('non-existing' as EntryId, newTotpEntry),
+      favaLib.vault.updateEntry('non-existing' as EntryId, newTotpEntry),
     ).rejects.toThrow(EntryNotFoundError)
   })
 
   it('should search for entries', async () => {
-    const id1 = await twoFaLib.vault.addEntry(newTotpEntry)
-    const id2 = await twoFaLib.vault.addEntry(anotherNewTotpEntry)
+    const id1 = await favaLib.vault.addEntry(newTotpEntry)
+    const id2 = await favaLib.vault.addEntry(anotherNewTotpEntry)
 
-    const searchResults = twoFaLib.vault.searchEntries('test')
+    const searchResults = favaLib.vault.searchEntries('test')
     expect(searchResults).toContain(id1)
     expect(searchResults).not.toContain(id2)
 
-    const anotherSearch = twoFaLib.vault.searchEntries('another')
+    const anotherSearch = favaLib.vault.searchEntries('another')
     expect(anotherSearch).toContain(id2)
     expect(anotherSearch).not.toContain(id1)
   })
 
   it('should search for entry metas', async () => {
-    const id1 = await twoFaLib.vault.addEntry(newTotpEntry)
-    const id2 = await twoFaLib.vault.addEntry(anotherNewTotpEntry)
+    const id1 = await favaLib.vault.addEntry(newTotpEntry)
+    const id2 = await favaLib.vault.addEntry(anotherNewTotpEntry)
 
-    const searchResults = twoFaLib.vault.searchEntriesMetas('test')
+    const searchResults = favaLib.vault.searchEntriesMetas('test')
     expect(searchResults).toEqual(
       expect.arrayContaining([expect.objectContaining({ id: id1 })]),
     )
@@ -143,7 +143,7 @@ describe('VaultManager', () => {
       expect.arrayContaining([expect.objectContaining({ id: id2 })]),
     )
 
-    const anotherSearch = twoFaLib.vault.searchEntriesMetas('another')
+    const anotherSearch = favaLib.vault.searchEntriesMetas('another')
     expect(anotherSearch).toEqual(
       expect.arrayContaining([expect.objectContaining({ id: id2 })]),
     )
@@ -153,19 +153,19 @@ describe('VaultManager', () => {
   })
 
   it('should list all entry metas', async () => {
-    const id1 = await twoFaLib.vault.addEntry(newTotpEntry)
-    const id2 = await twoFaLib.vault.addEntry(anotherNewTotpEntry)
+    const id1 = await favaLib.vault.addEntry(newTotpEntry)
+    const id2 = await favaLib.vault.addEntry(anotherNewTotpEntry)
 
-    const allMetas = twoFaLib.vault.listEntriesMetas()
+    const allMetas = favaLib.vault.listEntriesMetas()
     expect(allMetas).toHaveLength(2)
     expect(allMetas[0]).toEqual(expect.objectContaining({ id: id1 }))
     expect(allMetas[1]).toEqual(expect.objectContaining({ id: id2 }))
   })
 
   it('should generate different OTPs for different timestamps', async () => {
-    const entryId = await twoFaLib.vault.addEntry(newTotpEntry)
-    const otp1 = twoFaLib.vault.generateTokenForEntry(entryId, 0)
-    const otp2 = twoFaLib.vault.generateTokenForEntry(entryId, 30000) // 30 seconds later
+    const entryId = await favaLib.vault.addEntry(newTotpEntry)
+    const otp1 = favaLib.vault.generateTokenForEntry(entryId, 0)
+    const otp2 = favaLib.vault.generateTokenForEntry(entryId, 30000) // 30 seconds later
 
     expect(otp1.otp).not.toEqual(otp2.otp)
     expect(otp1.validFrom).toBeLessThan(otp2.validFrom)
@@ -174,8 +174,8 @@ describe('VaultManager', () => {
 
   it('should emit changed event when data is changed', async () => {
     const listener = vi.fn()
-    twoFaLib.addEventListener(TwoFaLibEvent.Changed, listener)
-    await twoFaLib.vault.addEntry(newTotpEntry)
+    favaLib.addEventListener(FavaLibEvent.Changed, listener)
+    await favaLib.vault.addEntry(newTotpEntry)
     expect(listener).toHaveBeenCalledTimes(1)
   })
 })

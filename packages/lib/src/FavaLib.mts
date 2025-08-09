@@ -11,8 +11,8 @@ import type {
 } from './interfaces/CryptoLib.mjs'
 import type { DeviceFriendlyName, DeviceType } from './interfaces/SyncTypes.mjs'
 import type {
-  TwoFaLibEventMap,
-  TwoFaLibEventMapEvents,
+  FavaLibEventMap,
+  FavaLibEventMapEvents,
 } from './interfaces/Events.mjs'
 import type { PasswordExtraDict } from './interfaces/PasswordExtraDict.js'
 import type {
@@ -24,13 +24,13 @@ import type { SaveFunction } from './interfaces/SaveFunction.mjs'
 import type { FavaMeta } from './interfaces/FavaMeta.mjs'
 import type { ChangeDeviceInfoData } from './Command/commands/ChangeDeviceInfoCommand.mjs'
 
-import TwoFaLibMediator from './TwoFaLibMediator.mjs'
-import { TwoFaLibEvent } from './TwoFaLibEvent.mjs'
+import FavaLibMediator from './FavaLibMediator.mjs'
+import { FavaLibEvent } from './FavaLibEvent.mjs'
 import {
   InitializationError,
   SyncError,
-  TwoFALibError,
-} from './TwoFALibError.mjs'
+  FavaLibError,
+} from './FavaLibError.mjs'
 
 import SyncManager, { ConnectionStatus } from './subclasses/SyncManager.mjs'
 import LibraryLoader from './subclasses/LibraryLoader.mjs'
@@ -45,7 +45,7 @@ import ChangeDeviceInfoCommand from './Command/commands/ChangeDeviceInfoCommand.
 /**
  * The Two-Factor Library, this is the main entry point.
  */
-class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
+class FavaLib extends TypedEventTarget<FavaLibEventMapEvents> {
   // TOOD: load this from package.json
   public static readonly version = '0.0.1'
 
@@ -53,7 +53,7 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
   public readonly deviceType: DeviceType
   public deviceFriendlyName?: DeviceFriendlyName
 
-  private mediator: TwoFaLibMediator
+  private mediator: FavaLibMediator
 
   private readonly publicKey: PublicKey
   private readonly privateKey: PrivateKey
@@ -72,7 +72,7 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
   }
 
   /**
-   * Constructs a new instance of TwoFaLib. If a serverUrl is provided, the library will use it for its sync operations.
+   * Constructs a new instance of FavaLib. If a serverUrl is provided, the library will use it for its sync operations.
    * @param deviceType - The identifier for this device type (e.g. 2fa-cli).
    * @param platformProviders - The platform-specific providers containing CryptoLib and other providers.
    * @param passwordExtraDict - Additional words to be used for password strength evaluation.
@@ -135,7 +135,7 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
     this.publicKey = publicKey
     this.privateKey = privateKey
 
-    this.mediator = new TwoFaLibMediator()
+    this.mediator = new FavaLibMediator()
     this.mediator.registerComponents([
       ['libraryLoader', new LibraryLoader(platformProviders)],
       [
@@ -185,7 +185,7 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
     } else {
       // If no syncmanager we're ready now, otherwise the syncmanager is responsible for emitting the ready event
       // We do this with a delay of 1, so that there is time to add event listeners
-      setTimeout(() => this.dispatchLibEvent(TwoFaLibEvent.Ready), 1)
+      setTimeout(() => this.dispatchLibEvent(FavaLibEvent.Ready), 1)
     }
 
     // populate the ready property
@@ -196,10 +196,10 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
 
     const handleReadyEvent = () => {
       setReady()
-      this.removeEventListener(TwoFaLibEvent.Ready, handleReadyEvent)
+      this.removeEventListener(FavaLibEvent.Ready, handleReadyEvent)
     }
 
-    this.addEventListener(TwoFaLibEvent.Ready, handleReadyEvent)
+    this.addEventListener(FavaLibEvent.Ready, handleReadyEvent)
   }
 
   /**
@@ -276,7 +276,7 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
 
     const success = await new Promise((resolve) => {
       this.addEventListener(
-        TwoFaLibEvent.ConnectionToSyncServerStatusChanged,
+        FavaLibEvent.ConnectionToSyncServerStatusChanged,
         (event) => {
           if (event.detail.newStatus === ConnectionStatus.CONNECTED) {
             resolve(true)
@@ -327,7 +327,7 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
     const command = ChangeDeviceInfoCommand.create(data)
 
     if (!command.validate(this.mediator)) {
-      throw new TwoFALibError(
+      throw new FavaLibError(
         'Device friendly name has invalid length, max 256 characters',
       )
     }
@@ -337,16 +337,16 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
 
   /**
    * Dispatches a library event.
-   * @param eventType - The type of the event to dispatch, uses the TwoFaLibEvent enum.
+   * @param eventType - The type of the event to dispatch, uses the FavaLibEvent enum.
    * @param data - Optional data to include with the event.
    */
-  private dispatchLibEvent<K extends keyof TwoFaLibEventMap>(
+  private dispatchLibEvent<K extends keyof FavaLibEventMap>(
     eventType: K,
-    data?: TwoFaLibEventMap[K],
+    data?: FavaLibEventMap[K],
   ) {
     this.dispatchTypedEvent(
       eventType,
-      new CustomEvent(eventType, { detail: data }) as TwoFaLibEventMapEvents[K],
+      new CustomEvent(eventType, { detail: data }) as FavaLibEventMapEvents[K],
     )
   }
 
@@ -356,7 +356,7 @@ class TwoFaLib extends TypedEventTarget<TwoFaLibEventMapEvents> {
    * @param message - The message to log.
    */
   private log(severity: 'info' | 'warning', message: string) {
-    this.dispatchLibEvent(TwoFaLibEvent.Log, { severity, message })
+    this.dispatchLibEvent(FavaLibEvent.Log, { severity, message })
   }
 }
-export default TwoFaLib
+export default FavaLib

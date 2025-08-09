@@ -3,11 +3,11 @@ import keytar from 'keytar'
 
 import {
   DeviceType,
-  getTwoFaLibVaultCreationUtils,
+  getFavaLibVaultCreationUtils,
   type LockedRepresentationString,
   Password,
   SaveFunction,
-  TwoFaLibEvent,
+  FavaLibEvent,
 } from 'favalib'
 import NodePlatformProvider from 'favalib/platformProviders/node'
 import { Settings } from './init.mjs'
@@ -45,7 +45,7 @@ const loadVault = async (
     }
   }
 
-  const twoFaLibVaultCreationUtils = getTwoFaLibVaultCreationUtils(
+  const favaLibVaultCreationUtils = getFavaLibVaultCreationUtils(
     NodePlatformProvider,
     'cli' as DeviceType,
     ['cli'],
@@ -57,12 +57,12 @@ const loadVault = async (
     'vault-password',
   )) as Password
 
-  const twoFaLib =
-    await twoFaLibVaultCreationUtils.loadTwoFaLibFromLockedRepesentation(
+  const favaLib =
+    await favaLibVaultCreationUtils.loadFavaLibFromLockedRepesentation(
       vaultData,
       password,
     )
-  twoFaLib.addEventListener(TwoFaLibEvent.Log, (ev) => {
+  favaLib.addEventListener(FavaLibEvent.Log, (ev) => {
     if (ev.detail.severity === 'warning') {
       addError(new Error(ev.detail.message))
       return
@@ -72,9 +72,9 @@ const loadVault = async (
     }
   })
 
-  await twoFaLib.ready
+  await favaLib.ready
 
-  return twoFaLib
+  return favaLib
 }
 
 export default loadVault

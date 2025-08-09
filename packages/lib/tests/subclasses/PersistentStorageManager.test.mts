@@ -8,8 +8,8 @@ import {
   type Mock,
 } from 'vitest'
 import {
-  getTwoFaLibVaultCreationUtils,
-  TwoFaLib,
+  getFavaLibVaultCreationUtils,
+  FavaLib,
   type LockedRepresentationString,
   type Password,
   type Salt,
@@ -19,7 +19,7 @@ import {
 import { nodeProviders } from '../../src/platformProviders/node/index.mjs'
 import {
   clearEntries,
-  createTwoFaLibForTests,
+  createFavaLibForTests,
   deviceType,
 } from '../testUtils.mjs'
 import { newTotpEntry } from '../testUtils.mjs'
@@ -35,7 +35,7 @@ const getNthMockCallFirstArg = (mockFn: Mock, n: number) => {
 }
 
 describe('PersistentStorageManager', () => {
-  let twoFaLib: TwoFaLib
+  let favaLib: FavaLib
   let persistentStorageManager: PersistentStorageManager
   let password: Password
   let salt: Salt
@@ -43,23 +43,23 @@ describe('PersistentStorageManager', () => {
   let encryptedSymmetricKey: EncryptedSymmetricKey
 
   beforeAll(async () => {
-    const result = await createTwoFaLibForTests()
-    twoFaLib = result.twoFaLib
+    const result = await createFavaLibForTests()
+    favaLib = result.favaLib
     password = result.password
     salt = result.salt
     encryptedPrivateKey = result.encryptedPrivateKey
     encryptedSymmetricKey = result.encryptedSymmetricKey
 
     // eslint-disable-next-line @typescript-eslint/dot-notation
-    persistentStorageManager = twoFaLib['persistentStorageManager']
+    persistentStorageManager = favaLib['persistentStorageManager']
   })
 
   beforeEach(async () => {
-    await clearEntries(twoFaLib)
+    await clearEntries(favaLib)
   })
 
   it('should return a locked representation', async () => {
-    await twoFaLib.vault.addEntry(newTotpEntry)
+    await favaLib.vault.addEntry(newTotpEntry)
 
     // Get the internal cryptoLib instance used by persistentStorageManager
     // @ts-expect-error: Using private property for testing
@@ -96,7 +96,7 @@ describe('PersistentStorageManager', () => {
     const parsed = JSON.parse(locked) as LockedRepresentation
 
     expect(parsed).toEqual({
-      libVersion: TwoFaLib.version,
+      libVersion: FavaLib.version,
       storageVersion: expect.any(Number) as number,
       encryptedPrivateKey,
       encryptedSymmetricKey,
@@ -109,7 +109,7 @@ describe('PersistentStorageManager', () => {
       parsed.encryptedVaultState,
     ) as VaultState
     expect(parsedVaultState).toEqual({
-      deviceId: twoFaLib.meta.deviceId,
+      deviceId: favaLib.meta.deviceId,
       sync: {
         devices: 'syncDevicesFromMock',
         serverUrl: 'serverUrlFromMock',
@@ -140,7 +140,7 @@ describe('PersistentStorageManager', () => {
 
   it('Should save when save is called', async () => {
     const mockSaveFunction = vi.fn()
-    twoFaLib.storage.setSaveFunction(mockSaveFunction)
+    favaLib.storage.setSaveFunction(mockSaveFunction)
     await persistentStorageManager.save()
     // Check if save function was called
     expect(mockSaveFunction).toHaveBeenCalledTimes(1)
@@ -148,10 +148,10 @@ describe('PersistentStorageManager', () => {
 
   it('Should save when data is changed', async () => {
     const mockSaveFunction = vi.fn()
-    twoFaLib.storage.setSaveFunction(mockSaveFunction)
+    favaLib.storage.setSaveFunction(mockSaveFunction)
 
     // Add an entry
-    await twoFaLib.vault.addEntry(newTotpEntry)
+    await favaLib.vault.addEntry(newTotpEntry)
 
     // Check if save function was called again
     expect(mockSaveFunction).toHaveBeenCalledTimes(1)
@@ -167,8 +167,8 @@ describe('PersistentStorageManager', () => {
     mockSaveFunction.mockClear()
 
     // Update an entry
-    const entries = twoFaLib.vault.listEntries()
-    await twoFaLib.vault.updateEntry(entries[0], { name: 'Updated TOTP' })
+    const entries = favaLib.vault.listEntries()
+    await favaLib.vault.updateEntry(entries[0], { name: 'Updated TOTP' })
 
     // Check if save function was called
     expect(mockSaveFunction).toHaveBeenCalledTimes(1)
@@ -203,16 +203,19 @@ describe('PersistentStorageManager', () => {
       throw new Error('No saved data')
     }
 
-    // Create a new TwoFaLib instance with the saved data
-    const { loadTwoFaLibFromLockedRepesentation } =
-      getTwoFaLibVaultCreationUtils(nodeProviders, deviceType, ['test'])
-    const newTwoFaLib = await loadTwoFaLibFromLockedRepesentation(
+    // Create a new FavaLib instance with the saved data
+    const { loadFavaLibFromLockedRepesentation } = getFavaLibVaultCreationUtils(
+      nodeProviders,
+      deviceType,
+      ['test'],
+    )
+    const newFavaLib = await loadFavaLibFromLockedRepesentation(
       savedData,
       newPassword,
     )
 
     // eslint-disable-next-line @typescript-eslint/dot-notation
-    const newPersistentStorageManager = newTwoFaLib['persistentStorageManager']
+    const newPersistentStorageManager = newFavaLib['persistentStorageManager']
 
     // Verify that the new password works
     await expect(
@@ -278,13 +281,13 @@ describe('PersistentStorageManager', () => {
       expect(data).toBeTypeOf('string')
     })
 
-    twoFaLib.storage.setSaveFunction(mockSaveFunction)
+    favaLib.storage.setSaveFunction(mockSaveFunction)
 
     // Trigger multiple save operations simultaneously
     const promises = [
-      twoFaLib.storage.forceSave(),
-      twoFaLib.storage.forceSave(),
-      twoFaLib.storage.forceSave(),
+      favaLib.storage.forceSave(),
+      favaLib.storage.forceSave(),
+      favaLib.storage.forceSave(),
     ]
 
     await Promise.all(promises)

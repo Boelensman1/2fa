@@ -1,4 +1,4 @@
-import type TwoFaLib from './TwoFaLib.mjs'
+import type FavaLib from './FavaLib.mjs'
 import type LibraryLoader from './subclasses/LibraryLoader.mjs'
 import type ExportImportManager from './subclasses/ExportImportManager.mjs'
 import type PersistentStorageManager from './subclasses/PersistentStorageManager.mjs'
@@ -7,14 +7,14 @@ import type VaultDataManager from './subclasses/VaultDataManager.mjs'
 import type ExternalVaultManager from './subclasses/VaultOperationsManager.mjs'
 import type CommandManager from './subclasses/CommandManager.mjs'
 import type SyncManager from './subclasses/SyncManager.mjs'
-import { InitializationError } from './TwoFALibError.mjs'
+import { InitializationError } from './FavaLibError.mjs'
 
 /**
- * Mediator class for managing and accessing various components of the TwoFaLib.
+ * Mediator class for managing and accessing various components of the FavaLib.
  */
-class TwoFaLibMediator {
+class FavaLibMediator {
   private components: {
-    lib?: TwoFaLib
+    lib?: FavaLib
     libraryLoader?: LibraryLoader
     persistentStorageManager?: PersistentStorageManager
     storageOperationsManager?: StorageOperationsManager
@@ -23,8 +23,8 @@ class TwoFaLibMediator {
     vaultOperationsManager?: ExternalVaultManager
     exportImportManager?: ExportImportManager
     syncManager?: SyncManager
-    dispatchLibEvent?: (typeof TwoFaLib.prototype)['dispatchLibEvent']
-    log?: (typeof TwoFaLib.prototype)['log']
+    dispatchLibEvent?: (typeof FavaLib.prototype)['dispatchLibEvent']
+    log?: (typeof FavaLib.prototype)['log']
   } = {}
 
   /**
@@ -90,4 +90,4 @@ class TwoFaLibMediator {
   }
 }
 
-export default TwoFaLibMediator
+export default FavaLibMediator

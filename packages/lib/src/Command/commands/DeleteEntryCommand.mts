@@ -1,6 +1,6 @@
-import { InvalidCommandError } from '../../TwoFALibError.mjs'
+import { InvalidCommandError } from '../../FavaLibError.mjs'
 import Command from '../BaseCommand.mjs'
-import type TwoFaLibMediator from '../../TwoFaLibMediator.mjs'
+import type FavaLibMediator from '../../FavaLibMediator.mjs'
 import type { EntryId } from '../../interfaces/Entry.mjs'
 
 import AddEntryCommand from './AddEntryCommand.mjs'
@@ -36,7 +36,7 @@ class DeleteEntryCommand extends Command<DeleteEntryData> {
    * @inheritdoc
    * @throws {InvalidCommandError} If the command data is invalid or the entry doesn't exist.
    */
-  async execute(mediator: TwoFaLibMediator) {
+  async execute(mediator: FavaLibMediator) {
     if (!this.validate()) {
       throw new InvalidCommandError('Invalid DeleteEntry command')
     }

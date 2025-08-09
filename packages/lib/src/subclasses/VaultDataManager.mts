@@ -3,9 +3,9 @@ import { TOTP } from 'totp-generator'
 import type Entry from '../interfaces/Entry.mjs'
 import type { EntryId, Token } from '../interfaces/Entry.mjs'
 
-import type TwoFaLibMediator from '../TwoFaLibMediator.mjs'
-import { EntryNotFoundError, TokenGenerationError } from '../TwoFALibError.mjs'
-import { TwoFaLibEvent } from '../TwoFaLibEvent.mjs'
+import type FavaLibMediator from '../FavaLibMediator.mjs'
+import { EntryNotFoundError, TokenGenerationError } from '../FavaLibError.mjs'
+import { FavaLibEvent } from '../FavaLibEvent.mjs'
 
 import {
   SUPPORTED_ALGORITHMS,
@@ -25,7 +25,7 @@ class VaultDataManager {
    * Constructs a new VaultDataManager instance.
    * @param mediator - The mediator for accessing other components.
    */
-  constructor(private readonly mediator: TwoFaLibMediator) {}
+  constructor(private readonly mediator: FavaLibMediator) {}
 
   private get persistentStorageManager() {
     return this.mediator.getComponent('persistentStorageManager')
@@ -104,7 +104,7 @@ class VaultDataManager {
       return
     }
     this.vault.push(entry)
-    this.dispatchLibEvent(TwoFaLibEvent.Changed)
+    this.dispatchLibEvent(FavaLibEvent.Changed)
 
     if (saveAfter) {
       await this.persistentStorageManager.save()
@@ -121,7 +121,7 @@ class VaultDataManager {
     if (index === -1) throw new EntryNotFoundError('Entry not found')
     this.vault.splice(index, 1)
 
-    this.dispatchLibEvent(TwoFaLibEvent.Changed)
+    this.dispatchLibEvent(FavaLibEvent.Changed)
     await this.persistentStorageManager.save()
   }
 
@@ -138,7 +138,7 @@ class VaultDataManager {
 
     this.vault[index] = updatedEntry
 
-    this.dispatchLibEvent(TwoFaLibEvent.Changed)
+    this.dispatchLibEvent(FavaLibEvent.Changed)
     await this.persistentStorageManager.save()
   }
 
@@ -148,7 +148,7 @@ class VaultDataManager {
    */
   replaceVault(newVault: Vault) {
     this.vault = newVault
-    this.dispatchLibEvent(TwoFaLibEvent.Changed)
+    this.dispatchLibEvent(FavaLibEvent.Changed)
   }
 }
 

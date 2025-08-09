@@ -5,26 +5,26 @@ import {
   DeviceType,
   EncryptedPrivateKey,
   EncryptedSymmetricKey,
-  TwoFaLib,
+  FavaLib,
   Salt,
   PrivateKey,
   SymmetricKey,
   PublicKey,
-  TwoFaLibEvent,
+  FavaLibEvent,
   DeviceId,
   PlatformProviders,
 } from '../src/main.mjs'
 
 import {
   clearEntries,
-  createTwoFaLibForTests,
+  createFavaLibForTests,
   deviceType,
   deviceId,
 } from './testUtils.mjs'
 
 describe('2falib', () => {
   let platformProviders: PlatformProviders
-  let twoFaLib: TwoFaLib
+  let favaLib: FavaLib
   let mockPersistentStorageManager: { save: Mock; init: Mock }
   let privateKey: PrivateKey
   let symmetricKey: SymmetricKey
@@ -34,8 +34,8 @@ describe('2falib', () => {
   let salt: Salt
 
   beforeAll(async () => {
-    const result = await createTwoFaLibForTests()
-    twoFaLib = result.twoFaLib
+    const result = await createFavaLibForTests()
+    favaLib = result.favaLib
     platformProviders = result.platformProviders
     encryptedPrivateKey = result.encryptedPrivateKey
     encryptedSymmetricKey = result.encryptedSymmetricKey
@@ -46,21 +46,21 @@ describe('2falib', () => {
   })
 
   beforeEach(async () => {
-    await clearEntries(twoFaLib)
+    await clearEntries(favaLib)
     mockPersistentStorageManager = {
       save: vi.fn(),
       init: vi.fn().mockResolvedValue({ publicKey: null, privateKey: null }),
     }
     // @ts-expect-error: Overriding private property for testing
-    twoFaLib.mediator.components.persistentStorageManager =
+    favaLib.mediator.components.persistentStorageManager =
       mockPersistentStorageManager
   })
 
-  describe('TwoFaLib constructor', () => {
+  describe('FavaLib constructor', () => {
     it('should throw an error if device type is not provided', () => {
       expect(
         () =>
-          new TwoFaLib(
+          new FavaLib(
             '' as DeviceType,
             platformProviders,
             ['test'],
@@ -80,7 +80,7 @@ describe('2falib', () => {
       const longDeviceIdentifier = 'a'.repeat(257)
       expect(
         () =>
-          new TwoFaLib(
+          new FavaLib(
             longDeviceIdentifier as DeviceType,
             platformProviders,
             ['test'],
@@ -99,9 +99,9 @@ describe('2falib', () => {
     it('should throw an error if CryptoLib is not provided', () => {
       expect(
         () =>
-          new TwoFaLib(
+          new FavaLib(
             deviceType,
-            // @ts-expect-error null is not a valid argument for TwoFaLib
+            // @ts-expect-error null is not a valid argument for FavaLib
             null,
             ['test'],
             privateKey,
@@ -119,7 +119,7 @@ describe('2falib', () => {
     it('should throw an error if password extra dictionary is not provided', () => {
       expect(
         () =>
-          new TwoFaLib(
+          new FavaLib(
             deviceType,
             platformProviders,
             // @ts-expect-error empty array is not a valid argument
@@ -136,8 +136,8 @@ describe('2falib', () => {
       ).toThrow('Password extra dictionary is required')
     })
 
-    it('should create a TwoFaLib instance with valid parameters', () => {
-      const twoFaLib = new TwoFaLib(
+    it('should create a FavaLib instance with valid parameters', () => {
+      const favaLib = new FavaLib(
         deviceType,
         platformProviders,
         ['test'],
@@ -151,18 +151,18 @@ describe('2falib', () => {
         [],
       )
 
-      expect(twoFaLib).toBeInstanceOf(TwoFaLib)
-      expect(twoFaLib.deviceType).toBe(deviceType)
+      expect(favaLib).toBeInstanceOf(FavaLib)
+      expect(favaLib.deviceType).toBe(deviceType)
     })
   })
 
   it('should save the current state when forceSave is called', async () => {
-    await twoFaLib.storage.forceSave()
+    await favaLib.storage.forceSave()
     expect(mockPersistentStorageManager.save).toHaveBeenCalledWith()
   })
 
   it('should emit ready event after loading', async () => {
-    const twoFaLib = new TwoFaLib(
+    const favaLib = new FavaLib(
       deviceType,
       platformProviders,
       ['test'],
@@ -177,7 +177,7 @@ describe('2falib', () => {
     )
 
     const mockReadyFunction = vi.fn()
-    twoFaLib.addEventListener(TwoFaLibEvent.Ready, mockReadyFunction)
+    favaLib.addEventListener(FavaLibEvent.Ready, mockReadyFunction)
 
     // Ceck if the ready event was emitted
     await vi.waitUntil(() => mockReadyFunction.mock.calls.length === 1, {
@@ -186,7 +186,7 @@ describe('2falib', () => {
     })
 
     // Clean up the event listener
-    twoFaLib.removeEventListener(TwoFaLibEvent.Ready, mockReadyFunction)
+    favaLib.removeEventListener(FavaLibEvent.Ready, mockReadyFunction)
   })
 
   describe('setSyncServerUrl', () => {
@@ -194,7 +194,7 @@ describe('2falib', () => {
       const newServerUrl = 'ws://newserver:1234'
       const server = new WS(newServerUrl, { jsonProtocol: true })
 
-      const twoFaLib = new TwoFaLib(
+      const favaLib = new FavaLib(
         deviceType,
         platformProviders,
         ['test'],
@@ -216,16 +216,16 @@ describe('2falib', () => {
       }
       const mockSave = vi.fn()
       // @ts-expect-error Accessing private property for testing
-      twoFaLib.mediator.components.persistentStorageManager.save = mockSave
+      favaLib.mediator.components.persistentStorageManager.save = mockSave
 
       // @ts-expect-error Accessing private property for testing
-      twoFaLib.mediator.registerComponent(
+      favaLib.mediator.registerComponent(
         'syncManager',
         // @ts-expect-error mockExistingSyncManager only has closeServerConnection property
         mockExistingSyncManager,
       )
 
-      await twoFaLib.setSyncServerUrl(newServerUrl)
+      await favaLib.setSyncServerUrl(newServerUrl)
 
       // Should close existing connection
       expect(mockCloseServerConnection).toHaveBeenCalledOnce()
@@ -234,7 +234,7 @@ describe('2falib', () => {
       await server.nextMessage // wait for the hello message
 
       // Should have created a new sync manager with correct url
-      const syncManager = twoFaLib.sync
+      const syncManager = favaLib.sync
       expect(syncManager).toBeDefined()
       expect(syncManager?.serverUrl).toBe(newServerUrl)
 
@@ -243,7 +243,7 @@ describe('2falib', () => {
 
       // should have saved
       expect(mockSave).toHaveBeenCalledOnce()
-      expect(twoFaLib.sync?.serverUrl).toBe(newServerUrl)
+      expect(favaLib.sync?.serverUrl).toBe(newServerUrl)
 
       // Clean up
       server.close()
@@ -256,7 +256,7 @@ describe('2falib', () => {
 
       const server = new WS(originalUrl, { jsonProtocol: true })
 
-      const twoFaLib = new TwoFaLib(
+      const favaLib = new FavaLib(
         deviceType,
         platformProviders,
         ['test'],
@@ -271,17 +271,17 @@ describe('2falib', () => {
       )
 
       // Set initial URL
-      await twoFaLib.setSyncServerUrl(originalUrl)
+      await favaLib.setSyncServerUrl(originalUrl)
       await server.nextMessage
 
       // Attempt to set new URL without force
-      await expect(twoFaLib.setSyncServerUrl(newUrl)).rejects.toThrow(
+      await expect(favaLib.setSyncServerUrl(newUrl)).rejects.toThrow(
         'Failed to connect to server at ws://unreachable:1234, not setting',
       )
-      expect(twoFaLib.sync?.serverUrl).toBe(originalUrl)
+      expect(favaLib.sync?.serverUrl).toBe(originalUrl)
 
       // Clean up
-      twoFaLib.sync?.closeServerConnection()
+      favaLib.sync?.closeServerConnection()
       server.close()
     })
 
@@ -291,7 +291,7 @@ describe('2falib', () => {
 
       const server = new WS(originalUrl, { jsonProtocol: true })
 
-      const twoFaLib = new TwoFaLib(
+      const favaLib = new FavaLib(
         deviceType,
         platformProviders,
         ['test'],
@@ -306,15 +306,15 @@ describe('2falib', () => {
       )
 
       // Set initial URL
-      await twoFaLib.setSyncServerUrl(originalUrl)
+      await favaLib.setSyncServerUrl(originalUrl)
       await server.nextMessage
 
       // Attempt to set new URL without force
-      await twoFaLib.setSyncServerUrl(newUrl, true)
-      expect(twoFaLib.sync?.serverUrl).toBe(newUrl)
+      await favaLib.setSyncServerUrl(newUrl, true)
+      expect(favaLib.sync?.serverUrl).toBe(newUrl)
 
       // Clean up
-      twoFaLib.sync?.closeServerConnection()
+      favaLib.sync?.closeServerConnection()
       server.close()
     })
   })

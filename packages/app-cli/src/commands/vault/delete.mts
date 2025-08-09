@@ -7,7 +7,7 @@ import BaseCommand from '../../BaseCommand.mjs'
 class VaultDeleteCommand extends BaseCommand {
   static override paths = [['vault', 'delete']]
 
-  requireTwoFaLib = false
+  requireFavaLib = false
 
   static usage = BaseCommand.Usage({
     category: 'Vault',

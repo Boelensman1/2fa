@@ -1,9 +1,9 @@
-import type { EntryMeta, TwoFaLib } from 'favalib'
+import type { EntryMeta, FavaLib } from 'favalib'
 
 interface State {
   entries: EntryMeta[]
   vaultExists: boolean
-  twoFaLib: TwoFaLib | null
+  favaLib: FavaLib | null
   isConnectingToExistingVault: boolean
   settings: {
     maskEntries: boolean

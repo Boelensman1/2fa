@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import LibraryLoader from '../../src/subclasses/LibraryLoader.mjs'
 import type CryptoLib from '../../src/interfaces/CryptoLib.mjs'
 import type { PlatformProviders } from '../../src/interfaces/PlatformProviders.mjs'
-import { InitializationError } from '../../src/TwoFALibError.mjs'
+import { InitializationError } from '../../src/FavaLibError.mjs'
 
 // Mock the external libraries
 vi.mock('openpgp', () => ({

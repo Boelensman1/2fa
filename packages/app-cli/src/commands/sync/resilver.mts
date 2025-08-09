@@ -2,7 +2,7 @@ import BaseCommand from '../../BaseCommand.mjs'
 
 class ResilverCommand extends BaseCommand {
   static override paths = [['sync', 'resilver']]
-  requireTwoFaLib = true
+  requireFavaLib = true
 
   static usage = BaseCommand.Usage({
     category: 'Sync',
@@ -12,11 +12,11 @@ class ResilverCommand extends BaseCommand {
   })
 
   async exec() {
-    if (!this.twoFaLib.sync) {
+    if (!this.favaLib.sync) {
       throw new Error('No server url set')
     }
 
-    await this.twoFaLib.sync.requestResilver()
+    await this.favaLib.sync.requestResilver()
 
     // TODO: do this based on events
     await new Promise((resolve) => setTimeout(resolve, 5000))

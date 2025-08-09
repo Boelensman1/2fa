@@ -1,6 +1,6 @@
 import {
   DeviceType,
-  getTwoFaLibVaultCreationUtils,
+  getFavaLibVaultCreationUtils,
   Password,
   PlatformProviders,
 } from 'favalib'
@@ -10,7 +10,7 @@ const SwiftPlatformProvider = {
   CryptoLib: class {},
 } as unknown as PlatformProviders
 
-const twoFaLibVaultCreationUtils = getTwoFaLibVaultCreationUtils(
+const favaLibVaultCreationUtils = getFavaLibVaultCreationUtils(
   SwiftPlatformProvider,
   'ios-app' as DeviceType,
   ['iphone', 'apple'],
@@ -20,7 +20,7 @@ const twoFaLibVaultCreationUtils = getTwoFaLibVaultCreationUtils(
 )
 
 const getPasswordStrength = async (password: Password) => {
-  const result = await twoFaLibVaultCreationUtils.getPasswordStrength(password)
+  const result = await favaLibVaultCreationUtils.getPasswordStrength(password)
   return result.score
 }
 

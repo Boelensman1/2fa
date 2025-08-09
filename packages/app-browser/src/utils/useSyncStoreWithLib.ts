@@ -1,13 +1,13 @@
 import { useContext } from 'solid-js'
 import context from '../store/Context'
 import actions from '../store/actions'
-import type { TwoFaLib } from 'favalib'
+import type { FavaLib } from 'favalib'
 
 const useSyncStoreWithLib = () => {
   const [, dispatch] = useContext(context)
 
-  const syncStoreWithLib = (twoFaLib: TwoFaLib) => {
-    dispatch(actions.setEntries(twoFaLib.vault.listEntriesMetas()))
+  const syncStoreWithLib = (favaLib: FavaLib) => {
+    dispatch(actions.setEntries(favaLib.vault.listEntriesMetas()))
   }
 
   return syncStoreWithLib

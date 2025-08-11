@@ -310,6 +310,8 @@ describe('SyncManager', () => {
           name: 'name'.repeat(10),
           type: 'TOTP',
           issuer: 'issuer'.repeat(10),
+          match: null,
+          matchType: null,
           payload: {
             digits: 8,
             period: 30,
@@ -633,6 +635,8 @@ describe('SyncManager', () => {
       name: 'name',
       type: 'TOTP',
       issuer: 'issuer',
+      match: null,
+      matchType: null,
       payload: {
         digits: 8,
         period: 30,

@@ -122,6 +122,34 @@ describe('ExportImportManager', () => {
         favaLib.exportImport.exportEntries('text', weakPassword),
       ).rejects.toThrow('Password is too weak')
     })
+
+    it('should export and preserve match properties in text format', async () => {
+      // Create an entry with match properties
+      await favaLib.vault.addEntry({
+        name: 'GitHub TOTP',
+        issuer: 'GitHub',
+        type: 'TOTP',
+        match: 'github.com',
+        matchType: 'BaseDomain',
+        payload: {
+          secret: 'GITHUBSECRET',
+          period: 30,
+          algorithm: 'SHA-1',
+          digits: 6,
+        },
+      })
+
+      const result = await favaLib.exportImport.exportEntries(
+        'text',
+        undefined,
+        true,
+      )
+
+      // Should include match and matchType parameters in the export
+      expect(result).toContain('match=github.com')
+      expect(result).toContain('matchType=BaseDomain')
+      expect(result).toContain('otpauth://totp/GitHub:GitHub%20TOTP')
+    })
   })
 
   it('should import a TOTP entry from a QR code image', async () => {
@@ -289,6 +317,25 @@ describe('ExportImportManager', () => {
         )
         expect(token.otp).toHaveLength(testCases[index].digits)
       })
+    })
+
+    it('should import and preserve match properties from URI', async () => {
+      // URI with match and matchType parameters
+      const uriWithMatch =
+        'otpauth://totp/GitHub:GitHub%20TOTP?secret=GITHUBSECRET&issuer=GitHub&algorithm=SHA-1&digits=6&period=30&match=github.com&matchType=BaseDomain'
+
+      const entryId = await favaLib.exportImport.importFromUri(uriWithMatch)
+      const entry = favaLib.vault.getEntryMeta(entryId)
+
+      expect(entry).toEqual(
+        expect.objectContaining({
+          name: 'GitHub TOTP',
+          issuer: 'GitHub',
+          type: 'TOTP',
+          match: 'github.com',
+          matchType: 'BaseDomain',
+        }),
+      )
     })
   })
 

@@ -19,6 +19,8 @@ const getMetaForEntry = (entry: Entry) => ({
   name: entry.name,
   issuer: entry.issuer,
   type: entry.type,
+  match: entry.match,
+  matchType: entry.matchType,
   addedAt: entry.addedAt,
   updatedAt: entry.updatedAt,
 })

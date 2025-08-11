@@ -1,4 +1,4 @@
-import type { NewEntry } from '../interfaces/Entry.mjs'
+import type { MatchType, NewEntry } from '../interfaces/Entry.mjs'
 import type Entry from '../interfaces/Entry.mjs'
 import type { SupportedAlgorithmsType } from './constants.mjs'
 import type { EntryId } from '../interfaces/Entry.mjs'
@@ -68,6 +68,8 @@ export const parseOtpUri = (
   const algorithm = parseOtpAlgorithm(searchParams.get('algorithm'))
   const digits = parseInt(searchParams.get('digits') ?? '6', 10)
   const period = parseInt(searchParams.get('period') ?? '30', 10)
+  const match = searchParams.get('match')
+  const matchType = searchParams.get('matchType')
 
   // if searchParams has an issuer, use that
   if (searchParams.get('issuer')) {
@@ -91,6 +93,8 @@ export const parseOtpUri = (
     name: name && name.length > 0 ? name : 'Imported Entry',
     issuer: issuer && issuer.length > 0 ? issuer : 'Unknown Issuer',
     type: 'TOTP',
+    match: match ?? null,
+    matchType: (matchType as MatchType) ?? null,
     payload: {
       secret,
       algorithm,
@@ -101,10 +105,23 @@ export const parseOtpUri = (
 }
 
 const generateOtpUrl = (entry: Entry) => {
-  const { name, issuer, payload } = entry
+  const { name, issuer, payload, match, matchType } = entry
   const { secret, algorithm, digits, period } = payload
 
-  return `otpauth://totp/${encodeURIComponent(issuer)}:${encodeURIComponent(name)}?secret=${secret}&issuer=${encodeURIComponent(issuer)}&algorithm=${algorithm}&digits=${digits}&period=${period}`
+  // Note: Using manual encodeURIComponent instead of URLSearchParams because
+  // URLSearchParams encodes spaces as '+' while encodeURIComponent uses '%20'.
+  // OTP clients expect standard percent encoding (%20) for better compatibility.
+  let url = `otpauth://totp/${encodeURIComponent(issuer)}:${encodeURIComponent(name)}?secret=${secret}&issuer=${encodeURIComponent(issuer)}&algorithm=${algorithm}&digits=${digits}&period=${period}`
+
+  // Add match properties if they exist
+  if (match !== null && match !== undefined) {
+    url += `&match=${encodeURIComponent(match)}`
+  }
+  if (matchType !== null && matchType !== undefined) {
+    url += `&matchType=${encodeURIComponent(matchType)}`
+  }
+
+  return url
 }
 
 /**

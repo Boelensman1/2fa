@@ -6,11 +6,15 @@ export type EntryId = Tagged<string, 'TotpId'>
 
 export type EntryType = LiteralUnion<'TOTP', string>
 
+export type MatchType = 'BaseDomain'
+
 export interface EntryMeta {
   id: EntryId
   name: string
   issuer: string
   type: EntryType
+  match: string | null
+  matchType: MatchType | null
   addedAt: number
   updatedAt: number | null
 }

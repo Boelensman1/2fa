@@ -27,6 +27,8 @@ export const newTotpEntry: NewEntry = {
   name: 'Test TOTP',
   issuer: 'Test Issuer',
   type: 'TOTP',
+  match: null,
+  matchType: null,
   payload: {
     secret: 'TESTSECRET',
     period: 30,

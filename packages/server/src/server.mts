@@ -1,21 +1,17 @@
-import fs from 'node:fs'
 import { WebSocketServer, WebSocket } from 'ws'
 import { Model } from 'objection'
-import type { Knex } from 'knex'
 import createKnex from 'knex'
 
 import UnExecutedSyncCommand from './models/UnExecutedSyncCommand.mjs'
 
+import knexConfig from '../knexfile.js'
 import ConnectedDevicesManager from './ConnectedDevicesManager.mjs'
 
 import type ClientMessage from './types/ClientMessage.mjs'
 import type { AddSyncDeviceInitialiseDataClientMessage } from './types/ClientMessage.mjs'
 import type OutgoingMessage from './types/ServerMessage.mjs'
 
-const config = JSON.parse(
-  fs.readFileSync('./knexfile.json').toString(),
-) as Knex.Config
-const knex = createKnex(config)
+const knex = createKnex(knexConfig)
 Model.knex(knex)
 
 const port = Number(process.env.PORT ?? 8080)

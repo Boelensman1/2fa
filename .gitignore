@@ -2,8 +2,11 @@ node_modules
 build
 dist
 *.tsbuildinfo
-knexfile.json
+generated
 coverage
 vault.json
 settings.json
 docs
+packages/server/config/*
+!packages/server/config/default.yaml
+!packages/server/config/test.yaml

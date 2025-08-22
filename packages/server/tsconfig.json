@@ -1,6 +1,12 @@
 {
   "extends": "@tsconfig/node20/tsconfig.json",
-  "include": ["src/**/*", "tests/**/*", "migrations/**/*"],
+  "include": [
+    "src/**/*",
+    "test/**/*",
+    "migrations/**/*",
+    "knexfile.ts",
+    "vitest.config.ts"
+  ],
   "compilerOptions": {
     "allowJs": true,
     "types": ["node"],

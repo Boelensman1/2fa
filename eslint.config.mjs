@@ -18,6 +18,17 @@ const baseConfig = tseslint.config(
   jsdoc.configs['flat/recommended-typescript-error'],
 )
 
+const restrictedGlobals = [
+  {
+    name: 'Error',
+    message: 'Use custom error instead.',
+  },
+  {
+    name: 'Buffer',
+    message: 'Use Uint8Array instead.',
+  },
+]
+
 export default [
   {
     ignores: ['**/build/**', '**/dist/**', '**/*.js'],
@@ -25,17 +36,7 @@ export default [
   ...baseConfig,
   {
     rules: {
-      'no-restricted-globals': [
-        'error',
-        {
-          name: 'Error',
-          message: 'Use custom error instead.',
-        },
-        {
-          name: 'Buffer',
-          message: 'Use Uint8Array instead.',
-        },
-      ],
+      'no-restricted-globals': ['error', ...restrictedGlobals],
       'jsdoc/require-jsdoc': [
         'error',
         {
@@ -82,6 +83,12 @@ export default [
     rules: {
       'no-restricted-globals': ['off'],
       'jsdoc/require-jsdoc': ['off'],
+    },
+  },
+  {
+    files: ['**/test/**'],
+    rules: {
+      'no-restricted-globals': ['error', ...restrictedGlobals.filter(g => g.name !== 'Error')],
     },
   },
 ]

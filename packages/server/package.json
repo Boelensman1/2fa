@@ -23,16 +23,21 @@
   ],
   "author": "",
   "license": "ISC",
+  "scripts": {
+    "test": "make test"
+  },
   "devDependencies": {
-    "@types/node": "^22.15.21",
+    "@types/node": "^22",
     "@types/ws": "^8.18.1",
-    "type-fest": "^4.26.1"
+    "ts-json-schema-generator": "^2.4.0",
+    "type-fest": "^4.41.0",
+    "vitest": "^3.2.4"
   },
   "dependencies": {
     "knex": "^3.1.0",
     "objection": "^3.1.5",
-    "pg": "^8.13.0",
-    "ws": "^8.18.2"
+    "pg": "^8.16.3",
+    "ws": "^8.18.3",
     "wtfconfig": "^1.2.0"
   }
 }

@@ -1,6 +1,6 @@
 {
   "extends": "./tsconfig.json",
-  "include": ["src/**/*", "migrations/**/*"],
+  "include": ["src/**/*", "migrations/**/*", "knexfile.ts"],
   "compilerOptions": {
     "noEmit": false,
     "outDir": "./build"

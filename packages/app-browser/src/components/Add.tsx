@@ -28,6 +28,8 @@ const Add = () => {
         algorithm: 'SHA-1',
         period: 30,
       },
+      match: '',
+      matchType: 'BaseDomain',
     })
     setName('')
     setSecret('')

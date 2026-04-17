@@ -7,5 +7,6 @@ coverage
 vault.json
 settings.json
 docs
+result
 packages/server/config/*
 !packages/server/config/default.yaml

@@ -8,7 +8,7 @@ import type {
   AddSyncDeviceCancelledClientMessage,
   StartResilverClientMessage,
 } from './ClientMessage.mjs'
-import type { Encrypted, EncryptedSymmetricKey, DeviceId } from 'favalib'
+import type { Encrypted, EncryptedSymmetricKey, DeviceId } from 'favatypes'
 
 export interface ConfirmAddSyncDeviceInitialiseServerMessage {
   type: 'confirmAddSyncDeviceInitialiseData'

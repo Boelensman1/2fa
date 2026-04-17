@@ -2,8 +2,9 @@ import type { Tagged } from 'type-fest'
 import type { JPakeThreePass, Round1Result } from 'jpake-ts'
 import type { PublicKey, SyncKey } from './CryptoLib.mjs'
 import type { Vault, VaultSyncState } from './Vault.mjs'
+import type { DeviceId } from 'favatypes'
 
-export type DeviceId = Tagged<string, 'DeviceId'>
+export type { DeviceId } from 'favatypes'
 export type DeviceType = Tagged<string, 'DeviceType'>
 export type DeviceFriendlyName = Tagged<string, 'DeviceFriendlyName'>
 

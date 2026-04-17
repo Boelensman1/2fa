@@ -1,6 +1,6 @@
 import { Model } from 'objection'
 
-import type { DeviceId, Encrypted, EncryptedSymmetricKey } from 'favalib'
+import type { DeviceId, Encrypted, EncryptedSymmetricKey } from 'favatypes'
 
 /**
  * Represents a command that has not yet been executed.

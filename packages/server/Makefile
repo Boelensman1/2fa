@@ -1,4 +1,4 @@
-INSTALL_DEPS=node_modules generated/configSchema.json
+INSTALL_DEPS=node_modules generated/configSchema.json ../types/build
 SRC_FILES:=$(shell find src/)
 
 generated/configSchema.json: node_modules src/types/ConfigObject.mts
@@ -9,6 +9,9 @@ build: $(INSTALL_DEPS) $(SRC_FILES) tsconfig.json tsconfig.build.json
 	rm -rf build *.tsbuildinfo # TODO: find out why this is needed
 	npx tsc --project ./tsconfig.build.json
 	@touch build
+
+../types/build:
+	$(MAKE) -C ../types build
 
 dev: $(INSTALL_DEPS)
 	npx --no-install tsx --watch ./src/server.mts

@@ -5,7 +5,7 @@ import { WebSocket } from 'ws'
 import ConnectedDevicesManager from '../src/ConnectedDevicesManager.mjs'
 import UnExecutedSyncCommand from '../src/models/UnExecutedSyncCommand.mjs'
 import type ClientMessage from '../src/types/ClientMessage.mjs'
-import type { DeviceId, Encrypted, EncryptedSymmetricKey } from 'favalib'
+import type { DeviceId, Encrypted, EncryptedSymmetricKey } from 'favatypes'
 import { cleanupTestDatabase, initializeTestDatabase } from './test-setup.mjs'
 
 vi.mock('../src/ConnectedDevicesManager.mjs')

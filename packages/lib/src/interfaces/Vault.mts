@@ -1,6 +1,5 @@
 import type { Tagged } from 'type-fest'
 import type {
-  Encrypted,
   EncryptedPrivateKey,
   EncryptedSymmetricKey,
   Salt,
@@ -8,10 +7,12 @@ import type {
 import type Entry from './Entry.mjs'
 import type { DeviceFriendlyName, DeviceId, SyncDevice } from './SyncTypes.mjs'
 import type { SyncCommandFromClient } from 'favaserver/ClientMessage'
+import type { EncryptedVaultStateString } from 'favatypes'
+
+export type { EncryptedVaultStateString, VaultStateString } from 'favatypes'
 
 export type Vault = Entry[]
 
-export type EncryptedVaultStateString = Encrypted<VaultStateString>
 export interface LockedRepresentation {
   encryptedPrivateKey: EncryptedPrivateKey
   encryptedSymmetricKey: EncryptedSymmetricKey
@@ -39,4 +40,3 @@ export interface VaultState {
   vault: Vault
   sync: VaultSyncState
 }
-export type VaultStateString = Tagged<string, 'VaultState'>

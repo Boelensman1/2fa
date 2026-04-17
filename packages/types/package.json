@@ -1,0 +1,24 @@
+{
+  "name": "favatypes",
+  "version": "0.0.1",
+  "description": "",
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./build/main.mjs",
+      "types": "./build/main.d.mts"
+    }
+  },
+  "types": "./build/main.d.mts",
+  "files": [
+    "build/**"
+  ],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "type-fest": "^4.41.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

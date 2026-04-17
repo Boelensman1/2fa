@@ -3,7 +3,7 @@ import { randomUUID } from 'crypto'
 import { Model } from 'objection'
 import UnExecutedSyncCommand from '../src/models/UnExecutedSyncCommand.mjs'
 import { cleanupTestDatabase, initializeTestDatabase } from './test-setup.mjs'
-import type { DeviceId, Encrypted, EncryptedSymmetricKey } from 'favalib'
+import type { DeviceId, Encrypted, EncryptedSymmetricKey } from 'favatypes'
 
 describe('UnExecutedSyncCommand', () => {
   beforeAll(() => {

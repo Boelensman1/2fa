@@ -1,7 +1,18 @@
 import type { Tagged } from 'type-fest'
+import type {
+  Encrypted,
+  EncryptedSymmetricKey,
+  PublicKey,
+  SymmetricKey,
+} from 'favatypes'
 
-// `Encrypted<T>` tags the original string type to denote that is encrypted
-export type Encrypted<T extends string> = Tagged<T, 'Encrypted'>
+export type {
+  Encrypted,
+  EncryptedPublicKey,
+  EncryptedSymmetricKey,
+  PublicKey,
+  SymmetricKey,
+} from 'favatypes'
 
 /** Represents a password  */
 export type Password = Tagged<string, 'Password'>
@@ -15,23 +26,11 @@ export type Salt = Tagged<string, 'Salt'>
 /** Represents a private key */
 export type PrivateKey = Tagged<string, 'PrivateKey'>
 
-/** Represents a public key */
-export type PublicKey = Tagged<string, 'PublicKey'>
-
-/** Represents an symmetric key */
-export type SymmetricKey = Tagged<string, 'SymmetricKey'>
-
 /** Represents a sync (symmetric) key (base64 encoded) */
 export type SyncKey = Tagged<SymmetricKey, 'SyncKey'>
 
 /** Represents an encrypted private key (base64 encoded) */
 export type EncryptedPrivateKey = Encrypted<PrivateKey>
-
-/** Represents an encrypted symmetric key (base64 encoded) */
-export type EncryptedSymmetricKey = Encrypted<SymmetricKey>
-
-/** Represents an encrypted public key (base64 encoded) */
-export type EncryptedPublicKey = Encrypted<PublicKey>
 
 /**
  * Interface for cryptographic operations.

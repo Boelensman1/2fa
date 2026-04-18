@@ -70,16 +70,25 @@
             runHook preInstall
 
             root="$out/lib/node_modules/favacli"
-            mkdir -p "$root"
+            mkdir -p "$root/node_modules"
 
             cp -r packages/app-cli/build "$root/"
             cp packages/app-cli/package.json "$root/"
 
-            mkdir -p "$root/node_modules"
-            for entry in node_modules/*; do
-              name=$(basename "$entry")
+            # Ship only app-cli's transitive runtime closure. Anything hoisted
+            # to node_modules/ purely for other workspaces (browser app's
+            # lightningcss, @tailwindcss, ...) or for dev tooling stays out.
+            allowlist=$(
+              npm ls --omit=dev --all --parseable --workspace packages/app-cli \
+                | grep '/node_modules/' \
+                | sed 's|.*/node_modules/||' \
+                | awk -F/ '{ if ($1 ~ /^@/) print $1 "/" $2; else print $1 }' \
+                | sort -u
+            )
+
+            while IFS= read -r name; do
               case "$name" in
-                .bin|.package-lock.json) continue ;;
+                ""|favacli|favabrowser) continue ;;
                 favalib)
                   mkdir -p "$root/node_modules/favalib"
                   cp packages/lib/package.json "$root/node_modules/favalib/"
@@ -95,15 +104,14 @@
                   cp packages/types/package.json "$root/node_modules/favatypes/"
                   cp -r packages/types/build "$root/node_modules/favatypes/"
                   ;;
-                favacli|favabrowser)
-                  # self (app-cli) and unrelated workspace — skip
-                  continue
-                  ;;
                 *)
-                  cp -rL "$entry" "$root/node_modules/$name"
+                  src="node_modules/$name"
+                  [ -e "$src" ] || continue
+                  mkdir -p "$(dirname "$root/node_modules/$name")"
+                  cp -rL "$src" "$root/node_modules/$name"
                   ;;
               esac
-            done
+            done <<< "$allowlist"
 
             mkdir -p "$out/bin"
             ln -s "$root/build/main.mjs" "$out/bin/favacli"

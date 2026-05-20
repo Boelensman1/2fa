@@ -14,6 +14,7 @@ export class NodeOpenPgpLib implements OpenPgpLib {
     if (!this.openPgpModule) {
       this.openPgpModule = await import('openpgp')
       // enable Authenticated Encryption with Associated Data
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
       this.openPgpModule.config.aeadProtect = true
     }
     return this.openPgpModule

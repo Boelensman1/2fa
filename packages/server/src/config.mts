@@ -1,10 +1,10 @@
 import path from 'node:path'
 import { WtfConfigContainer } from 'wtfconfig'
-import { ConfigObject } from './types/ConfigObject.mjs'
+import { ConfigObjectSchema } from './types/ConfigObject.mjs'
 
-const configContainer = new WtfConfigContainer<ConfigObject>(
+const configContainer = new WtfConfigContainer(
   process.cwd(),
-  path.resolve('generated/configSchema.json'),
+  ConfigObjectSchema,
   path.resolve('config'),
   { dontWarnOnFileMissing: true },
 )

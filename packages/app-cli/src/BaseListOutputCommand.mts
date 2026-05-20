@@ -16,14 +16,13 @@ export type Formatter = (
 ) => Jsonifiable
 
 abstract class BaseListOutputCommand extends BaseCommand {
-  abstract getList(): EntryMeta[] | EntryMetaWithToken[]
+  abstract getList(): Promise<(EntryMeta | EntryMetaWithToken)[]>
 
   // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
   format = Option.String('--format', {
     description: 'formatter',
   }) as (typeof formatters)[0]['name'] | undefined
 
-  // eslint-disable-next-line @typescript-eslint/require-await
   async exec() {
     this.preFormattedOutput = this.format !== undefined
 
@@ -38,7 +37,7 @@ abstract class BaseListOutputCommand extends BaseCommand {
       formatter = selectedFormatter
     }
 
-    const list = this.getList()
+    const list = await this.getList()
     if (list.length === 0) {
       this.context.stdout.write('No entries\n')
       return formatter([], this.errors)

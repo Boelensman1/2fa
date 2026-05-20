@@ -86,7 +86,10 @@ class VaultOperationsManager {
    * @param includeTokens - When true, includes current tokens with the metas.
    * @returns An array of matching entry metas, optionally with tokens.
    */
-  searchEntriesMetas(query: string, includeTokens: true): EntryMetaWithToken[]
+  searchEntriesMetas(
+    query: string,
+    includeTokens: true,
+  ): Promise<EntryMetaWithToken[]>
   /**
    * @inheritdoc
    */
@@ -97,25 +100,24 @@ class VaultOperationsManager {
   searchEntriesMetas(
     query: string,
     includeTokens?: boolean,
-  ): (EntryMeta & { token?: Token })[] {
+  ): EntryMeta[] | Promise<EntryMetaWithToken[]> {
     const lowercaseQuery = query.toLowerCase()
-    const entries = this.vaultDataManager.getAllEntries()
-    return entries
+    const entries = this.vaultDataManager
+      .getAllEntries()
       .filter(
         (entry) =>
           entry.name.toLowerCase().includes(lowercaseQuery) ||
           entry.issuer.toLowerCase().includes(lowercaseQuery),
       )
-      .map((entry) => {
-        const meta = getMetaForEntry(entry)
-        if (includeTokens) {
-          return {
-            ...meta,
-            token: this.generateTokenForEntry(entry.id),
-          }
-        }
-        return meta
-      })
+    if (includeTokens) {
+      return Promise.all(
+        entries.map(async (entry) => ({
+          ...getMetaForEntry(entry),
+          token: await this.generateTokenForEntry(entry.id),
+        })),
+      )
+    }
+    return entries.map((entry) => getMetaForEntry(entry))
   }
 
   /**
@@ -131,7 +133,7 @@ class VaultOperationsManager {
    * @param includeTokens - When true, includes current tokens with the metas.
    * @returns An array of all entry metas, optionally with tokens.
    */
-  listEntriesMetas(includeTokens: true): EntryMetaWithToken[]
+  listEntriesMetas(includeTokens: true): Promise<EntryMetaWithToken[]>
   /**
    * @inheritdoc
    */
@@ -139,29 +141,30 @@ class VaultOperationsManager {
   /**
    * @inheritdoc
    */
-  listEntriesMetas(includeTokens?: boolean): (EntryMeta & { token?: Token })[] {
+  listEntriesMetas(
+    includeTokens?: boolean,
+  ): EntryMeta[] | Promise<EntryMetaWithToken[]> {
     const entries = this.vaultDataManager.getAllEntries()
-    return entries.map((entry) => {
-      const meta = getMetaForEntry(entry)
-      if (includeTokens) {
-        return {
-          ...meta,
-          token: this.generateTokenForEntry(entry.id),
-        }
-      }
-      return meta
-    })
+    if (includeTokens) {
+      return Promise.all(
+        entries.map(async (entry) => ({
+          ...getMetaForEntry(entry),
+          token: await this.generateTokenForEntry(entry.id),
+        })),
+      )
+    }
+    return entries.map((entry) => getMetaForEntry(entry))
   }
 
   /**
    * Generate a time-based one-time password (TOTP) for a specific entry.
    * @param id - The unique identifier of the entry.
    * @param timestamp - Optional timestamp to use for token generation (default is current time).
-   * @returns An object containing the token and between which timestamps it is valid
+   * @returns A promise resolving to an object containing the token and between which timestamps it is valid
    * @throws {EntryNotFoundError} If no entry exists with the given ID.
    * @throws {TokenGenerationError} If token generation fails due to invalid entry data or technical issues.
    */
-  generateTokenForEntry(id: EntryId, timestamp?: number): Token {
+  generateTokenForEntry(id: EntryId, timestamp?: number): Promise<Token> {
     return this.vaultDataManager.generateTokenForEntry(id, timestamp)
   }
 

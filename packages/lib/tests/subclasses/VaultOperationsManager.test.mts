@@ -46,7 +46,10 @@ describe('VaultManager', () => {
 
   it('should generate an otp', async () => {
     const id = await favaLib.vault.addEntry(newTotpEntry)
-    const otp = favaLib.vault.generateTokenForEntry(id, new Date(0).getTime())
+    const otp = await favaLib.vault.generateTokenForEntry(
+      id,
+      new Date(0).getTime(),
+    )
 
     expect(otp).toEqual({
       otp: '810290',
@@ -164,8 +167,8 @@ describe('VaultManager', () => {
 
   it('should generate different OTPs for different timestamps', async () => {
     const entryId = await favaLib.vault.addEntry(newTotpEntry)
-    const otp1 = favaLib.vault.generateTokenForEntry(entryId, 0)
-    const otp2 = favaLib.vault.generateTokenForEntry(entryId, 30000) // 30 seconds later
+    const otp1 = await favaLib.vault.generateTokenForEntry(entryId, 0)
+    const otp2 = await favaLib.vault.generateTokenForEntry(entryId, 30000) // 30 seconds later
 
     expect(otp1.otp).not.toEqual(otp2.otp)
     expect(otp1.validFrom).toBeLessThan(otp2.validFrom)

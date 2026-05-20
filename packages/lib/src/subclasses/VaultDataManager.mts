@@ -65,11 +65,11 @@ class VaultDataManager {
    * Generate a time-based one-time password (TOTP) for a specific entry.
    * @param id - The unique identifier of the entry.
    * @param timestamp - Optional timestamp to use for token generation (default is current time).
-   * @returns An object containing the token and the validity period.
+   * @returns A promise resolving to an object containing the token and the validity period.
    * @throws {EntryNotFoundError} If no entry exists with the given ID.
    * @throws {TokenGenerationError} If token generation fails due to invalid entry data or technical issues.
    */
-  generateTokenForEntry(id: EntryId, timestamp?: number): Token {
+  async generateTokenForEntry(id: EntryId, timestamp?: number): Promise<Token> {
     const entry = this.vault.find((e) => e.id === id)
     if (entry?.type !== 'TOTP') {
       throw new EntryNotFoundError('TOTP entry not found')
@@ -88,7 +88,7 @@ class VaultDataManager {
       timestamp: timestamp ?? Date.now(),
     }
 
-    const { otp, expires } = TOTP.generate(secret, totpOptions)
+    const { otp, expires } = await TOTP.generate(secret, totpOptions)
     return { otp, validFrom: expires - period * 1000, validTill: expires }
   }
 

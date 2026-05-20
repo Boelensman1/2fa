@@ -25,7 +25,7 @@ class EntriesListCommand extends BaseListOutputCommand {
     description: 'Include current TOTP tokens in the output',
   })
 
-  getList() {
+  async getList() {
     if (this.withTokens) {
       return this.favaLib.vault.listEntriesMetas(true)
     } else {

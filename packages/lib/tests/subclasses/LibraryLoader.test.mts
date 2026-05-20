@@ -33,7 +33,11 @@ describe('LibraryLoader', () => {
       createSymmetricKey: vi.fn(),
     }
     platformProviders = {
-      CryptoLib: vi.fn(() => cryptoLib),
+      // vitest 4 requires constructor mocks to use `function`/`class`; an
+      // arrow function cannot be used with `new`.
+      CryptoLib: vi.fn(function () {
+        return cryptoLib
+      }),
       WebSocketLib: () => WebSocket,
       QrCodeLib: vi.fn(),
       OpenPgpLib: vi.fn(),

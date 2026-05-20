@@ -1,4 +1,11 @@
-import { Accessor, createMemo, createSignal, onCleanup, Show } from 'solid-js'
+import {
+  Accessor,
+  createMemo,
+  createResource,
+  createSignal,
+  onCleanup,
+  Show,
+} from 'solid-js'
 import useStore from '../store/useStore'
 import useSyncStoreWithLib from '../utils/useSyncStoreWithLib'
 import type { EntryMeta, EntryId } from 'favalib'
@@ -21,12 +28,10 @@ const EntryComponent = (props: {
   document.addEventListener('click', onDocumentClick)
   onCleanup(() => document.removeEventListener('click', onDocumentClick))
 
-  const generateTOTP = (entryId: EntryId, timestamp: number) => {
+  const generateTOTP = async (entryId: EntryId, timestamp: number) => {
     try {
-      const { otp, validFrom, validTill } = favaLib.vault.generateTokenForEntry(
-        entryId,
-        timestamp,
-      )
+      const { otp, validFrom, validTill } =
+        await favaLib.vault.generateTokenForEntry(entryId, timestamp)
       const totalTime = validTill - validFrom
       const remainingTime = validTill - timestamp
       const progress = (remainingTime / totalTime) * 100
@@ -37,15 +42,13 @@ const EntryComponent = (props: {
     }
   }
 
-  const totpData = createMemo(() => {
-    return generateTOTP(
-      props.entry.id,
-      // Force re-evaluation by using currentTime()
-      props.currentTime(),
-    )
-  })
+  const [totpData] = createResource(
+    // Re-evaluate whenever the entry or the current time changes
+    () => ({ id: props.entry.id, timestamp: props.currentTime() }),
+    ({ id, timestamp }) => generateTOTP(id, timestamp),
+  )
   const displayOtp = createMemo(() => {
-    const { otp } = totpData()
+    const otp = totpData()?.otp ?? ''
     return state.settings.maskEntries ? '•'.repeat(otp.length) : otp
   })
 
@@ -97,8 +100,10 @@ const EntryComponent = (props: {
   }
 
   const copyToClipboard = () => {
+    const otp = totpData()?.otp
+    if (!otp) return
     navigator.clipboard
-      .writeText(totpData().otp)
+      .writeText(otp)
       .then(() => {
         setCopyStatus('Copied!')
         setTimeout(() => setCopyStatus(''), 2000)
@@ -204,7 +209,7 @@ const EntryComponent = (props: {
         <div
           class="bg-blue-600 h-2.5 rounded-full"
           style={{
-            width: `${totpData().progress}%`,
+            width: `${totpData()?.progress ?? 0}%`,
             transition: 'width 1s linear',
           }}
         />

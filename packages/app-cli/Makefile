@@ -24,6 +24,9 @@ lint: $(INSTALL_DEPS)
 	pnpm exec tsc --noEmit
 	pnpm exec eslint
 
+test:
+	@echo no tests defined
+
 publish: build
 	pnpm publish
 

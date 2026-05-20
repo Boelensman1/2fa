@@ -1,5 +1,19 @@
 packages:
   - 'packages/*'
+
+# Single source of truth for dependencies shared across packages.
+# Reference these in a package.json with "<dep>": "catalog:".
+catalog:
+  '@eslint/js': ^9.10.0
+  '@types/node': ^22.15.21
+  '@vitest/coverage-v8': ^4.1.7
+  '@zxcvbn-ts/core': ^3.0.4
+  eslint: ^9.10.0
+  type-fest: ^5.6.0
+  typescript: ^5.9.3
+  vitest: ^4.1.7
+  ws: ^8.20.1
+
 allowBuilds:
   bufferutil: true
   canvas: true

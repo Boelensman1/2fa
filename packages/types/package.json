@@ -16,7 +16,7 @@
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "type-fest": "^4.41.0"
+    "type-fest": "catalog:"
   },
   "engines": {
     "node": ">=20"

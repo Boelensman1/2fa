@@ -31,7 +31,7 @@ class EntriesSearchCommand extends BaseListOutputCommand {
 
   query = Option.String({ required: true })
 
-  getList() {
+  async getList() {
     if (this.withTokens) {
       return this.favaLib.vault.searchEntriesMetas(this.query, true)
     } else {

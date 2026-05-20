@@ -1,9 +1,5 @@
-INSTALL_DEPS=node_modules generated/configSchema.json ../types/build
+INSTALL_DEPS=node_modules ../types/build
 SRC_FILES:=$(shell find src/)
-
-generated/configSchema.json: node_modules src/types/ConfigObject.mts
-	mkdir -p ./generated
-	pnpm exec ts-json-schema-generator --path './src/types/ConfigObject.mts' --type 'ConfigObject' --no-type-check > generated/configSchema.json
 
 build: $(INSTALL_DEPS) $(SRC_FILES) tsconfig.json tsconfig.build.json
 	rm -rf build *.tsbuildinfo # TODO: find out why this is needed
@@ -25,10 +21,10 @@ clean:
 	rm -rf node_modules
 
 test: $(INSTALL_DEPS)
-	pnpm exec vitest run --poolOptions.forks.singleFork
+	pnpm exec vitest run
 
 test-watch: $(INSTALL_DEPS)
-	pnpm exec vitest --poolOptions.forks.singleFork
+	pnpm exec vitest
 
 migrate-latest: $(INSTALL_DEPS)
 	NODE_OPTIONS='--import tsx/esm' pnpm exec knex migrate:latest

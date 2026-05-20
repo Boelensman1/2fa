@@ -18,4 +18,7 @@ lint: $(INSTALL_DEPS)
 	pnpm exec prettier --check --ignore-path=../../.gitignore .
 	pnpm exec tsc --noEmit
 
-.PHONY: clean lint all
+test:
+	@echo no tests defined
+
+.PHONY: clean lint test all

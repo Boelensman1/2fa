@@ -168,7 +168,7 @@ describe('ExportImportManager', () => {
     )
 
     // Generate a token for the imported entry
-    const token = favaLib.vault.generateTokenForEntry(importedEntryId)
+    const token = await favaLib.vault.generateTokenForEntry(importedEntryId)
 
     expect(token).toEqual({
       otp: expect.any(String) as string,
@@ -209,7 +209,7 @@ describe('ExportImportManager', () => {
       )
 
       // Generate a token to ensure the entry is valid
-      const token = favaLib.vault.generateTokenForEntry(entryId)
+      const token = await favaLib.vault.generateTokenForEntry(entryId)
       expect(token).toEqual(
         expect.objectContaining({
           otp: expect.any(String) as string,
@@ -251,7 +251,7 @@ describe('ExportImportManager', () => {
         }),
       )
 
-      const token = favaLib.vault.generateTokenForEntry(entryId)
+      const token = await favaLib.vault.generateTokenForEntry(entryId)
       expect(token.otp).toHaveLength(6) // Default digit length
     })
 
@@ -303,8 +303,8 @@ describe('ExportImportManager', () => {
       })
 
       // Generate tokens to ensure the entries are valid
-      const tokens = entryIds.map((id) =>
-        favaLib.vault.generateTokenForEntry(id),
+      const tokens = await Promise.all(
+        entryIds.map((id) => favaLib.vault.generateTokenForEntry(id)),
       )
 
       tokens.forEach((token, index) => {

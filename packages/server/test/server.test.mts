@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/unbound-method */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import type { Mock } from 'vitest'
 import { randomUUID } from 'crypto'
 import { WebSocket } from 'ws'
 import ConnectedDevicesManager from '../src/ConnectedDevicesManager.mjs'
@@ -21,7 +22,7 @@ interface AddDeviceRequest {
 describe('Server Message Handling', () => {
   let mockWs: WebSocket
   let mockConnectedDevices: ConnectedDevicesManager
-  let mockSend: ReturnType<typeof vi.fn>
+  let mockSend: Mock<(ws: WebSocket, type: string, data?: unknown) => void>
   let handleMessage: (ws: WebSocket, message: ClientMessage) => void
   let ongoingAddDeviceRequests: AddDeviceRequest[]
 
@@ -39,7 +40,7 @@ describe('Server Message Handling', () => {
       size: 0,
     } as unknown as ConnectedDevicesManager
 
-    mockSend = vi.fn()
+    mockSend = vi.fn<(ws: WebSocket, type: string, data?: unknown) => void>()
     ongoingAddDeviceRequests = []
 
     handleMessage = (ws: WebSocket, message: ClientMessage) => {

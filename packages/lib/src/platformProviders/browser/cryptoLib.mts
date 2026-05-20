@@ -124,7 +124,11 @@ class BrowserCryptoLib implements CryptoLib {
     encryptedSymmetricKey: EncryptedSymmetricKey,
     salt: Salt,
     password: Password,
-  ) {
+  ): Promise<{
+    privateKey: PrivateKey
+    symmetricKey: SymmetricKey
+    publicKey: PublicKey
+  }> {
     // recreate passwordHash
     const passwordHash = await generatePasswordHash(salt, password)
 

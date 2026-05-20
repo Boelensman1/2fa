@@ -6,17 +6,17 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@inquirer/prompts": "^7.5.3",
-    "bufferutil": "^4.0.9",
+    "@inquirer/prompts": "^8.4.3",
+    "bufferutil": "^4.1.0",
     "clipanion": "^4.0.0-rc.4",
-    "env-paths": "^3.0.0",
+    "env-paths": "^4.0.0",
     "favalib": "workspace:*",
     "keytar": "^7.9.0",
-    "tty-table": "^4.2.3",
+    "tty-table": "^5.0.0",
     "typanion": "^3.14.0"
   },
   "devDependencies": {
-    "type-fest": "^4.26.1"
+    "type-fest": "catalog:"
   },
   "bin": {
     "favacli": "build/main.mjs"

@@ -21,17 +21,17 @@
           # fetchDeps and the hook force --ignore-scripts, so dependency build
           # scripts never run here; native modules are rebuilt manually in
           # preBuild below (matching the old npmFlags = ["--ignore-scripts"]).
-          pnpmDeps = pkgs.pnpm_10.fetchDeps {
+          pnpmDeps = pkgs.fetchPnpmDeps {
             inherit (finalAttrs) pname version src;
             pnpm = pkgs.pnpm_10;
             fetcherVersion = 3;
-            hash = "";
+            hash = "sha256-p+UWfoGs8FsLo83EevnpyDcT19CBxKmwYCIMzzsoVWg=";
           };
 
           nativeBuildInputs = [
             pkgs.nodejs_20
             pkgs.pnpm_10
-            pkgs.pnpm_10.configHook
+            pkgs.pnpmConfigHook
             pkgs.python3
             pkgs.pkg-config
             pkgs.makeWrapper
@@ -137,9 +137,42 @@
             platforms = platforms.unix;
           };
         });
+
+        devShell = pkgs.mkShell {
+          packages = with pkgs; [
+            nodejs_20
+            pnpm_10
+            pkg-config
+            cairo
+            pango
+            libpng
+            libjpeg
+            giflib
+            librsvg
+            pixman
+            python3
+          ] ++ pkgs.lib.optionals pkgs.stdenv.isLinux [
+            libuuid
+            libsecret
+            glib
+          ] ++ pkgs.lib.optionals pkgs.stdenv.isDarwin [
+            darwin.apple_sdk.frameworks.Foundation
+          ];
+
+          # canvas/keytar load these natively at runtime, so they must be on
+          # the loader path inside `nix develop` (e.g. for `make test`).
+          env = pkgs.lib.optionalAttrs pkgs.stdenv.isLinux {
+            LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [
+              pkgs.libuuid
+              pkgs.libsecret
+              pkgs.glib
+            ];
+          };
+        };
       in
       {
         packages.default = favacli;
         packages.favacli = favacli;
+        devShells.default = devShell;
       });
 }

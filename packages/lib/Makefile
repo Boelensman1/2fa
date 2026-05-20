@@ -4,7 +4,7 @@ TEST_FILES:=$(shell find tests/)
 
 build: $(INSTALL_DEPS) $(SRC_FILES) tsconfig.json tsconfig.build.json
 	rm -rf build *.tsbuildinfo # TODO: find out why this is needed
-	npx --no-install tsc --project ./tsconfig.build.json
+	pnpm exec tsc --project ./tsconfig.build.json
 	@if [ -e node_modules ]; then touch node_modules; fi
 
 ../types/build:
@@ -13,7 +13,7 @@ build: $(INSTALL_DEPS) $(SRC_FILES) tsconfig.json tsconfig.build.json
 ../server/build:
 	$(MAKE) -C ../server build
 
-node_modules: package.json ../../package-lock.json
+node_modules: package.json ../../pnpm-lock.yaml
 	$(MAKE) -C ../.. node_modules
 	@touch node_modules
 
@@ -21,19 +21,19 @@ clean:
 	rm -rf build *.tsbuildinfo
 
 test: $(INSTALL_DEPS)
-	npx --no-install vitest --run
+	pnpm exec vitest --run
 
 test-watch: $(INSTALL_DEPS)
-	npx --no-install vitest
+	pnpm exec vitest
 
 test-debug: $(INSTALL_DEPS)
-	npx --no-install vitest --run --inspect-brk --no-file-parallelism --test-timeout 99999999
+	pnpm exec vitest --run --inspect-brk --no-file-parallelism --test-timeout 99999999
 
 coverage: $(INSTALL_DEPS) $(SRC_FILES) $(TEST_FILES)
-	CI=1 npx --no-install vitest --coverage --coverage.exclude=build --coverage.exclude=tests --coverage.exclude=__mocks__
+	CI=1 pnpm exec vitest --coverage --coverage.exclude=build --coverage.exclude=tests --coverage.exclude=__mocks__
 
 docs: $(INSTALL_DEPS) $(SRC_FILES) typedoc.json
-	npx --no-install typedoc
+	pnpm exec typedoc
 
 docs-serve: docs
 	@echo "Serving documentation at http://localhost:8485"
@@ -41,11 +41,11 @@ docs-serve: docs
 	python3 -m http.server 8485 --directory docs
 
 lint: $(INSTALL_DEPS)
-	npx --no-install prettier --check --ignore-path=../../.gitignore .
-	npx --no-install tsc --noEmit
-	npx --no-install eslint
+	pnpm exec prettier --check --ignore-path=../../.gitignore .
+	pnpm exec tsc --noEmit
+	pnpm exec eslint
 
 publish: build
-	npm publish
+	pnpm publish
 
 .PHONY: clean lint test test-debug docs docs-serve all publish

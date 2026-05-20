@@ -2,10 +2,10 @@ INSTALL_DEPS=node_modules ../lib/build
 SRC_FILES=$(shell find src/)
 
 build: $(INSTALL_DEPS) $(SRC_FILES)
-	npx --no-install tsc
-	npx --no-install vite build
+	pnpm exec tsc
+	pnpm exec vite build
 
-node_modules: package.json ../../package-lock.json
+node_modules: package.json ../../pnpm-lock.yaml
 	$(MAKE) -C ../.. node_modules
 	@if [ -e node_modules ]; then touch node_modules; fi
 
@@ -13,15 +13,15 @@ node_modules: package.json ../../package-lock.json
 	$(MAKE) -C ../lib build
 
 dev: $(INSTALL_DEPS)
-	npx --no-install vite
+	pnpm exec vite
 
 lint: $(INSTALL_DEPS)
-	npx --no-install prettier --check --ignore-path=../../.gitignore .
-	npx --no-install tsc --noEmit
-	npx --no-install eslint
+	pnpm exec prettier --check --ignore-path=../../.gitignore .
+	pnpm exec tsc --noEmit
+	pnpm exec eslint
 
 preview: dist $(INSTALL_DEPS)
-	npx --no-install vite preview
+	pnpm exec vite preview
 
 test:
 	@echo no tests defined

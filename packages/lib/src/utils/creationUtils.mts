@@ -167,8 +167,7 @@ const loadFavaLibFromLockedRepesentation = async (
     | undefined
 
   if (
-    !lockedRepresentation ||
-    !lockedRepresentation.encryptedPrivateKey ||
+    !lockedRepresentation?.encryptedPrivateKey ||
     !lockedRepresentation.encryptedSymmetricKey ||
     !lockedRepresentation.salt ||
     !lockedRepresentation.encryptedVaultState
@@ -193,8 +192,7 @@ const loadFavaLibFromLockedRepesentation = async (
   ) as VaultState
 
   if (
-    !vaultState ||
-    !vaultState.deviceId ||
+    !vaultState?.deviceId ||
     !vaultState.sync?.commandSendQueue ||
     !vaultState.sync?.devices
   ) {

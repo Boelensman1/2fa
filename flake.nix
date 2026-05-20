@@ -11,25 +11,27 @@
       let
         pkgs = nixpkgs.legacyPackages.${system};
 
-        favacli = pkgs.buildNpmPackage (finalAttrs: {
+        favacli = pkgs.stdenv.mkDerivation (finalAttrs: {
           pname = "favacli";
           version = "0.0.22";
 
           src = ./.;
 
-          npmDeps = pkgs.importNpmLock { npmRoot = ./.; };
-          npmConfigHook = pkgs.importNpmLock.npmConfigHook;
-
-          # Don't use npmWorkspace / built-in install: the default install
-          # copies node_modules including relative symlinks to workspace dirs
-          # that aren't in $out, leaving dangling links. Install manually
-          # (see installPhase below).
-          dontNpmInstall = true;
-
-          npmFlags = [ "--ignore-scripts" ];
+          # pnpmConfigHook installs deps from this fetched store. Both
+          # fetchDeps and the hook force --ignore-scripts, so dependency build
+          # scripts never run here; native modules are rebuilt manually in
+          # preBuild below (matching the old npmFlags = ["--ignore-scripts"]).
+          pnpmDeps = pkgs.pnpm_10.fetchDeps {
+            inherit (finalAttrs) pname version src;
+            pnpm = pkgs.pnpm_10;
+            fetcherVersion = 3;
+            hash = "";
+          };
 
           nativeBuildInputs = [
             pkgs.nodejs_20
+            pkgs.pnpm_10
+            pkgs.pnpm_10.configHook
             pkgs.python3
             pkgs.pkg-config
             pkgs.makeWrapper
@@ -51,14 +53,14 @@
 
             npm rebuild --no-save keytar bufferutil
 
-            ( cd packages/types && npx --no-install tsc --project tsconfig.build.json )
-            ( cd packages/server && npx --no-install tsc --project tsconfig.build.json )
-            ( cd packages/lib && npx --no-install tsc --project tsconfig.build.json )
+            ( cd packages/types && pnpm exec tsc --project tsconfig.build.json )
+            ( cd packages/server && pnpm exec tsc --project tsconfig.build.json )
+            ( cd packages/lib && pnpm exec tsc --project tsconfig.build.json )
           '';
 
           buildPhase = ''
             runHook preBuild
-            ( cd packages/app-cli && npx --no-install tsc --project tsconfig.build.json )
+            ( cd packages/app-cli && pnpm exec tsc --project tsconfig.build.json )
             chmod +x packages/app-cli/build/main.mjs
             runHook postBuild
           '';
@@ -79,7 +81,7 @@
             # to node_modules/ purely for other workspaces (browser app's
             # lightningcss, @tailwindcss, ...) or for dev tooling stays out.
             allowlist=$(
-              npm ls --omit=dev --all --parseable --workspace packages/app-cli \
+              pnpm --filter favacli list --prod --depth Infinity --parseable \
                 | grep '/node_modules/' \
                 | sed 's|.*/node_modules/||' \
                 | awk -F/ '{ if ($1 ~ /^@/) print $1 "/" $2; else print $1 }' \

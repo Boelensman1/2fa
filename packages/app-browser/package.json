@@ -24,6 +24,7 @@
     "@solid-primitives/media": "^2.2.9",
     "@tailwindcss/postcss": "^4.1.7",
     "clsx": "^2.1.1",
+    "favalib": "workspace:*",
     "solid-js": "^1.8.22"
   },
   "optionalDependencies": {

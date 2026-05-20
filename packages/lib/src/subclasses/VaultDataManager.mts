@@ -71,7 +71,7 @@ class VaultDataManager {
    */
   generateTokenForEntry(id: EntryId, timestamp?: number): Token {
     const entry = this.vault.find((e) => e.id === id)
-    if (!entry || entry.type !== 'TOTP') {
+    if (entry?.type !== 'TOTP') {
       throw new EntryNotFoundError('TOTP entry not found')
     }
 

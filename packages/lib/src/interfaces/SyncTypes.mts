@@ -35,11 +35,10 @@ export interface AddDeviceFlowInitiator_Initiated extends BaseAddDeviceFlow {
   timeout: NodeJS.Timeout
 }
 
-export interface AddDeviceFlowInitiator_SyncKeyCreated
-  extends Omit<
-    AddDeviceFlowInitiator_Initiated,
-    'state' | 'resolveContinuePromise'
-  > {
+export interface AddDeviceFlowInitiator_SyncKeyCreated extends Omit<
+  AddDeviceFlowInitiator_Initiated,
+  'state' | 'resolveContinuePromise'
+> {
   state: 'initiator:syncKeyCreated'
   responderDeviceId: DeviceId
   syncKey: SyncKey
@@ -52,8 +51,10 @@ export interface AddDeviceFlowResponder_Initiated extends BaseAddDeviceFlow {
   initiatorDeviceId: DeviceId
 }
 
-export interface AddDeviceFlowResponder_SyncKeyCreated
-  extends Omit<AddDeviceFlowResponder_Initiated, 'state'> {
+export interface AddDeviceFlowResponder_SyncKeyCreated extends Omit<
+  AddDeviceFlowResponder_Initiated,
+  'state'
+> {
   state: 'responder:syncKeyCreated'
   syncKey: SyncKey
 }

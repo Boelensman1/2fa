@@ -176,10 +176,7 @@ class NodeCryptoLib implements CryptoLib {
     }) as PublicKey
 
     // Decrypt the symmetric key
-    const symmetricKey = (await this.decrypt(
-      privateKey,
-      encryptedSymmetricKey,
-    )) as SymmetricKey
+    const symmetricKey = await this.decrypt(privateKey, encryptedSymmetricKey)
 
     return { privateKey, publicKey, symmetricKey }
   }

@@ -5,7 +5,7 @@ import { execSync } from 'child_process'
  */
 export const setup = () => {
   execSync(
-    "NODE_ENV=test NODE_OPTIONS='--import tsx/esm' npx --no-install knex migrate:latest",
+    "NODE_ENV=test NODE_OPTIONS='--import tsx/esm' pnpm exec knex migrate:latest",
     {
       cwd: process.cwd(),
     },
@@ -17,7 +17,7 @@ export const setup = () => {
  */
 export const teardown = () => {
   execSync(
-    "NODE_ENV=test NODE_OPTIONS='--import tsx/esm' npx --no-install knex migrate:rollback --all",
+    "NODE_ENV=test NODE_OPTIONS='--import tsx/esm' pnpm exec knex migrate:rollback --all",
     {
       cwd: process.cwd(),
     },

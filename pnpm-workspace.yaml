@@ -1,0 +1,7 @@
+packages:
+  - 'packages/*'
+allowBuilds:
+  bufferutil: true
+  canvas: true
+  esbuild: true
+  keytar: true

@@ -39,6 +39,8 @@ class EntriesAddCommand extends BaseCommand {
       name: this.name,
       issuer: this.issuer,
       type: 'TOTP',
+      match: null,
+      matchType: null,
       payload: {
         secret: this.secret,
         period: Number.parseInt(this.period, 10),

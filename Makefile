@@ -15,8 +15,8 @@ clean: $(PACKAGES:%=clean-%)
 	rm -rf ./node_modules
 	rm -rf ./packages/*/node_modules
 
-node_modules: package.json package-lock.json $(SUB_PACKAGE_JSONS)
-	npm ci || ( sleep 1; touch package-lock.json; exit 1 ) # add the touch so if npm ci fails it will get rerun
+node_modules: package.json pnpm-lock.yaml $(SUB_PACKAGE_JSONS)
+	pnpm install --frozen-lockfile || ( sleep 1; touch pnpm-lock.yaml; exit 1 ) # add the touch so if install fails it will get rerun
 	@if [ -e node_modules ]; then touch node_modules; fi
 
 build-%: node_modules

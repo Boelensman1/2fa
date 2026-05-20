@@ -3,18 +3,19 @@ SRC_FILES:=$(shell find src/)
 
 build: $(INSTALL_DEPS) $(SRC_FILES) tsconfig.json tsconfig.build.json
 	rm -rf build *.tsbuildinfo # TODO: find out why this is needed
-	npx --no-install tsc --project ./tsconfig.build.json
+	pnpm exec tsc --project ./tsconfig.build.json
 	@if [ -e node_modules ]; then touch node_modules; fi
 
-node_modules: package.json ../../package-lock.json
+node_modules: package.json ../../pnpm-lock.yaml
 	$(MAKE) -C ../.. node_modules
+	mkdir -p node_modules # pnpm (hoisted) creates no local node_modules for this deps-light package
 	@touch node_modules
 
 clean:
 	rm -rf build *.tsbuildinfo
 
 lint: $(INSTALL_DEPS)
-	npx --no-install prettier --check --ignore-path=../../.gitignore .
-	npx --no-install tsc --noEmit
+	pnpm exec prettier --check --ignore-path=../../.gitignore .
+	pnpm exec tsc --noEmit
 
 .PHONY: clean lint all

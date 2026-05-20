@@ -132,10 +132,7 @@ class BrowserCryptoLib implements CryptoLib {
       encryptedPrivateKey,
       passwordHash,
     )
-    const symmetricKey = (await this.decrypt(
-      privateKey,
-      encryptedSymmetricKey,
-    )) as SymmetricKey
+    const symmetricKey = await this.decrypt(privateKey, encryptedSymmetricKey)
 
     return { privateKey, publicKey, symmetricKey }
   }
@@ -144,7 +141,7 @@ class BrowserCryptoLib implements CryptoLib {
    * @inheritdoc
    */
   async encrypt<T extends string>(publicKey: PublicKey, plainText: T) {
-    const publicKeyObj = forge.pki.publicKeyFromPem(publicKey as string)
+    const publicKeyObj = forge.pki.publicKeyFromPem(publicKey)
     const encrypted = publicKeyObj.encrypt(plainText, 'RSA-OAEP')
     return Promise.resolve(btoa(encrypted) as Encrypted<T>)
   }
@@ -156,7 +153,7 @@ class BrowserCryptoLib implements CryptoLib {
     privateKey: PrivateKey,
     encryptedText: Encrypted<T>,
   ) {
-    const privateKeyObj = forge.pki.privateKeyFromPem(privateKey as string)
+    const privateKeyObj = forge.pki.privateKeyFromPem(privateKey)
     const decrypted = privateKeyObj.decrypt(atob(encryptedText), 'RSA-OAEP')
     return Promise.resolve(decrypted as T)
   }
@@ -250,7 +247,7 @@ class BrowserCryptoLib implements CryptoLib {
     privateKey: PrivateKey,
     passwordHash: PasswordHash,
   ): Promise<EncryptedPrivateKey> {
-    const privateKeyObj = forge.pki.privateKeyFromPem(privateKey as string)
+    const privateKeyObj = forge.pki.privateKeyFromPem(privateKey)
     const encryptedPrivateKey = forge.pki.encryptRsaPrivateKey(
       privateKeyObj,
       passwordHash,
@@ -328,7 +325,7 @@ class BrowserCryptoLib implements CryptoLib {
   private async getPublicKeyFromPrivateKey(
     privateKey: PrivateKey,
   ): Promise<PublicKey> {
-    const privateKeyObj = forge.pki.privateKeyFromPem(privateKey as string)
+    const privateKeyObj = forge.pki.privateKeyFromPem(privateKey)
     const publicKey = forge.pki.publicKeyToPem(
       forge.pki.setRsaPublicKey(privateKeyObj.n, privateKeyObj.e),
     )

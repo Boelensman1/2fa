@@ -3,6 +3,7 @@ import { Cli, Builtins } from 'clipanion'
 
 import VaultCreateCommand from './commands/vault/create.mjs'
 import VaultDeleteCommand from './commands/vault/delete.mjs'
+import VaultRestorePasswordCommand from './commands/vault/restorePassword.mjs'
 import EntriesAddCommand from './commands/entries/add.mjs'
 import EntriesListCommand from './commands/entries/list.mjs'
 import EntriesSearchCommand from './commands/entries/search.mjs'
@@ -25,11 +26,12 @@ const [, , ...args] = process.argv
 const cli = new Cli({
   binaryLabel: 'FavaCli',
   binaryName: `favacli`,
-  binaryVersion: '0.0.22',
+  binaryVersion: '0.0.23',
 })
 
 cli.register(VaultCreateCommand)
 cli.register(VaultDeleteCommand)
+cli.register(VaultRestorePasswordCommand)
 cli.register(EntriesAddCommand)
 cli.register(EntriesListCommand)
 cli.register(EntriesSearchCommand)

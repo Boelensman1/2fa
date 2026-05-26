@@ -40,6 +40,7 @@ abstract class BaseCommand extends Command {
     const { lockedRepresentationString, settings } = await init()
 
     this.settings = settings
+    this.lockedRepresentationString = lockedRepresentationString
 
     if (lockedRepresentationString && this.requireFavaLib) {
       this.favaLib = await loadVault(

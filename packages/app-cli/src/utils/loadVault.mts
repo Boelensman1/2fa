@@ -52,10 +52,29 @@ const loadVault = async (
     saveFunction,
   )
 
-  const password = (await keytar.getPassword(
-    'favacli',
-    'vault-password',
-  )) as Password
+  let storedPassword: string | null
+  try {
+    storedPassword = await keytar.getPassword('favacli', 'vault-password')
+  } catch (err) {
+    throw new Error(
+      `Failed to read the vault password from the system keychain: ${
+        err instanceof Error ? err.message : String(err)
+      }. Make sure your OS keychain service is available (on Linux this requires a ` +
+        `Secret Service provider such as gnome-keyring or KWallet via libsecret).`,
+    )
+  }
+
+  if (!storedPassword) {
+    throw new Error(
+      `No vault password found in the system keychain. The vault file at ` +
+        `"${settings.vaultLocation}" exists, but the password used to decrypt it is not ` +
+        `stored on this device. This usually happens when the vault was copied from another ` +
+        `device or the keychain entry was removed. Run "favacli vault restore-password" to ` +
+        `re-store it.`,
+    )
+  }
+
+  const password = storedPassword as Password
 
   const favaLib =
     await favaLibVaultCreationUtils.loadFavaLibFromLockedRepesentation(

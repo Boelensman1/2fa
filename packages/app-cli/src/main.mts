@@ -11,6 +11,7 @@ import SyncSetServerUrlCommand from './commands/sync/setServerUrl.mjs'
 import SyncConnect from './commands/sync/connect.mjs'
 import SyncResilver from './commands/sync/resilver.mjs'
 import SyncListDevices from './commands/sync/listDevices.mjs'
+import SyncRemoveDeviceCommand from './commands/sync/removeDevice.mjs'
 import SyncSetFriendlyNameCommand from './commands/sync/setFriendlyName.mjs'
 import ExportTextCommand from './commands/export/text.mjs'
 import SyncGetInfoCommand from './commands/sync/getInfo.mjs'
@@ -39,6 +40,7 @@ cli.register(SyncSetServerUrlCommand)
 cli.register(SyncConnect)
 cli.register(SyncResilver)
 cli.register(SyncListDevices)
+cli.register(SyncRemoveDeviceCommand)
 cli.register(ExportTextCommand)
 cli.register(SyncSetFriendlyNameCommand)
 cli.register(SyncGetInfoCommand)

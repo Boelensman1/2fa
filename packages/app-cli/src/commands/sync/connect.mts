@@ -1,6 +1,7 @@
 import { input } from '@inquirer/prompts'
 import BaseCommand from '../../BaseCommand.mjs'
 import { FavaLibEvent } from 'favalib'
+import type { DeviceFriendlyName } from 'favalib'
 
 class ConnectCommand extends BaseCommand {
   static override paths = [['sync', 'connect']]
@@ -25,6 +26,18 @@ class ConnectCommand extends BaseCommand {
     const connectionString = await input({
       message: 'Enter connection string:',
     })
+
+    const friendlyName = (
+      await input({
+        message: 'Enter a friendly name for this device (optional):',
+      })
+    ).trim()
+
+    if (friendlyName) {
+      await this.favaLib.setDeviceFriendlyName(
+        friendlyName as DeviceFriendlyName,
+      )
+    }
 
     const connectFinished = new Promise<void>((resolve) => {
       this.favaLib.addEventListener(

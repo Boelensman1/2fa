@@ -1,9 +1,25 @@
 import { createSignal, Show } from 'solid-js'
 import useStore from '../store/useStore'
+import type { DeviceFriendlyName } from 'favalib'
 
 const ConnectToExistingVault = () => {
   const [errorMessage, setErrorMessage] = createSignal<string | null>(null)
   const [textInput, setTextInput] = createSignal('')
+  const [deviceName, setDeviceName] = createSignal('')
+
+  const respondWithName = async (data: string | File, type: 'text' | 'qr') => {
+    const [state] = useStore()
+    const { favaLib } = state
+    if (!favaLib?.sync) {
+      throw new Error('favaLib not loaded / no server connection')
+    }
+
+    const name = deviceName().trim()
+    if (name) {
+      await favaLib.setDeviceFriendlyName(name as DeviceFriendlyName)
+    }
+    await favaLib.sync.respondToAddDeviceFlow(data, type)
+  }
 
   const handlePaste = (event: ClipboardEvent) => {
     const [state] = useStore()
@@ -40,7 +56,7 @@ const ConnectToExistingVault = () => {
       return
     }
 
-    void favaLib.sync.respondToAddDeviceFlow(blob, 'qr')
+    void respondWithName(blob, 'qr')
   }
 
   const handleTextSubmit = () => {
@@ -58,7 +74,7 @@ const ConnectToExistingVault = () => {
     }
 
     setErrorMessage(null)
-    void favaLib.sync.respondToAddDeviceFlow(text, 'text')
+    void respondWithName(text, 'text')
   }
 
   return (
@@ -68,6 +84,15 @@ const ConnectToExistingVault = () => {
         Paste the QR code image or enter the text to connect to an existing
         vault.
       </p>
+      <div class="mb-4">
+        <input
+          type="text"
+          value={deviceName()}
+          onInput={(e) => setDeviceName(e.currentTarget.value)}
+          placeholder="Device name (optional)"
+          class="w-full p-2 border border-gray-300 rounded"
+        />
+      </div>
       <div
         class="border-2 border-dashed border-gray-300 p-8 text-center cursor-pointer mb-4"
         onPaste={handlePaste}

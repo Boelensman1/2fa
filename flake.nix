@@ -85,9 +85,26 @@
             cp -r packages/app-cli/build "$root/"
             cp packages/app-cli/package.json "$root/"
 
-            # Ship only app-cli's transitive runtime closure. Anything hoisted
-            # to node_modules/ purely for other workspaces (browser app's
-            # lightningcss, @tailwindcss, ...) or for dev tooling stays out.
+            # Copy the workspace packages app-cli depends on (favalib, which in
+            # turn pulls in favaserver and favatypes). pnpm symlinks these from
+            # the store, so their paths never contain a /node_modules/ segment
+            # and they never show up in the allowlist below — copy them here.
+            mkdir -p "$root/node_modules/favalib"
+            cp packages/lib/package.json "$root/node_modules/favalib/"
+            cp -r packages/lib/build "$root/node_modules/favalib/"
+
+            mkdir -p "$root/node_modules/favaserver"
+            cp packages/server/package.json "$root/node_modules/favaserver/"
+            cp -r packages/server/build "$root/node_modules/favaserver/"
+
+            mkdir -p "$root/node_modules/favatypes"
+            cp packages/types/package.json "$root/node_modules/favatypes/"
+            cp -r packages/types/build "$root/node_modules/favatypes/"
+
+            # Ship only app-cli's transitive npm closure on top of those.
+            # Anything hoisted to node_modules/ purely for other workspaces
+            # (browser app's lightningcss, @tailwindcss, ...) or for dev
+            # tooling stays out.
             allowlist=$(
               pnpm --filter favacli list --prod --depth Infinity --parseable \
                 | grep '/node_modules/' \
@@ -98,22 +115,7 @@
 
             while IFS= read -r name; do
               case "$name" in
-                ""|favacli|favabrowser) continue ;;
-                favalib)
-                  mkdir -p "$root/node_modules/favalib"
-                  cp packages/lib/package.json "$root/node_modules/favalib/"
-                  cp -r packages/lib/build "$root/node_modules/favalib/"
-                  ;;
-                favaserver)
-                  mkdir -p "$root/node_modules/favaserver"
-                  cp packages/server/package.json "$root/node_modules/favaserver/"
-                  cp -r packages/server/build "$root/node_modules/favaserver/"
-                  ;;
-                favatypes)
-                  mkdir -p "$root/node_modules/favatypes"
-                  cp packages/types/package.json "$root/node_modules/favatypes/"
-                  cp -r packages/types/build "$root/node_modules/favatypes/"
-                  ;;
+                ""|favacli|favabrowser|favalib|favaserver|favatypes) continue ;;
                 *)
                   src="node_modules/$name"
                   [ -e "$src" ] || continue

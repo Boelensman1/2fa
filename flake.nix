@@ -29,7 +29,7 @@
           };
 
           nativeBuildInputs = [
-            pkgs.nodejs_20
+            pkgs.nodejs_24
             pkgs.pnpm_10
             pkgs.pnpmConfigHook
             pkgs.python3
@@ -140,7 +140,7 @@
 
         devShell = pkgs.mkShell {
           packages = with pkgs; [
-            nodejs_20
+            nodejs_24
             pnpm_10
             pkg-config
             cairo

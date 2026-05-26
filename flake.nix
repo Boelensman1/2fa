@@ -51,6 +51,14 @@
             find node_modules -path '*node_modules/node-addon-api/napi.h' -print0 \
               | xargs -0 sed -i.bak 's|static_cast<napi_typedarray_type>(-1)|napi_int8_array|g'
 
+            # The build sandbox has no network. Point node-gyp at the Node
+            # headers shipped with the nixpkgs Node so it never fetches them
+            # from nodejs.org, and force a from-source build so keytar's
+            # prebuild-install doesn't try to download a prebuilt binary from
+            # GitHub. keytar/bufferutil then compile fully offline.
+            export npm_config_nodedir=${pkgs.nodejs_24}
+            export npm_config_build_from_source=true
+
             npm rebuild --no-save keytar bufferutil
 
             ( cd packages/types && pnpm exec tsc --project tsconfig.build.json )

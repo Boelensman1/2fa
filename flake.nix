@@ -13,7 +13,7 @@
 
         favacli = pkgs.stdenv.mkDerivation (finalAttrs: {
           pname = "favacli";
-          version = "0.0.22";
+          version = "0.0.23";
 
           src = ./.;
 

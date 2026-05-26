@@ -7,6 +7,7 @@ import VaultRestorePasswordCommand from './commands/vault/restorePassword.mjs'
 import EntriesAddCommand from './commands/entries/add.mjs'
 import EntriesListCommand from './commands/entries/list.mjs'
 import EntriesSearchCommand from './commands/entries/search.mjs'
+import EntriesGetTokenByIdCommand from './commands/entries/getTokenById.mjs'
 import SyncSetServerUrlCommand from './commands/sync/setServerUrl.mjs'
 import SyncConnect from './commands/sync/connect.mjs'
 import SyncResilver from './commands/sync/resilver.mjs'
@@ -27,7 +28,7 @@ const [, , ...args] = process.argv
 const cli = new Cli({
   binaryLabel: 'FavaCli',
   binaryName: `favacli`,
-  binaryVersion: '0.0.23',
+  binaryVersion: '0.0.24',
 })
 
 cli.register(VaultCreateCommand)
@@ -36,6 +37,7 @@ cli.register(VaultRestorePasswordCommand)
 cli.register(EntriesAddCommand)
 cli.register(EntriesListCommand)
 cli.register(EntriesSearchCommand)
+cli.register(EntriesGetTokenByIdCommand)
 cli.register(SyncSetServerUrlCommand)
 cli.register(SyncConnect)
 cli.register(SyncResilver)

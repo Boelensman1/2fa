@@ -19,8 +19,12 @@ abstract class BaseCommand extends Command {
 
   preFormattedOutput = false
 
-  json = Option.Boolean('--json', {
-    description: 'output as json',
+  // when true, exec()'s result is a raw string to write to stdout verbatim
+  // (no JSON.stringify, no escaping/trimming) — e.g. rofi script-mode output
+  rawOutput = false
+
+  format = Option.String('--format', {
+    description: 'output format (e.g. json)',
   })
   verbose = Option.Boolean('--verbose', {
     description: 'verbose output',
@@ -30,13 +34,33 @@ abstract class BaseCommand extends Command {
   settings!: Settings
   favaLib!: FavaLib
 
+  // machine-readable mode: any --format suppresses human output and triggers
+  // serialized output
+  get machineOutput(): boolean {
+    return this.format !== undefined
+  }
+
+  // the set of --format values this command accepts; subclasses extend it
+  protected validFormats(): string[] {
+    return ['json']
+  }
+
   output(string: string) {
-    if (!this.json) {
+    if (!this.machineOutput) {
       this.context.stdout.write(string)
     }
   }
 
   async execute() {
+    if (
+      this.format !== undefined &&
+      !this.validFormats().includes(this.format)
+    ) {
+      throw new Error(
+        `Unknown format: ${this.format}. Valid formats: ${this.validFormats().join(', ')}`,
+      )
+    }
+
     const { lockedRepresentationString, settings } = await init()
 
     this.settings = settings
@@ -60,10 +84,15 @@ abstract class BaseCommand extends Command {
       this.favaLib.sync.closeServerConnection()
     }
 
-    if (this.json) {
+    if (this.machineOutput) {
       // output is already formatted, don't add the result & errors bit
       if (this.preFormattedOutput) {
-        this.context.stdout.write(JSON.stringify(result, null, 2) + '\n')
+        if (this.rawOutput) {
+          // raw passthrough: write the formatter's string exactly as-is
+          this.context.stdout.write(result)
+        } else {
+          this.context.stdout.write(JSON.stringify(result, null, 2) + '\n')
+        }
       } else {
         this.context.stdout.write(
           JSON.stringify({ result, errors: this.errors }, null, 2) + '\n',
@@ -75,7 +104,7 @@ abstract class BaseCommand extends Command {
   }
 
   private addError(err: Error) {
-    if (this.json && !this.verbose) {
+    if (this.machineOutput && !this.verbose) {
       this.errors.push({ timestamp: Date.now(), message: err.message })
     } else {
       console.error(err)

@@ -1,4 +1,3 @@
-import { Option } from 'clipanion'
 import type { EntryMeta, EntryMetaWithToken } from 'favalib'
 
 import BaseCommand from './BaseCommand.mjs'
@@ -8,7 +7,9 @@ import generateEntriesTable from './utils/generateEntriesTable.mjs'
 import formatters from './formatters/index.mjs'
 import { Jsonifiable, JsonArray } from 'type-fest'
 
-const formattersMap = new Map(formatters.map((f) => [f.name, f.formatter]))
+const formattersMap = new Map<string, (typeof formatters)[number]>(
+  formatters.map((f) => [f.name, f]),
+)
 
 export type Formatter = (
   entries: (EntryMeta | EntryMetaWithToken)[],
@@ -18,28 +19,32 @@ export type Formatter = (
 abstract class BaseListOutputCommand extends BaseCommand {
   abstract getList(): Promise<(EntryMeta | EntryMetaWithToken)[]>
 
-  // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
-  format = Option.String('--format', {
-    description: 'formatter',
-  }) as (typeof formatters)[0]['name'] | undefined
+  protected validFormats(): string[] {
+    return ['json', ...formatters.map((f) => f.name)]
+  }
 
   async exec() {
-    this.preFormattedOutput = this.format !== undefined
-
     let formatter: Formatter = (json: EntryMeta[]) =>
       json as unknown as JsonArray
 
-    if (this.format) {
+    // 'json' (and no --format) uses the default identity formatter and is
+    // wrapped in { result, errors } by BaseCommand; named formatters produce
+    // pre-formatted output instead
+    if (this.format && this.format !== 'json') {
       const selectedFormatter = formattersMap.get(this.format)
       if (!selectedFormatter) {
         throw new Error(`Formatter ${this.format} not found`)
       }
-      formatter = selectedFormatter
+      formatter = selectedFormatter.formatter
+      this.preFormattedOutput = true
+      this.rawOutput = 'raw' in selectedFormatter && selectedFormatter.raw
     }
 
     const list = await this.getList()
     if (list.length === 0) {
-      this.context.stdout.write('No entries\n')
+      // output() suppresses this when --format is set, so it can't corrupt the
+      // machine-readable formatter output
+      this.output('No entries\n')
       return formatter([], this.errors)
     }
 

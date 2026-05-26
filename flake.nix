@@ -125,19 +125,23 @@
               esac
             done <<< "$allowlist"
 
+            # Run favacli with the Node it was built against (and, on Linux,
+            # with libsecret/glib/libuuid on the loader path). A bare `env
+            # node` shebang would instead use whatever Node is on the user's
+            # PATH, whose glibc may be older than the one keytar's native deps
+            # (libsecret -> libgpg-error) were linked against.
             mkdir -p "$out/bin"
-            ln -s "$root/build/main.mjs" "$out/bin/favacli"
+            makeWrapper ${pkgs.nodejs_24}/bin/node "$out/bin/favacli" \
+              --add-flags "$root/build/main.mjs" ${
+                pkgs.lib.optionalString pkgs.stdenv.isLinux
+                  "--prefix LD_LIBRARY_PATH : ${pkgs.lib.makeLibraryPath [
+                    pkgs.libsecret
+                    pkgs.glib
+                    pkgs.libuuid
+                  ]}"
+              }
 
             runHook postInstall
-          '';
-
-          postFixup = pkgs.lib.optionalString pkgs.stdenv.isLinux ''
-            wrapProgram $out/bin/favacli \
-              --prefix LD_LIBRARY_PATH : ${pkgs.lib.makeLibraryPath [
-                pkgs.libsecret
-                pkgs.glib
-                pkgs.libuuid
-              ]}
           '';
 
           meta = with pkgs.lib; {

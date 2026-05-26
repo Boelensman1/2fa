@@ -4,6 +4,7 @@ import type { SupportedAlgorithmsType } from './constants.mjs'
 import type { EntryId } from '../interfaces/Entry.mjs'
 import type { QrCodeLib } from '../interfaces/QrCodeLib.mjs'
 import type { OpenPgpLib } from '../interfaces/OpenPgpLib.mjs'
+import type { UrlParser } from '../interfaces/UrlParserLib.mjs'
 import { ExportImportError } from '../FavaLibError.mjs'
 
 /**
@@ -31,19 +32,16 @@ const parseOtpAlgorithm = (
 
 /**
  * Parses an OTP URI and extracts the relevant information to create a new entry.
- * @param UrlParser - The URL parsing library.
+ * @param parseUrl - The platform's URL parser.
  * @param otpUri - The OTP URI to parse.
  * @returns An object representing the new entry.
  * @throws ExportImportError if the URI is invalid or contains unsupported features.
  */
-export const parseOtpUri = (
-  UrlParser: typeof import('whatwg-url'),
-  otpUri: string,
-): NewEntry => {
+export const parseOtpUri = (parseUrl: UrlParser, otpUri: string): NewEntry => {
   if (!otpUri.startsWith('otpauth://')) {
     throw new ExportImportError('Invalid OTP URI')
   }
-  const parsedUri = UrlParser.parseURL(otpUri)
+  const parsedUri = parseUrl(otpUri)
   if (!parsedUri) {
     throw new ExportImportError('Failed to parse URI')
   }

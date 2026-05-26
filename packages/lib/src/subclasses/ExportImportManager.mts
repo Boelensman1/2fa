@@ -137,9 +137,9 @@ class ExportImportManager {
    * @throws {ExportImportError} If the URI is invalid or contains unsupported OTP type.
    */
   async importFromUri(otpUri: string): Promise<EntryId> {
-    const UrlParser = await this.libraryLoader.getUrlParserLib()
+    const parseUrl = this.libraryLoader.getUrlParserLib()
 
-    const newEntry = parseOtpUri(UrlParser, otpUri.trim())
+    const newEntry = parseOtpUri(parseUrl, otpUri.trim())
 
     return this.vaultOperationsManager.addEntry(newEntry)
   }

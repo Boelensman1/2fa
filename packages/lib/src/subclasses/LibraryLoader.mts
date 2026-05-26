@@ -2,6 +2,7 @@ import type CryptoLib from '../interfaces/CryptoLib.mjs'
 import type { PlatformProviders } from '../interfaces/PlatformProviders.mjs'
 import type { QrCodeLib } from '../interfaces/QrCodeLib.mjs'
 import type { OpenPgpLib } from '../interfaces/OpenPgpLib.mjs'
+import type { UrlParser } from '../interfaces/UrlParserLib.mjs'
 import { InitializationError } from '../FavaLibError.mjs'
 
 /**
@@ -17,7 +18,7 @@ class LibraryLoader {
   private openPgpLib?: OpenPgpLib
   private qrGeneratorLib?: QrCodeLib
   private jsQrLib?: typeof import('jsqr').default
-  private urlParserLib?: typeof import('whatwg-url')
+  private urlParserLib?: UrlParser
   private zxcvbn?: typeof import('@zxcvbn-ts/core').zxcvbn
   private webSocketLib?: typeof WebSocket
 
@@ -81,14 +82,11 @@ class LibraryLoader {
   }
 
   /**
-   * Loads and returns the URL Parser library on demand.
-   * @returns A promise that resolves to the URL Parser library.
+   * Loads and returns the platform's URL parser on demand.
+   * @returns The URL parser function.
    */
-  async getUrlParserLib() {
-    if (!this.urlParserLib) {
-      const module = await import('whatwg-url')
-      this.urlParserLib = module.default
-    }
+  getUrlParserLib(): UrlParser {
+    this.urlParserLib ??= this.platformProviders.UrlParserLib()
     return this.urlParserLib
   }
 

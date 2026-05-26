@@ -2,6 +2,7 @@ import type { PlatformProviders } from '../../interfaces/PlatformProviders.mjs'
 import BrowserCryptoLib from './cryptoLib.mjs'
 import { BrowserQrCodeLib } from './qrCodeLib.mjs'
 import { BrowserOpenPgpLib } from './openPgpLib.mjs'
+import { nativeUrlParser } from '../shared/urlParserLib.mjs'
 import { v4 as genUuidV4 } from 'uuid'
 
 /**
@@ -12,6 +13,7 @@ export const browserProviders: PlatformProviders = {
   WebSocketLib: () => WebSocket,
   QrCodeLib: BrowserQrCodeLib,
   OpenPgpLib: BrowserOpenPgpLib,
+  UrlParserLib: () => nativeUrlParser,
   genUuidV4: () => genUuidV4(),
 }
 

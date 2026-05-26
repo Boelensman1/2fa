@@ -1,6 +1,7 @@
 import type CryptoLib from './CryptoLib.mjs'
 import type { QrCodeLib } from './QrCodeLib.mjs'
 import type { OpenPgpLib } from './OpenPgpLib.mjs'
+import type { UrlParser } from './UrlParserLib.mjs'
 
 /**
  * Interface for platform-specific providers
@@ -23,6 +24,12 @@ export interface PlatformProviders {
    * OpenPGP encryption library
    */
   OpenPgpLib: new () => OpenPgpLib
+  /**
+   * URL parser factory. Returns a function that parses OTP URIs into their
+   * components. Platform-specific so environments without a reliable native
+   * `URL` can supply their own (e.g. backed by `whatwg-url`).
+   */
+  UrlParserLib: () => UrlParser
   /**
    * genUuidV4 function
    */

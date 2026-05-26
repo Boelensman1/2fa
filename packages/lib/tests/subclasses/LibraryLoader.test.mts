@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import LibraryLoader from '../../src/subclasses/LibraryLoader.mjs'
 import type CryptoLib from '../../src/interfaces/CryptoLib.mjs'
 import type { PlatformProviders } from '../../src/interfaces/PlatformProviders.mjs'
+import type { UrlParser } from '../../src/interfaces/UrlParserLib.mjs'
 import { InitializationError } from '../../src/FavaLibError.mjs'
 
 // Mock the external libraries
@@ -12,14 +13,15 @@ vi.mock('openpgp', () => ({
 vi.mock('qrcode', () => ({ default: { mockQRCode: true } }))
 vi.mock('jsqr', () => ({ default: { default: { mockJsQR: true } } }))
 vi.mock('canvas', () => ({ default: { mockCanvas: true } }))
-vi.mock('whatwg-url', () => ({ default: { mockWhatwgUrl: true } }))
 
 describe('LibraryLoader', () => {
   let cryptoLib: CryptoLib
   let platformProviders: PlatformProviders
   let libraryLoader: LibraryLoader
+  let urlParser: UrlParser
 
   beforeEach(() => {
+    urlParser = vi.fn(() => null)
     cryptoLib = {
       createKeys: vi.fn(),
       decryptKeys: vi.fn(),
@@ -41,6 +43,7 @@ describe('LibraryLoader', () => {
       WebSocketLib: () => WebSocket,
       QrCodeLib: vi.fn(),
       OpenPgpLib: vi.fn(),
+      UrlParserLib: vi.fn(() => urlParser),
       genUuidV4: vi.fn(() => 'test-uuid'),
     }
     libraryLoader = new LibraryLoader(platformProviders)
@@ -81,9 +84,10 @@ describe('LibraryLoader', () => {
     expect(jsQrLib).toEqual({ mockJsQR: true })
   })
 
-  it('should load URL Parser library', async () => {
-    const urlParserLib = await libraryLoader.getUrlParserLib()
-    expect(urlParserLib).toEqual({ mockWhatwgUrl: true })
+  it('should load URL Parser library', () => {
+    const urlParserLib = libraryLoader.getUrlParserLib()
+    expect(urlParserLib).toBe(urlParser)
+    expect(platformProviders.UrlParserLib).toHaveBeenCalled()
   })
 
   it('should cache libraries after first load', async () => {
@@ -101,8 +105,9 @@ describe('LibraryLoader', () => {
     const jsQrLib2 = await libraryLoader.getJsQrLib()
     expect(jsQrLib1).toBe(jsQrLib2)
 
-    const urlParserLib1 = await libraryLoader.getUrlParserLib()
-    const urlParserLib2 = await libraryLoader.getUrlParserLib()
+    const urlParserLib1 = libraryLoader.getUrlParserLib()
+    const urlParserLib2 = libraryLoader.getUrlParserLib()
     expect(urlParserLib1).toBe(urlParserLib2)
+    expect(platformProviders.UrlParserLib).toHaveBeenCalledTimes(1)
   })
 })

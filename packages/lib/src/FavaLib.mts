@@ -9,7 +9,11 @@ import type {
   Salt,
   SymmetricKey,
 } from './interfaces/CryptoLib.mjs'
-import type { DeviceFriendlyName, DeviceType } from './interfaces/SyncTypes.mjs'
+import type {
+  DeviceFriendlyName,
+  DeviceId,
+  DeviceType,
+} from './interfaces/SyncTypes.mjs'
 import type {
   FavaLibEventMap,
   FavaLibEventMapEvents,
@@ -41,6 +45,7 @@ import VaultOperationsManager from './subclasses/VaultOperationsManager.mjs'
 import CommandManager from './subclasses/CommandManager.mjs'
 import StorageOperationsManager from './subclasses/StorageOperationsManager.mjs'
 import ChangeDeviceInfoCommand from './Command/commands/ChangeDeviceInfoCommand.mjs'
+import RemoveSyncDeviceCommand from './Command/commands/RemoveSyncDeviceCommand.mjs'
 
 /**
  * The Two-Factor Library, this is the main entry point.
@@ -332,6 +337,19 @@ class FavaLib extends TypedEventTarget<FavaLibEventMapEvents> {
       )
     }
 
+    await this.mediator.getComponent('commandManager').execute(command)
+  }
+
+  /**
+   * Remove a sync device from the vault. Synced to all other devices.
+   * @param deviceId The id of the device to remove
+   * @throws {FavaLibError} If trying to remove the current device.
+   */
+  public async removeSyncDevice(deviceId: DeviceId) {
+    if (deviceId === this.favaMeta.deviceId) {
+      throw new FavaLibError('Cannot remove the current device')
+    }
+    const command = RemoveSyncDeviceCommand.create({ deviceId })
     await this.mediator.getComponent('commandManager').execute(command)
   }
 

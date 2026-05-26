@@ -3,6 +3,7 @@ import type { DeleteEntryData } from '../Command/commands/DeleteEntryCommand.mjs
 import type { UpdateEntryData } from '../Command/commands/UpdateEntryCommand.mjs'
 import type { AddSyncDeviceData } from '../Command/commands/AddSyncDeviceCommand.mjs'
 import type { ChangeDeviceInfoData } from '../Command/commands/ChangeDeviceInfoCommand.mjs'
+import type { RemoveSyncDeviceData } from '../Command/commands/RemoveSyncDeviceCommand.mjs'
 
 export type SyncCommand = (
   | { type: 'AddEntry'; data: AddEntryData }
@@ -10,6 +11,7 @@ export type SyncCommand = (
   | { type: 'UpdateEntry'; data: UpdateEntryData }
   | { type: 'AddSyncDevice'; data: AddSyncDeviceData }
   | { type: 'ChangeDeviceInfo'; data: ChangeDeviceInfoData }
+  | { type: 'RemoveSyncDevice'; data: RemoveSyncDeviceData }
 ) & { id: string }
 export type CommandData =
   | AddEntryData
@@ -17,3 +19,4 @@ export type CommandData =
   | UpdateEntryData
   | AddSyncDeviceData
   | ChangeDeviceInfoData
+  | RemoveSyncDeviceData

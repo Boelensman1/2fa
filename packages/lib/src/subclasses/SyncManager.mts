@@ -1017,6 +1017,31 @@ class SyncManager {
   }
 
   /**
+   * Remove a sync device
+   * @param deviceId - The id of the device to remove
+   * @param saveAfter - Whether to save the vault after removing the device
+   * @returns The removed device, or undefined if it was not present
+   */
+  async removeSyncDevice(
+    deviceId: DeviceId,
+    saveAfter = true,
+  ): Promise<SyncDevice | undefined> {
+    const index = this.syncDevices.findIndex((d) => d.deviceId === deviceId)
+    if (index === -1) {
+      // we don't have this device, nothing to remove
+      return undefined
+    }
+    this.log('info', `Removing syncdevice ${deviceId} from ${this.deviceId}`)
+    const [removed] = this.syncDevices.splice(index, 1)
+
+    if (saveAfter) {
+      await this.persistentStorageManager.save()
+    }
+
+    return removed
+  }
+
+  /**
    * Requests a resilver of the vault
    */
   async requestResilver() {

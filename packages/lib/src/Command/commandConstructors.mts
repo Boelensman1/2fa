@@ -3,6 +3,7 @@ import AddSyncDeviceCommand from './commands/AddSyncDeviceCommand.mjs'
 import DeleteEntryCommand from './commands/DeleteEntryCommand.mjs'
 import UpdateEntryCommand from './commands/UpdateEntryCommand.mjs'
 import ChangeDeviceInfoCommand from './commands/ChangeDeviceInfoCommand.mjs'
+import RemoveSyncDeviceCommand from './commands/RemoveSyncDeviceCommand.mjs'
 
 const commandConstructors = {
   AddEntry: AddEntryCommand,
@@ -10,6 +11,7 @@ const commandConstructors = {
   UpdateEntry: UpdateEntryCommand,
   AddSyncDevice: AddSyncDeviceCommand,
   ChangeDeviceInfo: ChangeDeviceInfoCommand,
+  RemoveSyncDevice: RemoveSyncDeviceCommand,
 }
 
 export default commandConstructors

@@ -8,8 +8,12 @@ import type { ParsedOtpUrl, UrlParser } from '../../interfaces/UrlParserLib.mjs'
  * `webidl-conversions` dereferences `SharedArrayBuffer` at module-load time,
  * which throws `ReferenceError: SharedArrayBuffer is not defined` in browsers
  * that aren't cross-origin isolated (the common case).
+ * @param uri - The otpauth URI to parse.
+ * @returns The parsed OTP URL, or null if the URI could not be parsed.
  */
-export const nativeUrlParser: UrlParser = (uri: string): ParsedOtpUrl | null => {
+export const nativeUrlParser: UrlParser = (
+  uri: string,
+): ParsedOtpUrl | null => {
   let url: URL
   try {
     url = new URL(uri)

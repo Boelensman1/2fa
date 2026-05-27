@@ -6,7 +6,10 @@ import {
   InvalidCommandError,
   FavaLibError,
 } from '../../../src/FavaLibError.mjs'
-import type { DeviceId, DeviceType } from '../../../src/interfaces/SyncTypes.mjs'
+import type {
+  DeviceId,
+  DeviceType,
+} from '../../../src/interfaces/SyncTypes.mjs'
 
 describe('RemoveSyncDeviceCommand', () => {
   const mockDeviceId = 'remote-device' as DeviceId

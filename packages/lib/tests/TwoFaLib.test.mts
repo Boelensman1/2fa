@@ -12,14 +12,20 @@ import {
   PublicKey,
   FavaLibEvent,
   DeviceId,
+  DeviceFriendlyName,
   PlatformProviders,
+  getFavaLibVaultCreationUtils,
+  type LockedRepresentationString,
 } from '../src/main.mjs'
+import { nodeProviders } from '../src/platformProviders/node/index.mjs'
 
 import {
   clearEntries,
   createFavaLibForTests,
   deviceType,
   deviceId,
+  password,
+  passwordExtraDict,
 } from './testUtils.mjs'
 
 describe('2falib', () => {
@@ -316,6 +322,71 @@ describe('2falib', () => {
       // Clean up
       favaLib.sync?.closeServerConnection()
       server.close()
+    })
+  })
+
+  describe('setDeviceFriendlyName', () => {
+    // ChangeDeviceInfoCommand.execute reads the sync manager, so register a
+    // minimal mock so setDeviceFriendlyName can run. serverUrl is left
+    // undefined so reloading from the saved state does not try to connect.
+    const registerMockSyncManager = (lib: FavaLib) => {
+      const mockSyncManager = {
+        syncDevices: [
+          {
+            deviceId: lib.meta.deviceId,
+            deviceInfo: { deviceType },
+          },
+        ],
+        serverUrl: undefined,
+        getCommandSendQueue: () => [],
+        sendCommand: vi.fn(),
+      }
+      // @ts-expect-error: registering a partial sync manager mock for testing
+      lib.mediator.registerComponent('syncManager', mockSyncManager)
+    }
+
+    it('should reflect the new name in meta after setDeviceFriendlyName', async () => {
+      const { favaLib } = await createFavaLibForTests()
+      registerMockSyncManager(favaLib)
+
+      const friendlyName = 'my-laptop' as DeviceFriendlyName
+      await favaLib.setDeviceFriendlyName(friendlyName)
+
+      expect(favaLib.meta.deviceFriendlyName).toBe(friendlyName)
+    })
+
+    it('should persist the friendly name across a reload', async () => {
+      let savedData: LockedRepresentationString | undefined
+      const saveFunction = vi.fn((data: LockedRepresentationString) => {
+        savedData = data
+      })
+
+      const { favaLib } = await createFavaLibForTests(saveFunction)
+      registerMockSyncManager(favaLib)
+
+      const friendlyName = 'my-laptop' as DeviceFriendlyName
+      await favaLib.setDeviceFriendlyName(friendlyName)
+
+      // setDeviceFriendlyName triggers a save with the new state
+      expect(saveFunction).toHaveBeenCalled()
+      if (!savedData) {
+        // eslint-disable-next-line no-restricted-globals
+        throw new Error('No saved data captured')
+      }
+
+      // Reload the vault from the saved (locked) state
+      const { loadFavaLibFromLockedRepesentation } =
+        getFavaLibVaultCreationUtils(
+          nodeProviders,
+          deviceType,
+          passwordExtraDict,
+        )
+      const reloadedFavaLib = await loadFavaLibFromLockedRepesentation(
+        savedData,
+        password,
+      )
+
+      expect(reloadedFavaLib.meta.deviceFriendlyName).toBe(friendlyName)
     })
   })
 })

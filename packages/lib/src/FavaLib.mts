@@ -56,7 +56,6 @@ class FavaLib extends TypedEventTarget<FavaLibEventMapEvents> {
 
   private readonly favaMeta: FavaMeta
   public readonly deviceType: DeviceType
-  public deviceFriendlyName?: DeviceFriendlyName
 
   private mediator: FavaLibMediator
 
@@ -71,7 +70,7 @@ class FavaLib extends TypedEventTarget<FavaLibEventMapEvents> {
   public get meta() {
     return {
       deviceId: this.favaMeta.deviceId,
-      deviceFriendlyName: this.deviceFriendlyName ?? '',
+      deviceFriendlyName: this.favaMeta.deviceFriendlyName ?? '',
       deviceType: this.deviceType,
     }
   }

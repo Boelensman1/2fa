@@ -13,7 +13,7 @@
 
         favacli = pkgs.stdenv.mkDerivation (finalAttrs: {
           pname = "favacli";
-          version = "0.0.25";
+          version = "0.0.26";
 
           src = ./.;
 
@@ -169,9 +169,10 @@
             libuuid
             libsecret
             glib
-          ] ++ pkgs.lib.optionals pkgs.stdenv.isDarwin [
-            darwin.apple_sdk.frameworks.Foundation
           ];
+          # On Darwin the default stdenv now bundles the Apple SDK (Foundation
+          # et al.), so the old `darwin.apple_sdk.frameworks.*` inputs — removed
+          # from nixpkgs as legacy stubs — are no longer needed here.
 
           # canvas/keytar load these natively at runtime, so they must be on
           # the loader path inside `nix develop` (e.g. for `make test`).

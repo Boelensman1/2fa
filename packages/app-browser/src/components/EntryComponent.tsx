@@ -22,6 +22,7 @@ const EntryComponent = (props: {
   const [renameMode, setRenameMode] = createSignal(false)
   const [renameIssuer, setRenameIssuer] = createSignal('')
   const [renameName, setRenameName] = createSignal('')
+  const [qrCode, setQrCode] = createSignal('')
 
   const closeMenu = () => setMenuOpen(false)
   const onDocumentClick = () => closeMenu()
@@ -70,6 +71,25 @@ const EntryComponent = (props: {
         syncStoreWithLib(favaLib)
       })
     }
+  }
+
+  const handleShare = (event: MouseEvent) => {
+    event.stopPropagation()
+    setMenuOpen(false)
+
+    void favaLib.exportImport
+      .generateQrCodeForEntry(props.entry.id)
+      .then((qrDataUrl) => {
+        setQrCode(qrDataUrl)
+      })
+      .catch((err) => {
+        console.error('Failed to generate QR code:', err)
+      })
+  }
+
+  const handleCloseQr = (event: MouseEvent) => {
+    event.stopPropagation()
+    setQrCode('')
   }
 
   const handleStartRename = (event: MouseEvent) => {
@@ -190,6 +210,12 @@ const EntryComponent = (props: {
                       Rename
                     </button>
                     <button
+                      on:click={handleShare}
+                      class="block w-full text-left px-4 py-2 text-sm hover:bg-gray-100 transition-colors"
+                    >
+                      Share
+                    </button>
+                    <button
                       on:click={handleMenuDelete}
                       class="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100 transition-colors"
                     >
@@ -221,6 +247,35 @@ const EntryComponent = (props: {
           </div>
         </div>
       )}
+      <Show when={qrCode()}>
+        <div
+          class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+          on:click={handleCloseQr}
+        >
+          <div
+            class="bg-white rounded-lg p-6 flex flex-col items-center gap-4 max-w-[90vw]"
+            on:click={(e) => e.stopPropagation()}
+          >
+            <div class="flex flex-col items-center text-center">
+              <span class="font-medium break-words">{props.entry.issuer}</span>
+              <span class="text-sm text-gray-600 break-words">
+                {props.entry.name}
+              </span>
+            </div>
+            <img
+              src={qrCode()}
+              alt={`QR code for ${props.entry.issuer}`}
+              class="w-64 h-64"
+            />
+            <button
+              on:click={handleCloseQr}
+              class="bg-gray-300 text-gray-700 px-4 py-2 rounded text-sm hover:bg-gray-400 transition-colors"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </Show>
     </li>
   )
 }

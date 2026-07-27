@@ -1,5 +1,6 @@
 import {
   parseOtpUri,
+  generateOtpUrl,
   generateHtmlExport,
   generateTextExport,
   processImportLines,
@@ -85,6 +86,19 @@ class ExportImportManager {
     }
 
     return exportData
+  }
+
+  /**
+   * Generates a QR code (as a data URL) encoding the otpauth:// URI for a single entry.
+   * The resulting QR code can be scanned by any authenticator app to import the entry.
+   * @param entryId - The id of the entry to generate a QR code for.
+   * @returns A promise that resolves to a data URL (PNG) containing the QR code.
+   */
+  async generateQrCodeForEntry(entryId: EntryId): Promise<string> {
+    const entry = this.vaultDataManager.getFullEntry(entryId)
+    const otpUrl = generateOtpUrl(entry)
+    const qrGeneratorLib = this.libraryLoader.getQrGeneratorLib()
+    return qrGeneratorLib.toDataURL(otpUrl)
   }
 
   private generateTextExport(): string {

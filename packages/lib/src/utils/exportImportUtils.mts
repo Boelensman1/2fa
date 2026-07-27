@@ -102,7 +102,12 @@ export const parseOtpUri = (parseUrl: UrlParser, otpUri: string): NewEntry => {
   }
 }
 
-const generateOtpUrl = (entry: Entry) => {
+/**
+ * Generates the otpauth:// URI for a single entry.
+ * @param entry - The OTP entry.
+ * @returns The otpauth:// URI string.
+ */
+export const generateOtpUrl = (entry: Entry) => {
   const { name, issuer, payload, match, matchType } = entry
   const { secret, algorithm, digits, period } = payload
 

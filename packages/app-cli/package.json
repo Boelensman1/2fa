@@ -6,7 +6,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@inquirer/prompts": "^8.4.3",
+    "@inquirer/prompts": "^8.5.2",
     "bufferutil": "^4.1.0",
     "clipanion": "^4.0.0-rc.4",
     "env-paths": "^4.0.0",

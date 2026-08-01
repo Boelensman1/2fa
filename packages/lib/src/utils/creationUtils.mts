@@ -16,6 +16,11 @@ import type {
 import type { PasswordExtraDict } from '../interfaces/PasswordExtraDict.js'
 import { SaveFunction } from '../interfaces/SaveFunction.mjs'
 
+export interface LoadFavaLibOptions {
+  /** Whether to connect to the configured sync server while loading. */
+  connectToSyncServer?: boolean
+}
+
 /**
  * Evaluates the strength of a password.
  * @param libraryLoader - An instance of LibraryLoader.
@@ -149,6 +154,7 @@ const createNewFavaLibVault = async (
  * @param saveFunction - The function to save the data.
  * @param lockedRepresentationString - The string representation of the locked library state representation.
  * @param password - The password for decrypting the keys.
+ * @param options - Options controlling how the vault is loaded.
  * @returns A promise that resolves when loading is complete.
  * @throws {InitializationError} If loading fails due to invalid or corrupted data.
  */
@@ -159,6 +165,7 @@ const loadFavaLibFromLockedRepesentation = async (
   saveFunction: SaveFunction | undefined,
   lockedRepresentationString: LockedRepresentationString,
   password: Password,
+  options: LoadFavaLibOptions = {},
 ): Promise<FavaLib> => {
   const cryptoLib = libraryLoader.getCryptoLib()
   const platformProviders = libraryLoader.getPlatformProviders()
@@ -218,6 +225,7 @@ const loadFavaLibFromLockedRepesentation = async (
     vaultState.vault,
     saveFunction,
     vaultState.sync,
+    options.connectToSyncServer ?? true,
   )
 }
 

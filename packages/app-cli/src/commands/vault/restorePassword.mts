@@ -55,6 +55,7 @@ class VaultRestorePasswordCommand extends BaseCommand {
         await favaLibVaultCreationUtils.loadFavaLibFromLockedRepesentation(
           this.lockedRepresentationString,
           password,
+          { connectToSyncServer: false },
         )
     } catch (err) {
       if (err instanceof Error && err.message === 'Invalid password') {

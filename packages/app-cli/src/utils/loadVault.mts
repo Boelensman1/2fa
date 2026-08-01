@@ -17,6 +17,7 @@ const loadVault = async (
   settings: Settings,
   addError: (err: Error) => void,
   verbose = false,
+  connectToSyncServer = true,
 ) => {
   const saveFunction: SaveFunction = async (newLockedRepresentationString) => {
     const tempFile = `${settings.vaultLocation}.tmp`
@@ -80,6 +81,7 @@ const loadVault = async (
     await favaLibVaultCreationUtils.loadFavaLibFromLockedRepesentation(
       vaultData,
       password,
+      { connectToSyncServer },
     )
   favaLib.addEventListener(FavaLibEvent.Log, (ev) => {
     if (ev.detail.severity === 'warning') {

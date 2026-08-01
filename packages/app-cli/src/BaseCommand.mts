@@ -3,7 +3,8 @@ import type { Jsonifiable } from 'type-fest'
 import type { LockedRepresentationString, FavaLib } from 'favalib'
 
 import loadVault from './utils/loadVault.mjs'
-import init, { Settings } from './utils/init.mjs'
+import init, { saveSettings, Settings } from './utils/init.mjs'
+import { shouldConnectToSyncServer } from './utils/syncPolicy.mjs'
 
 export interface ErrorInCommand {
   timestamp: number
@@ -29,6 +30,14 @@ abstract class BaseCommand extends Command {
   verbose = Option.Boolean('--verbose', {
     description: 'verbose output',
   })
+  forceSync = Option.Boolean('--force-sync', {
+    description: 'sync regardless of the configured sync interval',
+  })
+  noSync = Option.Boolean('--no-sync', {
+    description: 'do not connect to the sync server for this command',
+  })
+
+  requiresSyncConnection = false
 
   lockedRepresentationString!: LockedRepresentationString
   settings!: Settings
@@ -66,13 +75,25 @@ abstract class BaseCommand extends Command {
     this.settings = settings
     this.lockedRepresentationString = lockedRepresentationString
 
+    const connectToSyncServer = shouldConnectToSyncServer({
+      forceSync: this.forceSync,
+      noSync: this.noSync,
+      requiresSyncConnection: this.requiresSyncConnection,
+      lastSyncedAt: settings.lastSyncedAt,
+      syncIntervalMs: settings.syncIntervalMinutes * 60 * 1000,
+    })
+
+    let syncRecorded = false
+
     if (lockedRepresentationString && this.requireFavaLib) {
       this.favaLib = await loadVault(
         lockedRepresentationString,
         settings,
         this.addError.bind(this),
         this.verbose,
+        connectToSyncServer,
       )
+      syncRecorded = await this.recordSuccessfulSync(connectToSyncServer)
     } else {
       if (this.requireFavaLib) {
         throw new Error('No vault loaded, was it created?')
@@ -80,6 +101,9 @@ abstract class BaseCommand extends Command {
     }
 
     const result = await this.exec()
+    if (!syncRecorded) {
+      await this.recordSuccessfulSync(connectToSyncServer)
+    }
     if (this.favaLib?.sync) {
       this.favaLib.sync.closeServerConnection()
     }
@@ -101,6 +125,16 @@ abstract class BaseCommand extends Command {
     }
 
     return 0
+  }
+
+  private async recordSuccessfulSync(connectToSyncServer: boolean) {
+    if (!connectToSyncServer || !this.favaLib?.sync?.webSocketConnected) {
+      return false
+    }
+
+    this.settings.lastSyncedAt = Date.now()
+    await saveSettings(this.settings)
+    return true
   }
 
   private addError(err: Error) {

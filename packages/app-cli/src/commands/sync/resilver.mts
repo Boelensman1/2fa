@@ -2,6 +2,7 @@ import BaseCommand from '../../BaseCommand.mjs'
 
 class ResilverCommand extends BaseCommand {
   static override paths = [['sync', 'resilver']]
+  override requiresSyncConnection = true
   requireFavaLib = true
 
   static usage = BaseCommand.Usage({

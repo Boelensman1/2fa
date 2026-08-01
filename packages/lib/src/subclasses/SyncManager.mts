@@ -138,6 +138,7 @@ class SyncManager {
    * @param favaMeta - Meta info containing at least a unique identifier for this device.
    * @param syncState - The state of the sync.
    * @param deviceType - The identifier for this device type (e.g. 2fa-cli).
+   * @param connectionEnabled - Whether to connect to the sync server during initialization.
    * @throws {InitializationError} If initialization fails (e.g., if the server URL is invalid).
    */
   constructor(
@@ -147,6 +148,7 @@ class SyncManager {
     private readonly favaMeta: FavaMeta,
     syncState: VaultSyncStateWithServerUrl,
     private readonly deviceType: DeviceType,
+    private connectionEnabled = true,
   ) {
     const { serverUrl, devices, commandSendQueue } = syncState
 
@@ -160,7 +162,12 @@ class SyncManager {
     this.syncDevices = devices
     this.commandSendQueue = commandSendQueue
     this.serverUrl = serverUrl
-    this.initServerConnection()
+    if (this.connectionEnabled) {
+      this.initServerConnection()
+    } else {
+      this.readyEventEmitted = true
+      setTimeout(() => this.dispatchLibEvent(FavaLibEvent.Ready), 1)
+    }
 
     // add ourselves to the list of syncdevices if we're missing
     void this.addSyncDevice(
@@ -173,19 +180,21 @@ class SyncManager {
     )
 
     // if not yet connected after 2 tries, emit ready event so we can continue
-    this.connectionFailedTimeout = setTimeout(() => {
-      if (!this.readyEventEmitted && !this.webSocketConnected) {
-        this.log('warning', 'Failed to connect to sync backend')
-        this.dispatchLibEvent(FavaLibEvent.Ready)
+    if (this.connectionEnabled) {
+      this.connectionFailedTimeout = setTimeout(() => {
+        if (!this.readyEventEmitted && !this.webSocketConnected) {
+          this.log('warning', 'Failed to connect to sync backend')
+          this.dispatchLibEvent(FavaLibEvent.Ready)
 
-        this.dispatchLibEvent(
-          FavaLibEvent.ConnectionToSyncServerStatusChanged,
-          {
-            newStatus: ConnectionStatus.FAILED,
-          },
-        )
-      }
-    }, this.reconnectInterval + 1000)
+          this.dispatchLibEvent(
+            FavaLibEvent.ConnectionToSyncServerStatusChanged,
+            {
+              newStatus: ConnectionStatus.FAILED,
+            },
+          )
+        }
+      }, this.reconnectInterval + 1000)
+    }
   }
 
   private get libraryLoader() {
@@ -244,6 +253,8 @@ class SyncManager {
    * Initializes the WebSocket connection to the server.
    */
   initServerConnection() {
+    this.connectionEnabled = true
+    this.shouldReconnect = true
     const WebSocketLib = this.libraryLoader.getWebSocketLib()
     const ws = new WebSocketLib(this.serverUrl)
 
@@ -882,6 +893,10 @@ class SyncManager {
       }),
     )
 
+    if (!this.connectionEnabled) {
+      await this.persistentStorageManager.save()
+    }
+
     await this.processCommandSendQueue()
   }
 
@@ -894,10 +909,12 @@ class SyncManager {
 
     if (!this.ws || !this.webSocketConnected) {
       // not possible to process commands at this point
-      this.log(
-        'warning',
-        'Could not sync commands, no server connection, will retry later.',
-      )
+      if (this.connectionEnabled) {
+        this.log(
+          'warning',
+          'Could not sync commands, no server connection, will retry later.',
+        )
+      }
       return
     }
 

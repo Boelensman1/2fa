@@ -5,6 +5,7 @@ import type { PublicSyncDevice } from 'favalib'
 
 class ListDevicesCommand extends BaseCommand {
   static override paths = [['sync', 'list-devices']]
+  override requiresSyncConnection = true
   requireFavaLib = true
 
   static usage = BaseCommand.Usage({

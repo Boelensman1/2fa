@@ -6,6 +6,7 @@ import BaseCommand from '../../BaseCommand.mjs'
 
 class RemoveDeviceCommand extends BaseCommand {
   static override paths = [['sync', 'remove-device']]
+  override requiresSyncConnection = true
   requireFavaLib = true
 
   static usage = BaseCommand.Usage({

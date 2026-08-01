@@ -6,10 +6,18 @@ import type { LockedRepresentationString } from 'favalib'
 
 export interface Settings {
   vaultLocation: string
+  lastSyncedAt?: number
+  syncIntervalMinutes: number
 }
+
+export const DEFAULT_SYNC_INTERVAL_MINUTES = 5
+
+const getSettingsLocation = () =>
+  path.join(envPaths('favacli').config, 'settings.json')
 
 const getDefaultSettings = (): Settings => ({
   vaultLocation: path.join(envPaths('favacli').data, 'vault.json'),
+  syncIntervalMinutes: DEFAULT_SYNC_INTERVAL_MINUTES,
 })
 
 const readFile = async (path: string): Promise<string | null> => {
@@ -38,17 +46,27 @@ const ensureDirectoriesExists = async (...paths: string[]) => {
   }
 }
 
+export const saveSettings = async (settings: Settings) => {
+  const settingsLocation = getSettingsLocation()
+  await ensureDirectoriesExists(settingsLocation)
+  await fs.writeFile(settingsLocation, JSON.stringify(settings, null, 2))
+}
+
 const init = async () => {
-  const settingsLocation = path.join(
-    envPaths('favacli').config,
-    'settings.json',
-  )
+  const settingsLocation = getSettingsLocation()
 
   let settings = await readJSONFile<Settings>(settingsLocation)
   if (!settings) {
     settings = getDefaultSettings()
     await ensureDirectoriesExists(settingsLocation, settings.vaultLocation)
-    await fs.writeFile(settingsLocation, JSON.stringify(settings, null, 2))
+    await saveSettings(settings)
+  } else if (
+    typeof settings.syncIntervalMinutes !== 'number' ||
+    !Number.isFinite(settings.syncIntervalMinutes) ||
+    settings.syncIntervalMinutes < 0
+  ) {
+    settings.syncIntervalMinutes = DEFAULT_SYNC_INTERVAL_MINUTES
+    await saveSettings(settings)
   }
 
   const lockedRepresentationString = (await readFile(

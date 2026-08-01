@@ -2,6 +2,7 @@ import BaseCommand from '../../BaseCommand.mjs'
 
 class GetInfoCommand extends BaseCommand {
   static override paths = [['sync', 'get-info']]
+  override requiresSyncConnection = true
   requireFavaLib = true
 
   static usage = BaseCommand.Usage({

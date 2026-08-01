@@ -1,6 +1,6 @@
 INSTALL_DEPS:=node_modules ../lib/build
 SRC_FILES:=$(shell find src/)
-#TEST_FILES:=$(shell find tests/)
+TEST_FILES:=$(shell find tests/)
 
 build: $(INSTALL_DEPS) $(SRC_FILES) tsconfig.json tsconfig.build.json
 	rm -rf build dist *.tsbuildinfo # TODO: find out why this is needed
@@ -24,8 +24,8 @@ lint: $(INSTALL_DEPS)
 	pnpm exec tsc --noEmit
 	pnpm exec eslint
 
-test:
-	@echo no tests defined
+test: $(INSTALL_DEPS) $(SRC_FILES) $(TEST_FILES)
+	pnpm exec vitest --run
 
 publish: build
 	pnpm publish

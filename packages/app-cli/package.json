@@ -1,6 +1,6 @@
 {
   "name": "favacli",
-  "version": "0.0.26",
+  "version": "0.0.27",
   "description": "",
   "type": "module",
   "author": "",
@@ -16,7 +16,8 @@
     "typanion": "^3.14.0"
   },
   "devDependencies": {
-    "type-fest": "catalog:"
+    "type-fest": "catalog:",
+    "vitest": "catalog:"
   },
   "bin": {
     "favacli": "build/main.mjs"

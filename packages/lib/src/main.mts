@@ -44,7 +44,10 @@ import {
   TokenGenerationError,
 } from './FavaLibError.mjs'
 import { FavaLibEvent } from './FavaLibEvent.mjs'
-import { getFavaLibVaultCreationUtils } from './utils/creationUtils.mjs'
+import {
+  getFavaLibVaultCreationUtils,
+  type LoadFavaLibOptions,
+} from './utils/creationUtils.mjs'
 
 export {
   FavaLib,
@@ -85,4 +88,5 @@ export type {
   PublicSyncDevice,
   SaveFunction,
   PlatformProviders,
+  LoadFavaLibOptions,
 }

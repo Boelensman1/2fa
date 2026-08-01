@@ -90,6 +90,7 @@ class FavaLib extends TypedEventTarget<FavaLibEventMapEvents> {
    * @param vault - The vault data (entries)
    * @param saveFunction - The function to save the data.
    * @param syncState - The state of the sync, includes the serverUrl
+   * @param connectToSyncServer - Whether to connect to the configured sync server during initialization.
    * @returns A promise that resolves when initialization is complete.
    * @throws {InitializationError} If some parameter has an invalid value
    * @throws {AuthenticationError} If the provided password is incorrect.
@@ -108,6 +109,7 @@ class FavaLib extends TypedEventTarget<FavaLibEventMapEvents> {
     vault?: Vault,
     saveFunction?: SaveFunction,
     syncState?: VaultSyncState,
+    connectToSyncServer = true,
   ) {
     super()
     if (!deviceType) {
@@ -184,6 +186,7 @@ class FavaLib extends TypedEventTarget<FavaLibEventMapEvents> {
           this.favaMeta,
           syncState as VaultSyncStateWithServerUrl,
           this.deviceType,
+          connectToSyncServer,
         ),
       )
     } else {

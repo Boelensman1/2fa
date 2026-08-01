@@ -6,6 +6,7 @@ import type { DeviceFriendlyName } from 'favalib'
 class ConnectCommand extends BaseCommand {
   static override paths = [['sync', 'connect']]
   requireFavaLib = true
+  override requiresSyncConnection = true
 
   static usage = BaseCommand.Usage({
     category: 'Sync',

@@ -5,6 +5,7 @@ import BaseCommand from '../../BaseCommand.mjs'
 
 class SetFriendlyNameCommand extends BaseCommand {
   static override paths = [['sync', 'set-friendly-name']]
+  override requiresSyncConnection = true
   requireFavaLib = true
 
   static usage = BaseCommand.Usage({

@@ -3,6 +3,7 @@ import BaseCommand from '../../BaseCommand.mjs'
 
 class SetServerUrlCommand extends BaseCommand {
   static override paths = [['sync', 'setServerUrl']]
+  override requiresSyncConnection = true
 
   static usage = BaseCommand.Usage({
     category: 'Sync',

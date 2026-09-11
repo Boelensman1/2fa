@@ -34,10 +34,11 @@
   },
   "dependencies": {
     "favatypes": "workspace:*",
-    "knex": "^3.2.10",
+    "knex": "^3.3.0",
     "objection": "^3.1.5",
-    "pg": "^8.21.0",
+    "pg": "^8.23.0",
     "ws": "catalog:",
-    "wtfconfig": "^2.3.0"
+    "wtfconfig": "^2.5.0",
+    "zod": "^4.5.4"
   }
 }

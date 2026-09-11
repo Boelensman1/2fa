@@ -8,7 +8,7 @@ build: $(INSTALL_DEPS) $(SRC_FILES) tsconfig.json tsconfig.build.json
 
 node_modules: package.json ../../pnpm-lock.yaml
 	$(MAKE) -C ../.. node_modules
-	mkdir -p node_modules # pnpm (hoisted) creates no local node_modules for this deps-light package
+	mkdir -p node_modules # so the touch below cannot create a file of that name
 	@touch node_modules
 
 clean:

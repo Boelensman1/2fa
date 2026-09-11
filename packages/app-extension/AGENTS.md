@@ -69,9 +69,5 @@ and are referenced as `"typescript": "catalog:"`.
   build outright). `postcss.config.mjs` now uses `@tailwindcss/postcss`,
   `lib/styles/globals.css` uses `@import 'tailwindcss'` plus `@source`
   directives, and `tailwind.config.ts` is gone — matching `../app-browser`.
-- `tsconfig.json` pins `"types": []`. The hoisted root `node_modules/@types`
-  contains the deprecated, empty `@types/eslint__js` stub, which TypeScript
-  auto-includes and then fails to resolve. Every other package pins `types`
-  for the same reason.
 - `artifacts/favabrowserext.firefox.source.zip` clones `../..`, so the Mozilla
   source upload contains the whole monorepo, not just this package.

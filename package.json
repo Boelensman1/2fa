@@ -6,7 +6,6 @@
     "@eslint/eslintrc": "^3.3.7",
     "@eslint/js": "catalog:",
     "@tsconfig/node20": "^20.1.10",
-    "@types/eslint__js": "^9.14.0",
     "@types/node": "catalog:",
     "@typescript-eslint/eslint-plugin": "^8.69.0",
     "@typescript-eslint/parser": "^8.69.0",

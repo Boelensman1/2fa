@@ -26,13 +26,16 @@ let
         database: "fava_test"
   '';
 
-  # canvas and keytar are listed in pnpm-workspace.yaml's allowBuilds and the
-  # repo .npmrc sets ignore-scripts=false, which outranks the ignore-scripts=true
-  # the base image writes to ~/.npmrc. So pnpm runs their install scripts: they
-  # either compile through node-gyp or unpack a prebuilt .node that dlopens these
-  # libraries at runtime. The base image ships neither the libraries nor a C
-  # toolchain, and nix-ld covers neither case (it only supplies an ELF
-  # interpreter for prebuilt executables). Same set as the devShell in flake.nix.
+  # pnpm blocks dependency lifecycle scripts by default, and canvas and keytar
+  # are listed in pnpm-workspace.yaml's allowBuilds, which is what lets theirs
+  # run. Neither .npmrc has a say: pnpm 12 takes ignore-scripts and node-linker
+  # only from pnpm-workspace.yaml (and ~/.config/pnpm/rc), reading .npmrc for
+  # registry and auth alone, so the repo's ignore-scripts=false and the base
+  # image's ~/.npmrc ignore-scripts=true are both inert here. The scripts either
+  # compile through node-gyp or unpack a prebuilt .node, and both want these
+  # libraries. The base image ships neither the libraries nor a C toolchain, and
+  # nix-ld covers neither case (it only supplies an ELF interpreter for prebuilt
+  # executables). Same set as the devShell in flake.nix.
   buildLibs = with pkgs; [
     # canvas
     cairo

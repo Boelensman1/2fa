@@ -116,7 +116,7 @@ export const omit = (obj: Record<string, unknown>, ...keys: string[]) =>
  * @param params.senderWsInstance - The sender's WebSocket client
  * @param params.receiverWsInstance - The receiver's WebSocket client
  * @returns A promise that resolves when the connection is complete
- * @throws If sync manager is not initialized or connection fails
+ * @throws {Error} If sync manager is not initialized or connection fails
  */
 export async function connectDevices({
   senderFavaLib,

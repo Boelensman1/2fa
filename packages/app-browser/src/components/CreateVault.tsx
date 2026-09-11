@@ -17,8 +17,9 @@ const CreateVault: Component = () => {
   const [passwordStrength, setPasswordStrength] =
     createSignal<ZxcvbnResult | null>(null)
 
-  const createVault = async () => {
-    const { favaLib } = await creationUtils.createNewFavaLibVault(password())
+  const createVault = async (enteredPassword: Password) => {
+    const { favaLib } =
+      await creationUtils.createNewFavaLibVault(enteredPassword)
 
     favaLib.storage.setSaveFunction((newLockedRepresentationString) => {
       saveFunction(newLockedRepresentationString)
@@ -41,7 +42,7 @@ const CreateVault: Component = () => {
 
   const onSubmit = (e: Event) => {
     e.preventDefault()
-    void createVault()
+    void createVault(password())
   }
 
   const calculatePasswordStrength = async (

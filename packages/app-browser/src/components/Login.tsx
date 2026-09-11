@@ -16,7 +16,7 @@ const Login: Component = () => {
   const [password, setPassword] = createSignal('')
   const syncStoreWithLib = useSyncStoreWithLib()
 
-  const login = async () => {
+  const login = async (enteredPassword: Password) => {
     const lockedRepresentation = localStorage.getItem('lockedRepresentation')
     if (!lockedRepresentation) {
       throw new Error('localStorage is not complete')
@@ -24,7 +24,7 @@ const Login: Component = () => {
 
     const favaLib = await creationUtils.loadFavaLibFromLockedRepesentation(
       lockedRepresentation as LockedRepresentationString,
-      password() as Password,
+      enteredPassword,
     )
 
     favaLib.storage.setSaveFunction((newLockedRepresentationString) => {
@@ -49,7 +49,7 @@ const Login: Component = () => {
 
   const onSubmit = (e: Event) => {
     e.preventDefault()
-    void login()
+    void login(password() as Password)
   }
 
   const onReset = () => {

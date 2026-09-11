@@ -170,8 +170,7 @@ const loadFavaLibFromLockedRepesentation = async (
   const cryptoLib = libraryLoader.getCryptoLib()
   const platformProviders = libraryLoader.getPlatformProviders()
   const lockedRepresentation = JSON.parse(lockedRepresentationString) as
-    | Partial<LockedRepresentation>
-    | undefined
+    Partial<LockedRepresentation> | undefined
 
   if (
     !lockedRepresentation?.encryptedPrivateKey ||

@@ -35,7 +35,7 @@ const parseOtpAlgorithm = (
  * @param parseUrl - The platform's URL parser.
  * @param otpUri - The OTP URI to parse.
  * @returns An object representing the new entry.
- * @throws ExportImportError if the URI is invalid or contains unsupported features.
+ * @throws {ExportImportError} If the URI is invalid or contains unsupported features.
  */
 export const parseOtpUri = (parseUrl: UrlParser, otpUri: string): NewEntry => {
   if (!otpUri.startsWith('otpauth://')) {

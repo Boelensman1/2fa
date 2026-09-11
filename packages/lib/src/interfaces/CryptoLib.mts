@@ -64,6 +64,7 @@ interface CryptoLib {
    * Decrypts the keys required for further operations
    * @param encryptedPrivateKey - The encrypted private key
    * @param encryptedSymmetricKey - The encrypted symmetric key
+   * @param salt - The salt used for key derivation
    * @param password - The password to decrypt the private key with
    * @returns A promise that resolves to an object containing the decrypted private, symmetric and public key
    */
@@ -82,6 +83,7 @@ interface CryptoLib {
    * Encrypts the keys required for further operation
    * @param privateKey - The private key to encrypt
    * @param symmetricKey - The symmetric key to encrypt
+   * @param salt - The salt used for key derivation
    * @param password - The password to encrypt the private key with
    * @returns A promise that resolves to an object containing the encrypted private and symmetricKey key
    */

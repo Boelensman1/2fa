@@ -31,7 +31,9 @@ const restrictedGlobals = [
 
 export default [
   {
-    ignores: ['**/build/**', '**/dist/**', '**/*.js'],
+    // packages/app-extension lints itself with its own flat config; its tsconfig
+    // extends the generated .wxt/tsconfig.json, which need not exist here.
+    ignores: ['**/build/**', '**/dist/**', '**/*.js', 'packages/app-extension/**'],
   },
   ...baseConfig,
   {

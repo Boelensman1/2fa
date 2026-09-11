@@ -1,0 +1,14 @@
+{
+  "extends": "./.wxt/tsconfig.json",
+  "compilerOptions": {
+    "allowImportingTsExtensions": true,
+    // Pinned so the hoisted root node_modules/@types (which holds the empty
+    // @types/eslint__js stub) is not auto-included; wxt.d.ts comes in via
+    // "include". Every other package in the workspace pins "types" too.
+    "types": [],
+    "jsx": "react-jsx",
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true
+  },
+  "include": ["./**/*", "./.wxt/wxt.d.ts", "postcss.config.mjs"]
+}

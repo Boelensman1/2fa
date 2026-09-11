@@ -1,0 +1,32 @@
+{
+  "name": "favabrowserext",
+  "description": "Browser extension client for the 2fa vault",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "postinstall": "wxt prepare"
+  },
+  "dependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
+    "favalib": "workspace:*",
+    "inversify": "^8.2.3",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "reflect-metadata": "^0.2.2"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
+    "@wxt-dev/module-react": "^1.2.2",
+    "autoprefixer": "^10.5.5",
+    "globals": "^17.12.0",
+    "postcss": "^8.5.28",
+    "prettier": "^3.9.6",
+    "tailwindcss": "^4.3.3",
+    "type-fest": "catalog:",
+    "typescript": "catalog:",
+    "wtf-devconfigs": "^0.5.3",
+    "wxt": "^0.21.4"
+  }
+}

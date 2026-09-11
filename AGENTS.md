@@ -1,7 +1,7 @@
 # 2fa
 
-A 2FA (TOTP) client suite: a core library, a WebSocket sync server, a CLI, and a
-browser PWA, in one pnpm workspace.
+A 2FA (TOTP) client suite: a core library, a WebSocket sync server, a CLI, a
+browser PWA and a browser extension, in one pnpm workspace.
 
 ## Layout
 
@@ -12,9 +12,11 @@ browser PWA, in one pnpm workspace.
 | `packages/lib` | `favalib` | Vault/crypto core; openpgp, node-forge, jpake, canvas, qrcode |
 | `packages/app-cli` | `favacli` | Clipanion CLI; stores secrets with keytar |
 | `packages/app-browser` | `favabrowser` | SolidJS + Vite PWA |
+| `packages/app-extension` | `favabrowserext` | WXT + React MV3 browser extension |
 
-Build order is `types -> server -> lib -> {app-cli, app-browser}`. The per-package
-Makefiles encode it, so building a leaf builds what it needs.
+Build order is `types -> server -> lib -> {app-cli, app-browser,
+app-extension}`. The per-package Makefiles encode it, so building a leaf builds
+what it needs.
 
 ## Commands
 

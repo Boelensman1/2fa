@@ -184,6 +184,7 @@
               pkgs.libuuid
               pkgs.libsecret
               pkgs.glib
+              pkgs.stdenv.cc.cc.lib # keytar's prebuilt needs libstdc++.so.6
             ];
           };
         };

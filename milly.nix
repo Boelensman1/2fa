@@ -1,0 +1,162 @@
+{ pkgs, lib, ... }:
+
+let
+  # packages/server reads its database settings from packages/server/config
+  # through wtfconfig, and ConfigObject.mts requires the whole connection block.
+  # That directory is gitignored and the repo has never shipped a default.yaml,
+  # so the container supplies the entire thing.
+  #
+  # wtfconfig loads local.yaml last in every environment and local-test.yaml
+  # after it when NODE_ENV=test. Putting the test database in test.yaml instead
+  # would not work: local.yaml loads after test.yaml and would drag the test run
+  # back onto the dev database.
+  serverLocalConfig = pkgs.writeText "fava-server-local.yaml" ''
+    database:
+      connection:
+        host: "127.0.0.1"
+        port: 5432
+        user: "fava"
+        password: ""
+        database: "fava"
+  '';
+
+  serverLocalTestConfig = pkgs.writeText "fava-server-local-test.yaml" ''
+    database:
+      connection:
+        database: "fava_test"
+  '';
+
+  # canvas and keytar are listed in pnpm-workspace.yaml's allowBuilds and the
+  # repo .npmrc sets ignore-scripts=false, which outranks the ignore-scripts=true
+  # the base image writes to ~/.npmrc. So pnpm runs their install scripts: they
+  # either compile through node-gyp or unpack a prebuilt .node that dlopens these
+  # libraries at runtime. The base image ships neither the libraries nor a C
+  # toolchain, and nix-ld covers neither case (it only supplies an ELF
+  # interpreter for prebuilt executables). Same set as the devShell in flake.nix.
+  nativeLibs = with pkgs; [
+    # canvas
+    cairo
+    pango
+    libpng
+    libjpeg
+    giflib
+    librsvg
+    pixman
+    # keytar
+    libuuid
+    libsecret
+    glib
+  ];
+
+  # Kept out of systemPackages: installing both the out and dev outputs of these
+  # libraries system-wide collides in the profile, so they are reached through
+  # search paths instead.
+  nativeEnv = ''
+    export PKG_CONFIG_PATH="${lib.makeSearchPathOutput "dev" "lib/pkgconfig" nativeLibs}''${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+    export LD_LIBRARY_PATH="${lib.makeLibraryPath nativeLibs}''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+  '';
+in
+{
+  milly.project = {
+    enable = true;
+    name = "2fa";
+
+    source.git = {
+      url = "https://github.com/Boelensman1/2fa.git";
+      ref = "main";
+    };
+
+    packages = with pkgs; [
+      pkg-config
+      stdenv.cc # node-gyp needs a C/C++ toolchain; the base image has none
+      postgresql_17 # psql/createdb for setup.command
+    ];
+
+    node.enable = true;
+
+    # node.install runs from a generated script under millyd, not a login shell,
+    # so it does not pick up /etc/profile.d. This is where the native addons are
+    # built, so the exports have to be inline.
+    node.install.command = ''
+      ${nativeEnv}
+      pnpm install --frozen-lockfile
+    '';
+
+    # The role defaults to the database name. Both are set explicitly rather than
+    # inherited from milly.project.name, because "2fa" leads with a digit and
+    # would need quoting in every hand-written psql or createdb call.
+    postgresql = {
+      enable = true;
+      database = "fava";
+      user = "fava";
+      createdb = true;
+    };
+
+    # Runs from the repo root after checkout, and reruns when the source or this
+    # command changes, so every step is idempotent.
+    setup.command = ''
+      ${nativeEnv}
+
+      install -D -m 0644 ${serverLocalConfig} packages/server/config/local.yaml
+      install -D -m 0644 ${serverLocalTestConfig} packages/server/config/local-test.yaml
+
+      # packages/server/test/global-setup.mts runs `knex migrate:latest` under
+      # NODE_ENV=test but never issues CREATE DATABASE, so the test database has
+      # to exist before `make test`. postgresql.createdb grants the role the
+      # CREATEDB it needs for this.
+      if ! psql -h 127.0.0.1 -U fava -d postgres -tAc \
+        "SELECT 1 FROM pg_database WHERE datname = 'fava_test'" | grep -q 1; then
+        createdb -h 127.0.0.1 -U fava fava_test
+      fi
+
+      make -C packages/server migrate-latest
+
+      # Builds types -> server -> lib through the Makefile dependency chain, so
+      # the first `make dev` of either dev service is not stuck compiling the
+      # whole workspace.
+      make -C packages/lib build
+    '';
+
+    devServices = {
+      server = {
+        command = "make -C packages/server dev";
+        ports = [ 8080 ]; # packages/server/src/server.mts: process.env.PORT ?? 8080
+        restartOnLogin = true;
+      };
+      browser = {
+        command = "make -C packages/app-browser dev";
+        ports = [ 3266 ]; # packages/app-browser/vite.config.mts: server.port
+        restartOnLogin = true;
+      };
+    };
+
+    startup.command = ''
+      exec claude --dangerously-skip-permissions
+    '';
+  };
+
+  # Dev services run under `bash -lc` and interactive shells source /etc/profile,
+  # so this covers both. The generated setup and install scripts do not, and
+  # carry the same exports inline.
+  environment.etc."profile.d/2fa-native-libs.sh".text = nativeEnv;
+
+  milly.metadata."preview.port" = "3266";
+
+  milly.claude.enable = true;
+  milly.claude.seedConfig = true;
+  milly.codex.enable = true;
+  milly.codex.seedConfig = true;
+
+  milly.agentGuidance.extraMd = ''
+    2fa dev services (`milly service status|logs|restart <name>`):
+    - `server` — sync server on ws port 8080, log
+      `$HOME/.cache/milly/2fa/dev-services/server.log`
+    - `browser` — vite dev server on http port 3266, log
+      `$HOME/.cache/milly/2fa/dev-services/browser.log`
+
+    PostgreSQL runs locally with trust auth over loopback: database `fava`, test
+    database `fava_test`, user `fava`, no password. The server's connection
+    settings are written to `packages/server/config/local.yaml` (and
+    `local-test.yaml`) by milly setup; both are gitignored.
+  '';
+}

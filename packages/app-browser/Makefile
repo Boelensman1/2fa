@@ -20,7 +20,7 @@ lint: $(INSTALL_DEPS)
 	pnpm exec tsc --noEmit
 	pnpm exec eslint
 
-preview: dist $(INSTALL_DEPS)
+preview: build $(INSTALL_DEPS)
 	pnpm exec vite preview
 
 test:

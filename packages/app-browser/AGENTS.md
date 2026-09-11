@@ -71,6 +71,14 @@ TypeScript is `strict` with `moduleResolution: 'bundler'` and
 imports are relative and extensionless. Tailwind v4 is configured CSS-first in
 `src/index.css`; there is no `tailwind.config.js` and there should not be one.
 
+The app reaches the sync server at `/api/sync` on whatever origin serves it, and
+`vite.config.mts` proxies that path to `SYNC_SERVER_TARGET` (default
+`ws://localhost:8080`) — `preview.proxy` falls back to `server.proxy`, so this
+holds for `make preview` as well as `make dev`. `VITE_SYNCSERVERURL` overrides
+the url the app uses: a path is resolved against the page's origin, an absolute
+`ws://` or `wss://` url is used as-is. To exercise sync locally, start the
+server with `make -C ../server dev`.
+
 ## Conventions
 
 Prettier and ESLint configs are shared from the repo root. This package is the

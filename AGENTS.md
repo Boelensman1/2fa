@@ -82,11 +82,16 @@ They run with `fileParallelism: false` because they share that one database.
 - `packages/app-browser/vite.config.mts` shells out to `git rev-parse`, so the
   build needs real git history.
 
-## Known limitation: browser sync in the container
+## Browser sync in the container
 
-`packages/app-browser/src/parameters.ts` defaults the sync server to
-`ws://localhost:8080`. Only the preview port (3266) is proxied out of the
-container, so in a browser on your own machine `localhost:8080` is *your*
-machine, not the container, and the browser app's sync feature will not reach the
-container's sync server. The CLI, the server, and all tests are unaffected.
-Point `VITE_SYNCSERVERURL` at a reachable URL if you need sync in the preview.
+`packages/app-browser/src/parameters.ts` defaults the sync server to `/api/sync`,
+a path on whatever origin serves the app, and `vite.config.mts` proxies that path
+through to `ws://localhost:8080`. The WebSocket therefore travels over the preview
+port (3266) — the only one proxied out of the container — so sync works from a
+browser on your own machine without pointing anything at port 8080. Vite falls
+back to `server.proxy` for the preview server, so this covers
+`make -C packages/app-browser preview` as well as `make -C packages/app-browser dev`.
+
+Two env vars override that: `VITE_SYNCSERVERURL` points the app somewhere else
+(a path is resolved against the page's origin, an absolute `ws://` or `wss://`
+url is used as-is), and `SYNC_SERVER_TARGET` changes where the proxy forwards to.

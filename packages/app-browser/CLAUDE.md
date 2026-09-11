@@ -145,4 +145,4 @@ Prettier and ESLint configs live at the repo root and are shared by all packages
 
 - `src/components/Add.tsx` calls `useStore()` **inside** its async `add()` and `importFromQRCode()` functions (lines 16 and 46) instead of at component top level — outside the owner scope. Do not copy this; call `useStore()` at the top of the component.
 - `clsx` and `@solid-primitives/media` are declared dependencies but unused, and `src/store/types/Dispatch.ts` is never imported.
-- `make lint` does not pass on a clean tree: `src/components/ListSyncDevices.tsx` has four pre-existing `@typescript-eslint/prefer-nullish-coalescing` errors, and `CreateVault.tsx`/`Login.tsx` each emit a `solid/reactivity` warning. Compare against that baseline rather than assuming you broke something.
+- `make lint` passes on a clean tree, but is not warning-free: `CreateVault.tsx` and `Login.tsx` each emit a `solid/reactivity` warning about `favaLib` capturing `password` at setup. Compare against that baseline rather than assuming you introduced them.

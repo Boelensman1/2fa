@@ -28,7 +28,7 @@ const ListSyncDevices = () => {
     if (!favaLib) return
 
     const label =
-      device.deviceFriendlyName || device.deviceType || device.deviceId
+      device.deviceFriendlyName ?? device.deviceType ?? device.deviceId
     const confirmed = confirm(
       `Are you sure you want to remove the device "${label}"?`,
     )
@@ -55,8 +55,8 @@ const ListSyncDevices = () => {
             <li class="bg-gray-100 p-3 rounded-md flex justify-between items-center">
               <div class="flex flex-col min-w-0">
                 <span class="font-medium break-words">
-                  {device.deviceFriendlyName ||
-                    device.deviceType ||
+                  {device.deviceFriendlyName ??
+                    device.deviceType ??
                     'Unknown device'}
                 </span>
                 <span class="text-sm text-gray-600 break-all">

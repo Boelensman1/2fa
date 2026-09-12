@@ -28,7 +28,7 @@ let
 
   # pnpm blocks dependency lifecycle scripts by default, and canvas and keytar
   # are listed in pnpm-workspace.yaml's allowBuilds, which is what lets theirs
-  # run. Neither .npmrc has a say: pnpm 12 takes ignore-scripts and node-linker
+  # run. Neither .npmrc has a say: pnpm 11 takes ignore-scripts and node-linker
   # only from pnpm-workspace.yaml (and ~/.config/pnpm/rc), reading .npmrc for
   # registry and auth alone, so the repo's ignore-scripts=false and the base
   # image's ~/.npmrc ignore-scripts=true are both inert here. The scripts either

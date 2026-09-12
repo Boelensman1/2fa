@@ -26,14 +26,23 @@
           # preBuild below (matching the old npmFlags = ["--ignore-scripts"]).
           pnpmDeps = pkgs.fetchPnpmDeps {
             inherit (finalAttrs) pname version src;
-            pnpm = pkgs.pnpm_10;
-            fetcherVersion = 3;
-            hash = "sha256-+o9YazEYro4fJ/rY7oFJCxNyvhQf2g+t1Tl+MzOpqWs=";
+            pnpm = pkgs.pnpm_11;
+            fetcherVersion = 4;
+            hash = "sha256-BYRVHuCAEE58/jUZhqsmGWIvsZ0oHH0UX+rY9X23Dnc=";
           };
+
+          # The installPhase allowlist below resolves each dependency at
+          # node_modules/<name>, which only exists when the tree is flat. The
+          # repo runs on pnpm's default isolated linker, so ask for hoisting
+          # here rather than repo-wide -- pnpm 11 no longer reads node-linker
+          # from .npmrc, and `pnpm deploy`, the other way to assemble the
+          # closure, insists on re-resolving against the registry and so cannot
+          # run in the offline sandbox.
+          pnpmInstallFlags = [ "--config.nodeLinker=hoisted" ];
 
           nativeBuildInputs = [
             pkgs.nodejs_24
-            pkgs.pnpm_10
+            pkgs.pnpm_11
             pkgs.pnpmConfigHook
             pkgs.python3
             pkgs.pkg-config
@@ -62,6 +71,21 @@
             export npm_config_nodedir=${pkgs.nodejs_24}
             export npm_config_build_from_source=true
 
+            # pnpm 11 re-checks node_modules before `exec` and `rebuild`, and
+            # that check shells out to a plain `pnpm install` -- without the
+            # --ignore-scripts that pnpmConfigHook installed with. That install
+            # runs every allowBuilds entry, including canvas, which needs cairo
+            # and pango that this derivation deliberately does not carry. The
+            # tree is already exactly what the lockfile says, so skip the check.
+            export pnpm_config_verify_deps_before_run=false
+
+            # This stays on npm rather than `pnpm rebuild`: after the
+            # --ignore-scripts install that pnpmConfigHook performs, pnpm 11
+            # leaves nothing for rebuild to act on, and `pnpm rebuild [-r]
+            # keytar bufferutil` is a silent no-op here -- it exits 0, builds
+            # nothing, and the artifact then fails at runtime on
+            # "Cannot find module '../build/Release/keytar.node'". npm rebuild
+            # just walks node_modules and compiles what it is told to.
             npm rebuild --no-save keytar bufferutil
 
             ( cd packages/types && pnpm exec tsc --project tsconfig.build.json )
@@ -158,7 +182,7 @@
         devShell = pkgs.mkShell {
           packages = with pkgs; [
             nodejs_24
-            pnpm_10
+            pnpm_11
             pkg-config
             cairo
             pango

@@ -1,7 +1,7 @@
 {
   "name": "2fa",
   "private": true,
-  "packageManager": "pnpm@12.3.4",
+  "packageManager": "pnpm@11.25.0",
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.7",
     "@eslint/js": "catalog:",

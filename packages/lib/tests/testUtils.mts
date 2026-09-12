@@ -27,8 +27,6 @@ export const newTotpEntry: NewEntry = {
   name: 'Test TOTP',
   issuer: 'Test Issuer',
   type: 'TOTP',
-  match: null,
-  matchType: null,
   payload: {
     secret: 'TESTSECRET',
     period: 30,
@@ -38,9 +36,24 @@ export const newTotpEntry: NewEntry = {
 }
 export const totpEntry: Entry = {
   ...newTotpEntry,
+  matchers: [],
+  url: null,
+  inputSelector: null,
   id: '0000' as EntryId,
   addedAt: Date.now(),
   updatedAt: 0,
+}
+
+export const matcherNewTotpEntry: NewEntry = {
+  ...newTotpEntry,
+  name: 'Matcher TOTP',
+  issuer: 'Matcher Issuer',
+  matchers: [
+    { type: 'BaseDomain', value: 'github.com' },
+    { type: 'UrlPrefix', value: 'https://example.com/login' },
+  ],
+  url: 'https://github.com/login',
+  inputSelector: '#otp',
 }
 
 export const anotherNewTotpEntry: NewEntry = {
@@ -49,7 +62,10 @@ export const anotherNewTotpEntry: NewEntry = {
   issuer: 'Another Issuer',
 }
 export const anotherTotpEntry: Entry = {
-  ...newTotpEntry,
+  ...anotherNewTotpEntry,
+  matchers: [],
+  url: null,
+  inputSelector: null,
   id: '1111' as EntryId,
   addedAt: Date.now(),
   updatedAt: 0,

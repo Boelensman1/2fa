@@ -3,12 +3,18 @@ import {
   createMemo,
   createResource,
   createSignal,
+  For,
   onCleanup,
   Show,
 } from 'solid-js'
+import {
+  MAX_MATCHERS_PER_ENTRY,
+  URL_MATCHER_TYPES,
+  validateUrlMatcher,
+} from 'favalib'
 import useStore from '../store/useStore'
 import useSyncStoreWithLib from '../utils/useSyncStoreWithLib'
-import type { EntryMeta, EntryId } from 'favalib'
+import type { EntryMeta, EntryId, UrlMatcher, UrlMatcherType } from 'favalib'
 
 const EntryComponent = (props: {
   entry: EntryMeta
@@ -22,6 +28,9 @@ const EntryComponent = (props: {
   const [renameMode, setRenameMode] = createSignal(false)
   const [renameIssuer, setRenameIssuer] = createSignal('')
   const [renameName, setRenameName] = createSignal('')
+  const [editUrl, setEditUrl] = createSignal('')
+  const [editMatchers, setEditMatchers] = createSignal<UrlMatcher[]>([])
+  const [editError, setEditError] = createSignal<string | null>(null)
   const [qrCode, setQrCode] = createSignal('')
 
   const closeMenu = () => setMenuOpen(false)
@@ -97,7 +106,31 @@ const EntryComponent = (props: {
     setMenuOpen(false)
     setRenameIssuer(props.entry.issuer)
     setRenameName(props.entry.name)
+    setEditUrl(props.entry.url ?? '')
+    setEditMatchers(props.entry.matchers.map((matcher) => ({ ...matcher })))
+    setEditError(null)
     setRenameMode(true)
+  }
+
+  const updateMatcher = (index: number, patch: Partial<UrlMatcher>) => {
+    setEditMatchers((matchers) =>
+      matchers.map((matcher, i) =>
+        i === index ? { ...matcher, ...patch } : matcher,
+      ),
+    )
+  }
+
+  const addMatcher = (event: MouseEvent) => {
+    event.stopPropagation()
+    setEditMatchers((matchers) => [
+      ...matchers,
+      { type: 'BaseDomain', value: '' },
+    ])
+  }
+
+  const removeMatcher = (event: MouseEvent, index: number) => {
+    event.stopPropagation()
+    setEditMatchers((matchers) => matchers.filter((_, i) => i !== index))
   }
 
   const handleRenameSave = (event: MouseEvent) => {
@@ -106,16 +139,42 @@ const EntryComponent = (props: {
     const name = renameName().trim()
     if (!issuer && !name) return
 
+    // Drop the blank rows the "Add matcher" button leaves behind, then hold
+    // the rest to exactly the rules the lib enforces.
+    const matchers = editMatchers()
+      .map((matcher) => ({ ...matcher, value: matcher.value.trim() }))
+      .filter((matcher) => matcher.value.length > 0)
+
+    for (const matcher of matchers) {
+      const reason = validateUrlMatcher(matcher)
+      if (reason) {
+        setEditError(reason)
+        return
+      }
+    }
+
+    const url = editUrl().trim()
+
     void favaLib.vault
-      .updateEntry(props.entry.id, { issuer, name })
+      .updateEntry(props.entry.id, {
+        issuer,
+        name,
+        matchers,
+        url: url.length > 0 ? url : null,
+      })
       .then(() => {
         syncStoreWithLib(favaLib)
+        setEditError(null)
         setRenameMode(false)
+      })
+      .catch((err: unknown) => {
+        setEditError(err instanceof Error ? err.message : 'Could not save')
       })
   }
 
   const handleRenameCancel = (event: MouseEvent) => {
     event.stopPropagation()
+    setEditError(null)
     setRenameMode(false)
   }
 
@@ -160,6 +219,72 @@ const EntryComponent = (props: {
                   placeholder="Name"
                   class="border border-gray-300 rounded px-2 py-1 text-sm w-full"
                 />
+                <input
+                  type="text"
+                  value={editUrl()}
+                  onInput={(e) => setEditUrl(e.currentTarget.value)}
+                  placeholder="Website url (optional)"
+                  class="border border-gray-300 rounded px-2 py-1 text-sm w-full"
+                />
+                <div class="flex flex-col gap-1">
+                  <span class="text-xs font-semibold text-gray-600">
+                    Site matchers
+                  </span>
+                  <For
+                    each={editMatchers()}
+                    fallback={
+                      <span class="text-xs text-gray-500">
+                        No matchers, so this entry is never offered on a site.
+                      </span>
+                    }
+                  >
+                    {(matcher, index) => (
+                      <div class="flex gap-1">
+                        <select
+                          value={matcher.type}
+                          onChange={(e) =>
+                            updateMatcher(index(), {
+                              type: e.currentTarget.value as UrlMatcherType,
+                            })
+                          }
+                          class="border border-gray-300 rounded px-1 py-1 text-xs"
+                        >
+                          <For each={URL_MATCHER_TYPES}>
+                            {(type) => <option value={type}>{type}</option>}
+                          </For>
+                        </select>
+                        <input
+                          type="text"
+                          value={matcher.value}
+                          onInput={(e) =>
+                            updateMatcher(index(), {
+                              value: e.currentTarget.value,
+                            })
+                          }
+                          placeholder="github.com"
+                          class="border border-gray-300 rounded px-2 py-1 text-xs flex-1 min-w-0"
+                        />
+                        <button
+                          on:click={(e) => removeMatcher(e, index())}
+                          class="px-2 py-1 text-xs text-red-600 hover:bg-gray-200 rounded"
+                          title="Remove this matcher"
+                        >
+                          &times;
+                        </button>
+                      </div>
+                    )}
+                  </For>
+                  <button
+                    on:click={addMatcher}
+                    disabled={editMatchers().length >= MAX_MATCHERS_PER_ENTRY}
+                    class="self-start px-2 py-1 text-xs text-blue-600 hover:bg-gray-200 rounded disabled:text-gray-400 disabled:hover:bg-transparent"
+                  >
+                    Add matcher
+                  </button>
+                </div>
+                <Show when={editError()}>
+                  <span class="text-xs text-red-600">{editError()}</span>
+                </Show>
                 <div class="flex gap-2">
                   <button
                     on:click={handleRenameSave}
@@ -229,6 +354,13 @@ const EntryComponent = (props: {
           <span class="text-sm text-gray-600 break-words">
             {props.entry.name}
           </span>
+          <Show when={props.entry.matchers.length > 0}>
+            <span class="text-xs text-gray-500 break-words">
+              {props.entry.matchers
+                .map((matcher) => `${matcher.type}:${matcher.value}`)
+                .join(', ')}
+            </span>
+          </Show>
         </Show>
       </div>
       <div class="w-full bg-gray-200 rounded-full h-2.5">

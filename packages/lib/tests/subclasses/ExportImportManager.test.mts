@@ -7,6 +7,7 @@ import { FavaLib } from '../../src/main.mjs'
 
 import {
   anotherNewTotpEntry,
+  matcherNewTotpEntry,
   newTotpEntry,
   clearEntries,
   createFavaLibForTests,
@@ -129,8 +130,7 @@ describe('ExportImportManager', () => {
         name: 'GitHub TOTP',
         issuer: 'GitHub',
         type: 'TOTP',
-        match: 'github.com',
-        matchType: 'BaseDomain',
+        matchers: [{ type: 'BaseDomain', value: 'github.com' }],
         payload: {
           secret: 'GITHUBSECRET',
           period: 30,
@@ -145,9 +145,8 @@ describe('ExportImportManager', () => {
         true,
       )
 
-      // Should include match and matchType parameters in the export
-      expect(result).toContain('match=github.com')
-      expect(result).toContain('matchType=BaseDomain')
+      // Should include the matcher parameters in the export
+      expect(result).toContain('favaMatcher=BaseDomain:github.com')
       expect(result).toContain('otpauth://totp/GitHub:GitHub%20TOTP')
     })
   })
@@ -320,11 +319,14 @@ describe('ExportImportManager', () => {
     })
 
     it('should import and preserve match properties from URI', async () => {
-      // URI with match and matchType parameters
-      const uriWithMatch =
-        'otpauth://totp/GitHub:GitHub%20TOTP?secret=GITHUBSECRET&issuer=GitHub&algorithm=SHA-1&digits=6&period=30&match=github.com&matchType=BaseDomain'
+      const uriWithMatchers =
+        'otpauth://totp/GitHub:GitHub%20TOTP?secret=GITHUBSECRET&issuer=GitHub&algorithm=SHA-1&digits=6&period=30' +
+        '&favaMatcher=BaseDomain:github.com' +
+        '&favaMatcher=UrlPrefix:https%3A%2F%2Fgithub.com%2Flogin' +
+        '&favaUrl=https%3A%2F%2Fgithub.com%2Flogin' +
+        '&favaInputSelector=%23otp'
 
-      const entryId = await favaLib.exportImport.importFromUri(uriWithMatch)
+      const entryId = await favaLib.exportImport.importFromUri(uriWithMatchers)
       const entry = favaLib.vault.getEntryMeta(entryId)
 
       expect(entry).toEqual(
@@ -332,10 +334,61 @@ describe('ExportImportManager', () => {
           name: 'GitHub TOTP',
           issuer: 'GitHub',
           type: 'TOTP',
-          match: 'github.com',
-          matchType: 'BaseDomain',
+          matchers: [
+            { type: 'BaseDomain', value: 'github.com' },
+            { type: 'UrlPrefix', value: 'https://github.com/login' },
+          ],
+          url: 'https://github.com/login',
+          inputSelector: '#otp',
         }),
       )
+    })
+
+    it('should drop an unusable matcher but keep the secret', async () => {
+      const uriWithBadMatcher =
+        'otpauth://totp/GitHub:GitHub%20TOTP?secret=GITHUBSECRET&issuer=GitHub&algorithm=SHA-1&digits=6&period=30' +
+        '&favaMatcher=NotAType:github.com' +
+        '&favaMatcher=Regex:(a%2B)%2B' +
+        '&favaMatcher=Host:github.com'
+
+      const entryId =
+        await favaLib.exportImport.importFromUri(uriWithBadMatcher)
+      const entry = favaLib.vault.getEntryMeta(entryId)
+
+      expect(entry.matchers).toEqual([{ type: 'Host', value: 'github.com' }])
+    })
+
+    it('should round-trip matchers through an export', async () => {
+      await clearEntries(favaLib)
+      await favaLib.vault.addEntry(matcherNewTotpEntry)
+      const uri = (
+        await favaLib.exportImport.exportEntries('text', undefined, true)
+      ).trim()
+
+      await clearEntries(favaLib)
+      const reimportedId = await favaLib.exportImport.importFromUri(uri)
+      const reimported = favaLib.vault.getEntryMeta(reimportedId)
+
+      expect(reimported.matchers).toEqual(matcherNewTotpEntry.matchers)
+      expect(reimported.url).toEqual(matcherNewTotpEntry.url)
+      expect(reimported.inputSelector).toEqual(
+        matcherNewTotpEntry.inputSelector,
+      )
+    })
+
+    it('should keep the generated uri parseable and its otp params intact', async () => {
+      await clearEntries(favaLib)
+      await favaLib.vault.addEntry(matcherNewTotpEntry)
+      const uri = (
+        await favaLib.exportImport.exportEntries('text', undefined, true)
+      ).trim()
+
+      const parsed = new URL(uri)
+      expect(parsed.searchParams.get('secret')).toBe('TESTSECRET')
+      expect(parsed.searchParams.get('algorithm')).toBe('SHA-1')
+      expect(parsed.searchParams.get('digits')).toBe('6')
+      expect(parsed.searchParams.get('period')).toBe('30')
+      expect(parsed.searchParams.get('issuer')).toBe('Matcher Issuer')
     })
   })
 

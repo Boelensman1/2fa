@@ -103,8 +103,12 @@ class CommandManager {
               'warning',
               'Error while processing remote commands: ' + err.message,
             )
+          } else {
+            this.log(
+              'warning',
+              'Unknown error while processing remote commands',
+            )
           }
-          this.log('warning', 'Unknown error while processing remote commands')
         }
       }
     }

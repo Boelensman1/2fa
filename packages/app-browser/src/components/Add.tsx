@@ -1,4 +1,5 @@
 import { createSignal, Show } from 'solid-js'
+import { suggestMatchersForUrl } from 'favalib'
 import useStore from '../store/useStore'
 
 const Add = () => {
@@ -6,6 +7,7 @@ const Add = () => {
   const [secret, setSecret] = createSignal('')
   const [issuer, setIssuer] = createSignal('')
   const [digits, setDigits] = createSignal<6 | 8>(6)
+  const [website, setWebsite] = createSignal('')
   const [errorMessage, setErrorMessage] = createSignal<string | null>(null)
 
   const add = async () => {
@@ -18,6 +20,11 @@ const Add = () => {
     if (!favaLib) {
       throw new Error('favaLib not loaded')
     }
+    // A bare hostname needs a scheme before it parses as a url.
+    const typed = website().trim()
+    const asUrl = /^[a-z]+:\/\//i.test(typed) ? typed : `https://${typed}`
+    const matchers = typed ? suggestMatchersForUrl(asUrl) : []
+
     await favaLib.vault.addEntry({
       name: name(),
       type: 'TOTP',
@@ -28,13 +35,14 @@ const Add = () => {
         algorithm: 'SHA-1',
         period: 30,
       },
-      match: '',
-      matchType: 'BaseDomain',
+      matchers,
+      url: typed ? asUrl : null,
     })
     setName('')
     setSecret('')
     setIssuer('')
     setDigits(6)
+    setWebsite('')
   }
 
   const handleSubmit = (e: Event) => {
@@ -123,6 +131,18 @@ const Add = () => {
           required
           class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
+      </div>
+      <div class="mb-4">
+        <input
+          type="text"
+          value={website()}
+          onInput={(e) => setWebsite(e.currentTarget.value)}
+          placeholder="Website (optional, e.g. github.com)"
+          class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+        <p class="mt-1 text-xs text-gray-500">
+          Used to offer this entry on that site and its subdomains.
+        </p>
       </div>
       <div class="mb-4">
         <label class="block text-gray-700 text-sm font-bold mb-2">

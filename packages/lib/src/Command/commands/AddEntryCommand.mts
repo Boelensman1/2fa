@@ -3,6 +3,10 @@ import type FavaLibMediator from '../../FavaLibMediator.mjs'
 import Command from '../BaseCommand.mjs'
 import type Entry from '../../interfaces/Entry.mjs'
 import DeleteEntryCommand from './DeleteEntryCommand.mjs'
+import {
+  validateEntryFatal,
+  validateEntryStrict,
+} from '../../utils/entryValidation.mjs'
 
 export type AddEntryData = Entry
 
@@ -32,8 +36,9 @@ class AddEntryCommand extends Command<AddEntryData> {
    */
   async execute(mediator: FavaLibMediator) {
     const vault = mediator.getComponent('vaultDataManager')
-    if (!this.validate()) {
-      throw new InvalidCommandError('Invalid AddEntry command')
+    const reason = this.invalidReason()
+    if (reason) {
+      throw new InvalidCommandError(`Invalid AddEntry command: ${reason}`)
     }
     await vault.addEntry(this.data)
   }
@@ -46,12 +51,27 @@ class AddEntryCommand extends Command<AddEntryData> {
   }
 
   /**
+   * Checks the command data.
+   *
+   * Commands that came from a peer are held to the weaker of the two tiers:
+   * `CommandManager.processRemoteCommands` drops a command that throws and
+   * never retries it, so rejecting an entry over a repairable problem would
+   * lose it on this device permanently. `VaultDataManager` sanitises the
+   * matching fields on the way in instead.
+   * @returns The reason the command is invalid, or null when it is valid.
+   */
+  private invalidReason(): string | null {
+    return this.fromRemote
+      ? validateEntryFatal(this.data)
+      : validateEntryStrict(this.data)
+  }
+
+  /**
    * Validates the command data.
    * @returns True if the command data is valid, false otherwise.
    */
   validate(): boolean {
-    // TODO: actually validate
-    return this.data.id !== undefined
+    return this.invalidReason() === null
   }
 }
 

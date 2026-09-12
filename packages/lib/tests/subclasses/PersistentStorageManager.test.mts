@@ -121,8 +121,9 @@ describe('PersistentStorageManager', () => {
           name: 'Test TOTP',
           issuer: 'Test Issuer',
           type: 'TOTP',
-          match: null,
-          matchType: null,
+          matchers: [],
+          url: null,
+          inputSelector: null,
           addedAt: expect.any(Number) as number,
           updatedAt: null,
           payload: {

@@ -10,6 +10,7 @@ import {
 
 import {
   anotherNewTotpEntry,
+  matcherNewTotpEntry,
   newTotpEntry,
   clearEntries,
   createFavaLibForTests,
@@ -35,6 +36,9 @@ describe('VaultManager', () => {
       omit(
         {
           ...newTotpEntry,
+          matchers: [],
+          url: null,
+          inputSelector: null,
           id: entryId,
           addedAt: expect.any(Number) as number,
           updatedAt: null,
@@ -173,6 +177,155 @@ describe('VaultManager', () => {
     expect(otp1.otp).not.toEqual(otp2.otp)
     expect(otp1.validFrom).toBeLessThan(otp2.validFrom)
     expect(otp1.validTill).toBeLessThan(otp2.validTill)
+  })
+
+  it('should default the matching fields when they are not supplied', async () => {
+    const entryId = await favaLib.vault.addEntry(newTotpEntry)
+    const meta = favaLib.vault.getEntryMeta(entryId)
+
+    expect(meta.matchers).toEqual([])
+    expect(meta.url).toBeNull()
+    expect(meta.inputSelector).toBeNull()
+  })
+
+  it("should hand out a copy of the matchers, not the vault's own array", async () => {
+    const entryId = await favaLib.vault.addEntry(matcherNewTotpEntry)
+
+    favaLib.vault.getEntryMeta(entryId).matchers.push({
+      type: 'Host',
+      value: 'injected.example',
+    })
+
+    expect(favaLib.vault.getEntryMeta(entryId).matchers).toHaveLength(2)
+  })
+
+  it('should set updatedAt when an entry is updated', async () => {
+    const entryId = await favaLib.vault.addEntry(newTotpEntry)
+    expect(favaLib.vault.getEntryMeta(entryId).updatedAt).toBeNull()
+
+    const updated = await favaLib.vault.updateEntry(entryId, {
+      name: 'Renamed',
+    })
+
+    expect(updated.updatedAt).toEqual(expect.any(Number))
+    expect(favaLib.vault.getEntryMeta(entryId).updatedAt).toEqual(
+      expect.any(Number),
+    )
+  })
+
+  it('should refuse an entry carrying an unusable matcher', async () => {
+    await expect(
+      favaLib.vault.addEntry({
+        ...newTotpEntry,
+        matchers: [{ type: 'Regex', value: '(a+)+' }],
+      }),
+    ).rejects.toThrow(/backtracks unsafely/)
+  })
+
+  describe('findEntriesForUrl', () => {
+    it('finds an entry by base domain, subdomains included', async () => {
+      const entryId = await favaLib.vault.addEntry(matcherNewTotpEntry)
+
+      expect(
+        favaLib.vault.findEntriesForUrl('https://gist.github.com/x'),
+      ).toEqual([entryId])
+    })
+
+    it('does not find a look-alike domain', async () => {
+      await favaLib.vault.addEntry(matcherNewTotpEntry)
+
+      expect(
+        favaLib.vault.findEntriesForUrl('https://github.com.evil.com/'),
+      ).toEqual([])
+    })
+
+    it('never returns an entry with no matchers', async () => {
+      await favaLib.vault.addEntry(newTotpEntry)
+
+      expect(favaLib.vault.findEntriesForUrl('https://github.com/')).toEqual([])
+    })
+
+    it('returns nothing for a url it cannot match against', async () => {
+      await favaLib.vault.addEntry(matcherNewTotpEntry)
+
+      expect(favaLib.vault.findEntriesForUrl('not a url')).toEqual([])
+      expect(favaLib.vault.findEntriesForUrl('about:blank')).toEqual([])
+      expect(
+        favaLib.vault.findEntriesForUrl('chrome-extension://abc/popup.html'),
+      ).toEqual([])
+    })
+  })
+
+  describe('findEntryMetasForUrl', () => {
+    it('reports which matcher fired', async () => {
+      await favaLib.vault.addEntry(matcherNewTotpEntry)
+
+      const [match] = favaLib.vault.findEntryMetasForUrl(
+        'https://gist.github.com/x',
+      )
+
+      expect(match.matchedBy).toEqual({
+        type: 'BaseDomain',
+        value: 'github.com',
+      })
+    })
+
+    it('ranks the most specific matcher first', async () => {
+      const broadId = await favaLib.vault.addEntry({
+        ...newTotpEntry,
+        matchers: [{ type: 'BaseDomain', value: 'example.com' }],
+      })
+      const hostId = await favaLib.vault.addEntry({
+        ...newTotpEntry,
+        matchers: [{ type: 'Host', value: 'www.example.com' }],
+      })
+      const prefixId = await favaLib.vault.addEntry({
+        ...newTotpEntry,
+        matchers: [
+          { type: 'UrlPrefix', value: 'https://www.example.com/login' },
+        ],
+      })
+
+      expect(
+        favaLib.vault.findEntriesForUrl('https://www.example.com/login/step2'),
+      ).toEqual([prefixId, hostId, broadId])
+    })
+
+    it('breaks a tie between same-type matchers by value length', async () => {
+      const shortId = await favaLib.vault.addEntry({
+        ...newTotpEntry,
+        matchers: [{ type: 'BaseDomain', value: 'example.com' }],
+      })
+      const longId = await favaLib.vault.addEntry({
+        ...newTotpEntry,
+        matchers: [{ type: 'BaseDomain', value: 'sso.example.com' }],
+      })
+
+      expect(
+        favaLib.vault.findEntriesForUrl('https://sso.example.com/'),
+      ).toEqual([longId, shortId])
+    })
+
+    it('includes tokens when asked', async () => {
+      await favaLib.vault.addEntry(matcherNewTotpEntry)
+
+      const matches = await favaLib.vault.findEntryMetasForUrl(
+        'https://github.com/',
+        true,
+      )
+
+      expect(matches).toHaveLength(1)
+      expect(matches[0].token.otp).toHaveLength(6)
+      expect(matches[0].matchedBy.type).toBe('BaseDomain')
+    })
+
+    it('resolves to an empty list for an unmatchable url', async () => {
+      await favaLib.vault.addEntry(matcherNewTotpEntry)
+
+      await expect(
+        favaLib.vault.findEntryMetasForUrl('not a url', true),
+      ).resolves.toEqual([])
+    })
   })
 
   it('should emit changed event when data is changed', async () => {

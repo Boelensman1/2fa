@@ -9,7 +9,22 @@ import type {
   TotpPayload,
   Token,
   EntryMetaWithToken,
+  EntryMetaForUrl,
+  EntryMetaForUrlWithToken,
+  UrlMatcher,
+  UrlMatcherType,
 } from './interfaces/Entry.mjs'
+import { URL_MATCHER_TYPES } from './interfaces/Entry.mjs'
+import {
+  MAX_INPUT_SELECTOR_LENGTH,
+  MAX_MATCHERS_PER_ENTRY,
+  MAX_MATCHER_VALUE_LENGTH,
+  MAX_REGEX_SOURCE_LENGTH,
+  MAX_URL_LENGTH,
+  parseMatcherSpec,
+  validateUrlMatcher,
+} from './utils/matcherValidation.mjs'
+import { suggestMatchersForUrl } from './utils/urlMatching.mjs'
 import type CryptoLib from './interfaces/CryptoLib.mjs'
 import type {
   Encrypted,
@@ -58,6 +73,15 @@ export {
   EntryNotFoundError,
   TokenGenerationError,
   FavaLibEvent,
+  URL_MATCHER_TYPES,
+  validateUrlMatcher,
+  parseMatcherSpec,
+  suggestMatchersForUrl,
+  MAX_MATCHERS_PER_ENTRY,
+  MAX_MATCHER_VALUE_LENGTH,
+  MAX_REGEX_SOURCE_LENGTH,
+  MAX_URL_LENGTH,
+  MAX_INPUT_SELECTOR_LENGTH,
 }
 
 export type {
@@ -66,6 +90,10 @@ export type {
   NewEntry,
   EntryMeta,
   EntryMetaWithToken,
+  EntryMetaForUrl,
+  EntryMetaForUrlWithToken,
+  UrlMatcher,
+  UrlMatcherType,
   EntryType,
   TotpPayload,
   Token,

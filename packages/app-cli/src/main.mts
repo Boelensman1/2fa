@@ -6,6 +6,8 @@ import VaultDeleteCommand from './commands/vault/delete.mjs'
 import VaultRestorePasswordCommand from './commands/vault/restorePassword.mjs'
 import EntriesAddCommand from './commands/entries/add.mjs'
 import EntriesListCommand from './commands/entries/list.mjs'
+import EntriesEditCommand from './commands/entries/edit.mjs'
+import EntriesFindForUrlCommand from './commands/entries/findForUrl.mjs'
 import EntriesSearchCommand from './commands/entries/search.mjs'
 import EntriesGetTokenByIdCommand from './commands/entries/getTokenById.mjs'
 import SyncSetServerUrlCommand from './commands/sync/setServerUrl.mjs'
@@ -36,6 +38,8 @@ cli.register(VaultDeleteCommand)
 cli.register(VaultRestorePasswordCommand)
 cli.register(EntriesAddCommand)
 cli.register(EntriesListCommand)
+cli.register(EntriesEditCommand)
+cli.register(EntriesFindForUrlCommand)
 cli.register(EntriesSearchCommand)
 cli.register(EntriesGetTokenByIdCommand)
 cli.register(SyncSetServerUrlCommand)

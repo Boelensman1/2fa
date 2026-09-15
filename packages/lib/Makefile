@@ -2,16 +2,12 @@ INSTALL_DEPS:=node_modules ../types/build ../server/build
 SRC_FILES:=$(shell find src/)
 TEST_FILES:=$(shell find tests/)
 
+include ../deps.mk
+
 build: $(INSTALL_DEPS) $(SRC_FILES) tsconfig.json tsconfig.build.json
 	rm -rf build *.tsbuildinfo # TODO: find out why this is needed
 	pnpm exec tsc --project ./tsconfig.build.json
-	@if [ -e node_modules ]; then touch node_modules; fi
-
-../types/build:
-	$(MAKE) -C ../types build
-
-../server/build:
-	$(MAKE) -C ../server build
+	@touch build
 
 node_modules: package.json ../../pnpm-lock.yaml
 	$(MAKE) -C ../.. node_modules

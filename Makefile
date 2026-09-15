@@ -32,4 +32,4 @@ clean-%:
 	make -C ./packages/$* clean
 
 
-.PHONY: lint test clean clean-% install install-% build-% version-% lint-%
+.PHONY: build lint test clean clean-% install install-% build-% version-% lint-% test-%

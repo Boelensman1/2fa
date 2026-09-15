@@ -1,13 +1,12 @@
 INSTALL_DEPS=node_modules ../types/build
 SRC_FILES:=$(shell find src/)
 
+include ../deps.mk
+
 build: $(INSTALL_DEPS) $(SRC_FILES) tsconfig.json tsconfig.build.json
 	rm -rf build *.tsbuildinfo # TODO: find out why this is needed
 	pnpm exec tsc --project ./tsconfig.build.json
 	@touch build
-
-../types/build:
-	$(MAKE) -C ../types build
 
 dev: $(INSTALL_DEPS)
 	pnpm exec tsx --watch ./src/server.mts
@@ -18,7 +17,7 @@ node_modules: package.json ../../pnpm-lock.yaml
 	@if [ -e node_modules ]; then touch node_modules; fi
 
 clean:
-	rm -rf node_modules
+	rm -rf build *.tsbuildinfo
 
 test: $(INSTALL_DEPS)
 	pnpm exec vitest run

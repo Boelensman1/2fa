@@ -2,14 +2,13 @@ INSTALL_DEPS:=node_modules ../lib/build
 SRC_FILES:=$(shell find src/)
 TEST_FILES:=$(shell find tests/)
 
+include ../deps.mk
+
 build: $(INSTALL_DEPS) $(SRC_FILES) tsconfig.json tsconfig.build.json
 	rm -rf build dist *.tsbuildinfo # TODO: find out why this is needed
 	@if [ -e node_modules ]; then touch node_modules; fi
 	pnpm exec tsc --project ./tsconfig.build.json
 	chmod +x ./build/main.mjs
-
-../lib/build:
-	$(MAKE) -C ../lib build
 
 node_modules: package.json ../../pnpm-lock.yaml
 	$(MAKE) -C ../.. node_modules
@@ -17,7 +16,7 @@ node_modules: package.json ../../pnpm-lock.yaml
 	@touch node_modules
 
 clean:
-	rm -rf build *.tsbuildinfo
+	rm -rf build dist *.tsbuildinfo
 
 lint: $(INSTALL_DEPS)
 	pnpm exec prettier --check --ignore-path=../../.gitignore .

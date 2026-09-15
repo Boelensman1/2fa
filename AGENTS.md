@@ -15,8 +15,15 @@ browser PWA and a browser extension, in one pnpm workspace.
 | `packages/app-extension` | `favabrowserext` | WXT + React MV3 browser extension |
 
 Build order is `types -> server -> lib -> {app-cli, app-browser,
-app-extension}`. The per-package Makefiles encode it, so building a leaf builds
-what it needs.
+app-extension}`. `packages/deps.mk`, included by every package Makefile, encodes
+it as rules that rebuild an upstream `build/` when it is missing or older than
+its sources, so building or linting a leaf brings the whole chain up to date. A
+package that consumes another's output lists it in `INSTALL_DEPS`.
+
+Do not give a `../<pkg>/build` rule an empty prerequisite list: make would then
+only ever run it when the directory is absent, and a stale build survives. It
+fails quietly — `tsc` and eslint resolve the outdated `.d.mts` files and the
+errors surface as unresolved ("error typed") values in the consuming package.
 
 ## Commands
 

@@ -3,14 +3,13 @@ ENTRYPOINT_FILES=$(shell find entrypoints)
 
 VERSION=$(shell jq .version ./package.json)
 
+include ../deps.mk
+
 install: $(INSTALL_DEPS)
 
 node_modules: package.json ../../pnpm-lock.yaml
 	$(MAKE) -C ../.. node_modules
 	@if [ -e node_modules ]; then touch node_modules; fi
-
-../lib/build:
-	$(MAKE) -C ../lib build
 
 build: dist/chrome
 
@@ -62,4 +61,4 @@ artifacts/favabrowserext.firefox.source.zip: artifacts
 	(cd ./artifacts/favabrowserext.firefox.source && zip -r ../favabrowserext.firefox.source.zip .)
 	rm -rf ./artifacts/favabrowserext.firefox.source
 
-.PHONY: install build clean bump-version lint test dev dev-firefox dev-chrome dist/firefox dist/chrome ../lib/build
+.PHONY: install build clean bump-version lint test dev dev-firefox dev-chrome dist/firefox dist/chrome

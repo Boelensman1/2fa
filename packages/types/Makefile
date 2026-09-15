@@ -4,7 +4,7 @@ SRC_FILES:=$(shell find src/)
 build: $(INSTALL_DEPS) $(SRC_FILES) tsconfig.json tsconfig.build.json
 	rm -rf build *.tsbuildinfo # TODO: find out why this is needed
 	pnpm exec tsc --project ./tsconfig.build.json
-	@if [ -e node_modules ]; then touch node_modules; fi
+	@touch build
 
 node_modules: package.json ../../pnpm-lock.yaml
 	$(MAKE) -C ../.. node_modules

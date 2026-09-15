@@ -8,6 +8,7 @@ const generateEntriesTable = (
     { value: 'Id', align: 'left', width: 30 },
     { value: 'Name', align: 'left', width: 30 },
     { value: 'Issuer', align: 'left', width: 20 },
+    { value: 'Matchers', align: 'left', width: 34 },
     { value: 'Added at', align: 'left', width: 36 },
     { value: 'Updated at', align: 'left', width: 36 },
   ]
@@ -23,6 +24,7 @@ const generateEntriesTable = (
       entry.id,
       entry.name || '-',
       entry.issuer || '-',
+      entry.matchers.map((m) => `${m.type}:${m.value}`).join('\n') || '-',
       new Date(entry.addedAt).toLocaleString(),
       entry.updatedAt ? new Date(entry.updatedAt).toLocaleString() : '-',
     ]

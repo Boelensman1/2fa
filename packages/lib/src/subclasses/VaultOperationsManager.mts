@@ -2,9 +2,12 @@ import type Entry from '../interfaces/Entry.mjs'
 import type {
   EntryId,
   EntryMeta,
+  EntryMetaForUrl,
+  EntryMetaForUrlWithToken,
   EntryMetaWithToken,
   NewEntry,
   Token,
+  UrlMatcher,
 } from '../interfaces/Entry.mjs'
 
 import type FavaLibMediator from '../FavaLibMediator.mjs'
@@ -12,18 +15,41 @@ import type FavaLibMediator from '../FavaLibMediator.mjs'
 import AddEntryCommand from '../Command/commands/AddEntryCommand.mjs'
 import DeleteEntryCommand from '../Command/commands/DeleteEntryCommand.mjs'
 import UpdateEntryCommand from '../Command/commands/UpdateEntryCommand.mjs'
-import { EntryNotFoundError } from '../FavaLibError.mjs'
+import { EntryNotFoundError, InvalidCommandError } from '../FavaLibError.mjs'
+import { validateEntryStrict } from '../utils/entryValidation.mjs'
+import {
+  MATCHER_SPECIFICITY,
+  buildUrlMatchContext,
+  findMatcherForUrl,
+} from '../utils/urlMatching.mjs'
 
-const getMetaForEntry = (entry: Entry) => ({
+const getMetaForEntry = (entry: Entry): EntryMeta => ({
   id: entry.id,
   name: entry.name,
   issuer: entry.issuer,
   type: entry.type,
-  match: entry.match,
-  matchType: entry.matchType,
+  // Copied: this is the only non-primitive to leave the vault, and handing out
+  // the live array would let a caller mutate vault state behind the commands.
+  matchers: entry.matchers.map((matcher) => ({ ...matcher })),
+  url: entry.url,
+  inputSelector: entry.inputSelector,
   addedAt: entry.addedAt,
   updatedAt: entry.updatedAt,
 })
+
+/**
+ * Ranks entries that all match the same url, most specific first, so a
+ * consumer can preselect the best guess.
+ * @param a - The first entry to compare.
+ * @param b - The second entry to compare.
+ * @returns A standard comparator result.
+ */
+const byMatchSpecificity = (a: EntryMetaForUrl, b: EntryMetaForUrl): number =>
+  MATCHER_SPECIFICITY[b.matchedBy.type] -
+    MATCHER_SPECIFICITY[a.matchedBy.type] ||
+  b.matchedBy.value.length - a.matchedBy.value.length ||
+  (b.updatedAt ?? b.addedAt) - (a.updatedAt ?? a.addedAt) ||
+  a.id.localeCompare(b.id)
 
 /**
  * Manages the public operations related to the vault, including adding, deleting, and updating entries.
@@ -157,6 +183,83 @@ class VaultOperationsManager {
   }
 
   /**
+   * Collect the entries whose matchers cover a url, most specific first.
+   * @param url - The url to match against.
+   * @returns The matching entries, each with the matcher that made it match.
+   */
+  private matchEntriesForUrl(url: string): EntryMetaForUrl[] {
+    const ctx = buildUrlMatchContext(url)
+    if (!ctx) {
+      return []
+    }
+
+    return this.vaultDataManager
+      .getAllEntries()
+      .reduce<EntryMetaForUrl[]>((matched, entry) => {
+        const matchedBy: UrlMatcher | null = findMatcherForUrl(
+          entry.matchers,
+          ctx,
+        )
+        if (matchedBy) {
+          matched.push({
+            ...getMetaForEntry(entry),
+            matchedBy: { ...matchedBy },
+          })
+        }
+        return matched
+      }, [])
+      .sort(byMatchSpecificity)
+  }
+
+  /**
+   * Find the ids of the entries that belong to a url, most specific first.
+   *
+   * Entries with no matchers are never returned, and an unparseable url, or
+   * one whose scheme is not http(s), yields an empty list rather than an
+   * error.
+   *
+   * Regex matchers run synchronously and can block the calling thread.
+   * @param url - The url to match against.
+   * @returns The matching entry ids.
+   */
+  findEntriesForUrl(url: string): EntryId[] {
+    return this.matchEntriesForUrl(url).map((entry) => entry.id)
+  }
+
+  /**
+   * Find the entries that belong to a url, most specific first.
+   * @param url - The url to match against.
+   * @param includeTokens - When true, includes current tokens with the metas.
+   * @returns The matching entry metas, optionally with tokens.
+   */
+  findEntryMetasForUrl(
+    url: string,
+    includeTokens: true,
+  ): Promise<EntryMetaForUrlWithToken[]>
+  /**
+   * @inheritdoc
+   */
+  findEntryMetasForUrl(url: string, includeTokens?: false): EntryMetaForUrl[]
+  /**
+   * @inheritdoc
+   */
+  findEntryMetasForUrl(
+    url: string,
+    includeTokens?: boolean,
+  ): EntryMetaForUrl[] | Promise<EntryMetaForUrlWithToken[]> {
+    const matched = this.matchEntriesForUrl(url)
+    if (includeTokens) {
+      return Promise.all(
+        matched.map(async (entry) => ({
+          ...entry,
+          token: await this.generateTokenForEntry(entry.id),
+        })),
+      )
+    }
+    return matched
+  }
+
+  /**
    * Generate a time-based one-time password (TOTP) for a specific entry.
    * @param id - The unique identifier of the entry.
    * @param timestamp - Optional timestamp to use for token generation (default is current time).
@@ -177,10 +280,17 @@ class VaultOperationsManager {
   async addEntry(entry: NewEntry): Promise<EntryId> {
     const newId = this.platformProviders.genUuidV4() as EntryId
     const newEntry: Entry = {
+      matchers: [],
+      url: null,
+      inputSelector: null,
       ...entry,
       id: newId,
       addedAt: Date.now(),
       updatedAt: null,
+    }
+    const reason = validateEntryStrict(newEntry)
+    if (reason) {
+      throw new InvalidCommandError(`Cannot add entry: ${reason}`)
     }
     const command = AddEntryCommand.create(newEntry)
     await this.commandManager.execute(command)
@@ -215,7 +325,17 @@ class VaultOperationsManager {
     }
     const oldEntry = this.vaultDataManager.getFullEntry(entryId)
 
-    const updatedEntry = { ...oldEntry, ...updates }
+    // updatedAt goes after the spread so a caller cannot clobber it.
+    const updatedEntry: Entry = {
+      ...oldEntry,
+      ...updates,
+      updatedAt: Date.now(),
+    }
+
+    const reason = validateEntryStrict(updatedEntry)
+    if (reason) {
+      throw new InvalidCommandError(`Cannot update entry: ${reason}`)
+    }
 
     const command = UpdateEntryCommand.create({
       entryId,

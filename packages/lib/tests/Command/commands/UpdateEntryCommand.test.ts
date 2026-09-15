@@ -1,11 +1,13 @@
 import { describe, it, expect, vi } from 'vitest'
-import { EntryId } from '../../../src/main.mjs'
+import { EntryId, type UrlMatcher } from '../../../src/main.mjs'
 import type FavaLibMediator from '../../../src/FavaLibMediator.mjs'
 import UpdateEntryCommand from '../../../src/Command/commands/UpdateEntryCommand.mjs'
 import { InvalidCommandError } from '../../../src/FavaLibError.mjs'
 import type VaultDataManager from '../../../src/subclasses/VaultDataManager.mjs'
 
 import { totpEntry, anotherTotpEntry } from '../../testUtils.mjs'
+
+const badMatchers: UrlMatcher[] = [{ type: 'Regex', value: '(a+)+' }]
 
 describe('UpdateEntryCommand', () => {
   const updateEntry = vi.fn()
@@ -60,6 +62,17 @@ describe('UpdateEntryCommand', () => {
     expect(invalidCommand.validate()).toBe(false)
   })
 
+  it('accepts a remote repair whose old entry fails current validation', async () => {
+    const command = UpdateEntryCommand.fromJSON({
+      id: 'repair-command',
+      timestamp: Date.now(),
+      version: '1.0',
+      data: { ...updateData, oldEntry: { ...totpEntry, issuer: '' } },
+    })
+    await command.execute(mockFavaLibMediator)
+    expect(updateEntry).toHaveBeenLastCalledWith(updateData.updatedEntry)
+  })
+
   it('should throw an error when executing with invalid data', async () => {
     const invalidCommand = new UpdateEntryCommand({
       ...updateData,
@@ -68,6 +81,42 @@ describe('UpdateEntryCommand', () => {
     await expect(invalidCommand.execute(mockFavaLibMediator)).rejects.toThrow(
       InvalidCommandError,
     )
+  })
+
+  it('should reject an updatedEntry whose id does not match entryId', () => {
+    const command = new UpdateEntryCommand({
+      ...updateData,
+      updatedEntry: { ...totpEntry, id: 'mismatched' as EntryId },
+    })
+    expect(command.validate()).toBe(false)
+  })
+
+  it('should reject a locally-created update carrying a bad matcher', () => {
+    const command = new UpdateEntryCommand({
+      ...updateData,
+      updatedEntry: {
+        ...totpEntry,
+        matchers: badMatchers,
+      },
+    })
+    expect(command.validate()).toBe(false)
+  })
+
+  it('should accept the same update when it came from a peer', () => {
+    const command = UpdateEntryCommand.fromJSON({
+      id: 'command-id',
+      data: {
+        ...updateData,
+        updatedEntry: {
+          ...totpEntry,
+          matchers: badMatchers,
+        },
+      },
+      timestamp: Date.now(),
+      version: '1.0',
+    })
+    expect(command.fromRemote).toBe(true)
+    expect(command.validate()).toBe(true)
   })
 
   it('should throw an error when creating undo command without original entry', () => {

@@ -26,7 +26,9 @@ import {
   PublicKey,
   EncryptedVaultStateString,
   PlatformProviders,
+  type EntryId,
 } from '../../src/main.mjs'
+import type { SyncCommand } from '../../src/interfaces/CommandTypes.mjs'
 
 import {
   anotherNewTotpEntry,
@@ -310,8 +312,6 @@ describe('SyncManager', () => {
           name: 'name'.repeat(10),
           type: 'TOTP',
           issuer: 'issuer'.repeat(10),
-          match: null,
-          matchType: null,
           payload: {
             digits: 8,
             period: 30,
@@ -420,6 +420,101 @@ describe('SyncManager', () => {
     expect(receiverFavaLib.vault.listEntries()).toEqual(
       senderFavaLib.vault.listEntries(),
     )
+  })
+
+  it("should sync an entry's matchers between devices", async () => {
+    const wsInstancesMap = new Map([
+      [senderFavaLib.meta.deviceId, senderWsInstance],
+      [receiverFavaLib.meta.deviceId, receiverWsInstance],
+    ])
+
+    await connectDevices({
+      senderFavaLib,
+      receiverFavaLib,
+      server,
+      wsInstancesMap,
+    })
+
+    const entryId = await senderFavaLib.vault.addEntry({
+      ...anotherNewTotpEntry,
+      matchers: [{ type: 'BaseDomain', value: 'github.com' }],
+      url: 'https://github.com/login',
+      inputSelector: '#otp',
+    })
+
+    await handleSyncCommands(
+      server,
+      senderFavaLib.meta.deviceId,
+      wsInstancesMap,
+    )
+
+    await vi.waitUntil(() => receiverFavaLib.vault.size !== 1, {
+      timeout: 1000,
+      interval: 20,
+    })
+
+    const received = receiverFavaLib.vault.getEntryMeta(entryId)
+    expect(received.matchers).toEqual([
+      { type: 'BaseDomain', value: 'github.com' },
+    ])
+    expect(received.url).toBe('https://github.com/login')
+    expect(received.inputSelector).toBe('#otp')
+    expect(
+      receiverFavaLib.vault.findEntriesForUrl('https://gist.github.com/x'),
+    ).toEqual([entryId])
+  })
+
+  it('should repair, not drop, a remote entry carrying an unusable matcher', async () => {
+    // processRemoteCommands drops a command that throws and never retries it,
+    // so an entry arriving with a bad matcher has to land sanitised instead.
+    const entryId = 'remote-entry' as EntryId
+
+    const receiverCommandManager = (
+      receiverFavaLib as unknown as {
+        mediator: {
+          getComponent: (name: 'commandManager') => {
+            receiveRemoteCommand: (command: SyncCommand) => void
+            processRemoteCommands: () => Promise<string[]>
+          }
+        }
+      }
+    ).mediator.getComponent('commandManager')
+
+    receiverCommandManager.receiveRemoteCommand({
+      id: 'remote-command',
+      type: 'AddEntry',
+      timestamp: Date.now(),
+      version: '1.0',
+      data: {
+        id: entryId,
+        name: 'Remote TOTP',
+        issuer: 'Remote Issuer',
+        type: 'TOTP',
+        matchers: [
+          { type: 'Regex', value: '(a+)+' },
+          { type: 'Nope', value: 'x' },
+          { type: 'Host', value: 'keep.me' },
+        ],
+        url: 'x'.repeat(9000),
+        inputSelector: '#otp\nbody',
+        addedAt: Date.now(),
+        updatedAt: null,
+        payload: {
+          secret: 'REMOTESECRET',
+          period: 30,
+          algorithm: 'SHA-1',
+          digits: 6,
+        },
+      },
+    } as unknown as SyncCommand)
+
+    await receiverCommandManager.processRemoteCommands()
+
+    const received = receiverFavaLib.vault.getEntryMeta(entryId)
+    expect(received.matchers).toEqual([{ type: 'Host', value: 'keep.me' }])
+    expect(received.url).toBeNull()
+    expect(received.inputSelector).toBeNull()
+    expect(received.name).toBe('Remote TOTP')
   })
 
   it('should emit ready event after receiving syncCommands message', async () => {
@@ -635,8 +730,6 @@ describe('SyncManager', () => {
       name: 'name',
       type: 'TOTP',
       issuer: 'issuer',
-      match: null,
-      matchType: null,
       payload: {
         digits: 8,
         period: 30,

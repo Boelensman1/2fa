@@ -13,6 +13,7 @@ import {
 } from '../utils/constants.mjs'
 
 import { Vault } from '../interfaces/Vault.mjs'
+import { sanitiseEntry } from '../utils/entrySanitisation.mjs'
 
 /**
  * Manages the data within the vault. This class should only be used internally
@@ -103,7 +104,7 @@ class VaultDataManager {
       // We already have this entry
       return
     }
-    this.vault.push(entry)
+    this.vault.push(sanitiseEntry(entry))
     this.dispatchLibEvent(FavaLibEvent.Changed)
 
     if (saveAfter) {
@@ -136,7 +137,7 @@ class VaultDataManager {
     const index = this.vault.findIndex((e) => e.id === id)
     if (index === -1) throw new EntryNotFoundError('Entry not found')
 
-    this.vault[index] = updatedEntry
+    this.vault[index] = sanitiseEntry(updatedEntry)
 
     this.dispatchLibEvent(FavaLibEvent.Changed)
     await this.persistentStorageManager.save()
@@ -147,7 +148,7 @@ class VaultDataManager {
    * @param newVault - The new vault data to replace the existing vault.
    */
   replaceVault(newVault: Vault) {
-    this.vault = newVault
+    this.vault = newVault.map(sanitiseEntry)
     this.dispatchLibEvent(FavaLibEvent.Changed)
   }
 }

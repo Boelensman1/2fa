@@ -1,4 +1,4 @@
-import type { MatchType, NewEntry } from '../interfaces/Entry.mjs'
+import type { NewEntry, UrlMatcher } from '../interfaces/Entry.mjs'
 import type Entry from '../interfaces/Entry.mjs'
 import type { SupportedAlgorithmsType } from './constants.mjs'
 import type { EntryId } from '../interfaces/Entry.mjs'
@@ -6,6 +6,24 @@ import type { QrCodeLib } from '../interfaces/QrCodeLib.mjs'
 import type { OpenPgpLib } from '../interfaces/OpenPgpLib.mjs'
 import type { UrlParser } from '../interfaces/UrlParserLib.mjs'
 import { ExportImportError } from '../FavaLibError.mjs'
+import { sanitiseInputSelector } from './entrySanitisation.mjs'
+import {
+  MAX_MATCHERS_PER_ENTRY,
+  MAX_URL_LENGTH,
+  parseMatcherSpec,
+} from './matcherValidation.mjs'
+
+/**
+ * The most matchers to write into an exported uri.
+ *
+ * Every matcher adds characters to the qr code, and a dense enough qr stops
+ * being scannable. The text and html exports are a backup format, not a sync
+ * channel, so trimming here is cheaper than an unreadable code.
+ */
+const MAX_EXPORTED_MATCHERS = 4
+
+/** The longest single encoded matcher to write into an exported uri. */
+const MAX_EXPORTED_MATCHER_LENGTH = 200
 
 /**
  * Determines the hashing algorithm based on the input string.
@@ -66,8 +84,14 @@ export const parseOtpUri = (parseUrl: UrlParser, otpUri: string): NewEntry => {
   const algorithm = parseOtpAlgorithm(searchParams.get('algorithm'))
   const digits = parseInt(searchParams.get('digits') ?? '6', 10)
   const period = parseInt(searchParams.get('period') ?? '30', 10)
-  const match = searchParams.get('match')
-  const matchType = searchParams.get('matchType')
+  const matchers = searchParams
+    .getAll('favaMatcher')
+    .map((spec) => parseMatcherSpec(spec))
+    // One unusable matcher must not cost the user the secret it came with.
+    .filter((matcher): matcher is UrlMatcher => matcher !== null)
+    .slice(0, MAX_MATCHERS_PER_ENTRY)
+  const url = searchParams.get('favaUrl')
+  const inputSelector = searchParams.get('favaInputSelector')
 
   // if searchParams has an issuer, use that
   if (searchParams.get('issuer')) {
@@ -91,8 +115,9 @@ export const parseOtpUri = (parseUrl: UrlParser, otpUri: string): NewEntry => {
     name: name && name.length > 0 ? name : 'Imported Entry',
     issuer: issuer && issuer.length > 0 ? issuer : 'Unknown Issuer',
     type: 'TOTP',
-    match: match ?? null,
-    matchType: (matchType as MatchType) ?? null,
+    matchers,
+    url: url && url.length <= MAX_URL_LENGTH ? url : null,
+    inputSelector: sanitiseInputSelector(inputSelector),
     payload: {
       secret,
       algorithm,
@@ -108,7 +133,14 @@ export const parseOtpUri = (parseUrl: UrlParser, otpUri: string): NewEntry => {
  * @returns The otpauth:// URI string.
  */
 export const generateOtpUrl = (entry: Entry) => {
-  const { name, issuer, payload, match, matchType } = entry
+  const {
+    name,
+    issuer,
+    payload,
+    matchers,
+    url: entryUrl,
+    inputSelector,
+  } = entry
   const { secret, algorithm, digits, period } = payload
 
   // Note: Using manual encodeURIComponent instead of URLSearchParams because
@@ -116,12 +148,19 @@ export const generateOtpUrl = (entry: Entry) => {
   // OTP clients expect standard percent encoding (%20) for better compatibility.
   let url = `otpauth://totp/${encodeURIComponent(issuer)}:${encodeURIComponent(name)}?secret=${secret}&issuer=${encodeURIComponent(issuer)}&algorithm=${algorithm}&digits=${digits}&period=${period}`
 
-  // Add match properties if they exist
-  if (match !== null && match !== undefined) {
-    url += `&match=${encodeURIComponent(match)}`
+  // Add the matching properties if they exist. Other authenticators ignore
+  // query parameters they do not know, so these are safe to carry along.
+  for (const matcher of matchers.slice(0, MAX_EXPORTED_MATCHERS)) {
+    const spec = `${matcher.type}:${encodeURIComponent(matcher.value)}`
+    if (spec.length <= MAX_EXPORTED_MATCHER_LENGTH) {
+      url += `&favaMatcher=${spec}`
+    }
   }
-  if (matchType !== null && matchType !== undefined) {
-    url += `&matchType=${encodeURIComponent(matchType)}`
+  if (entryUrl) {
+    url += `&favaUrl=${encodeURIComponent(entryUrl)}`
+  }
+  if (inputSelector) {
+    url += `&favaInputSelector=${encodeURIComponent(inputSelector)}`
   }
 
   return url

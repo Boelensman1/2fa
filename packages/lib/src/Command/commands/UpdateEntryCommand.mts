@@ -3,6 +3,10 @@ import type FavaLibMediator from '../../FavaLibMediator.mjs'
 import Command from '../BaseCommand.mjs'
 import type Entry from '../../interfaces/Entry.mjs'
 import { EntryId } from '../../interfaces/Entry.mjs'
+import {
+  validateEntryFatal,
+  validateEntryStrict,
+} from '../../utils/entryValidation.mjs'
 
 export interface UpdateEntryData {
   entryId: EntryId
@@ -37,8 +41,9 @@ class UpdateEntryCommand extends Command<UpdateEntryData> {
    * @throws {InvalidCommandError} If the command data is invalid.
    */
   async execute(mediator: FavaLibMediator) {
-    if (!this.validate()) {
-      throw new InvalidCommandError('Invalid UpdateEntry command')
+    const reason = this.invalidReason()
+    if (reason) {
+      throw new InvalidCommandError(`Invalid UpdateEntry command: ${reason}`)
     }
     const vault = mediator.getComponent('vaultDataManager')
     this.originalEntry = vault.getFullEntry(this.data.entryId)
@@ -63,12 +68,29 @@ class UpdateEntryCommand extends Command<UpdateEntryData> {
   }
 
   /**
+   * Checks the command data.
+   *
+   * See `AddEntryCommand` for why remote commands get the weaker tier.
+   * @returns The reason the command is invalid, or null when it is valid.
+   */
+  private invalidReason(): string | null {
+    if (typeof this.data?.entryId !== 'string' || !this.data.entryId) {
+      return 'no entryId'
+    }
+    if (this.data.updatedEntry?.id !== this.data.entryId) {
+      return 'updatedEntry.id does not match entryId'
+    }
+    // Validate only the replacement, so older entries can be repaired.
+    const check = this.fromRemote ? validateEntryFatal : validateEntryStrict
+    return check(this.data.updatedEntry)
+  }
+
+  /**
    * Validates the command data.
    * @returns True if the command data is valid, false otherwise.
    */
   validate(): boolean {
-    // TODO: write a complete validate function
-    return Boolean(this.data.entryId)
+    return this.invalidReason() === null
   }
 }
 

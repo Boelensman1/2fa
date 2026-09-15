@@ -103,9 +103,16 @@ describe('Crypto Provider Comparison', () => {
     }
   }
 
-  describe('NodeCryptoLib', () => {
-    const nodeTest = runTests(nodeCrypto, 'NodeCryptoLib')
+  // One full encryption cycle per provider, declared before everything that
+  // consumes its keys -- vitest runs a suite's tasks in declaration order, and
+  // getKeys() only has values once the cycle test has run. Both the
+  // per-provider blocks and the cross-provider block below share these two key
+  // sets: running the cycle a second time to get a second set cost two extra
+  // 4096-bit RSA keygens (~1s each) and covered nothing the first pair did not.
+  const nodeTest = runTests(nodeCrypto, 'NodeCryptoLib')
+  const browserTest = runTests(browserCrypto, 'BrowserCryptoLib')
 
+  describe('NodeCryptoLib', () => {
     test('Keys are properly set after test', () => {
       const {
         encryptedPrivateKey,
@@ -123,8 +130,6 @@ describe('Crypto Provider Comparison', () => {
   })
 
   describe('BrowserCryptoLib', () => {
-    const browserTest = runTests(browserCrypto, 'BrowserCryptoLib')
-
     test('Keys are properly set after test', () => {
       const {
         encryptedPrivateKey,
@@ -142,9 +147,6 @@ describe('Crypto Provider Comparison', () => {
   })
 
   describe('Cross-provider compatibility', () => {
-    const nodeTest = runTests(nodeCrypto, 'NodeCryptoLib')
-    const browserTest = runTests(browserCrypto, 'BrowserCryptoLib')
-
     test('Node can decrypt Browser-encrypted keys', async () => {
       const {
         encryptedPrivateKey: browserEncryptedPrivateKey,

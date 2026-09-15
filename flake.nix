@@ -4,12 +4,9 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
-
-    # Shared Milly base image. The container itself is configured in milly.nix.
-    milly-base.url = "git+https://github.com/wtflegal/milly2.git?dir=nix";
   };
 
-  outputs = { self, nixpkgs, flake-utils, milly-base }:
+  outputs = { nixpkgs, flake-utils, ... }:
     (flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
@@ -211,14 +208,5 @@
         packages.default = favacli;
         packages.favacli = favacli;
         devShells.default = devShell;
-      }))
-    # The Milly container image is x86_64-linux only, so it sits outside
-    # eachDefaultSystem. Flake outputs are namespaced, so it coexists with the
-    # per-system packages and devShell above.
-    // {
-      nixosConfigurations.container = milly-base.lib.mkMillyContainer {
-        src = self;
-        module = ./milly.nix;
-      };
-    };
+      }));
 }

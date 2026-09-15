@@ -19,6 +19,20 @@ rebuild an upstream `build/` when it is missing or older than its sources, so
 building or linting a leaf brings the whole chain up to date. A package that
 consumes another's output lists it in `INSTALL_DEPS`.
 
+The repo has two flakes, deliberately. The root `flake.nix` builds `favacli`
+and the dev shell, and its only inputs are nixpkgs and flake-utils. The Milly
+container image lives in `milly2-container/`, because that is what needs the
+`milly-base` input — and a flake's inputs are inherited by everything
+downstream, so keeping it at the root put the milly2 repo (private),
+claude-code, codex and a second nixpkgs into the lock of anyone installing the
+CLI, which also meant non-members could not install it at all. Build the image
+with `nix build ./milly2-container#nixosConfigurations.container...`; the Mill
+backend takes the flake ref per spawn and is pointed at
+`...2fa.git?dir=milly2-container`. Keep that input named `milly-base` (the
+backend overrides it by name) and keep `src = self.sourceInfo` in its
+`flake.nix`: under `?dir=milly2-container`, `self.outPath` is the subdirectory
+and only `sourceInfo` is the repo root.
+
 `favalib` and `favacli` are published to npm; `favaserver`, `favabrowser` and
 `favabrowserext` are marked `private`. A published package must have no
 `workspace:*` dependencies — `pnpm publish` rewrites those to versions that
@@ -52,7 +66,7 @@ reference them from a package as `"<dep>": "catalog:"` rather than pinning twice
 
 ## Running it in this container
 
-`milly.nix` declares two dev services, already running:
+`milly2-container/milly.nix` declares two dev services, already running:
 
 | Service | Command | Port |
 | --- | --- | --- |
@@ -94,9 +108,9 @@ They run with `fileParallelism: false` because they share that one database.
 - The image quarantines newly published npm releases for 7 days
   (`minimumReleaseAge`), so a brand-new dependency version may not install.
 - `canvas` and `keytar` are native. The repo `.npmrc` sets `ignore-scripts=false`
-  so their install scripts run, and `milly.nix` supplies the toolchain plus
-  `PKG_CONFIG_PATH` / `LD_LIBRARY_PATH` for them. Outside the container, use
-  `nix develop`, whose devShell does the same.
+  so their install scripts run, and `milly2-container/milly.nix` supplies the
+  toolchain plus `PKG_CONFIG_PATH` / `LD_LIBRARY_PATH` for them. Outside the
+  container, use `nix develop`, whose devShell does the same.
 - `packages/app-browser/vite.config.mts` shells out to `git rev-parse`, so the
   build needs real git history.
 

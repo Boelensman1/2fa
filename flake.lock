@@ -84,16 +84,15 @@
       "inputs": {
         "claude-code": "claude-code",
         "codex": "codex",
-        "milly-runtime": "milly-runtime",
         "nixpkgs": "nixpkgs"
       },
       "locked": {
         "dir": "nix",
-        "lastModified": 1789152455,
-        "narHash": "sha256-kBEV3r5ySN5ygf+hJTTBsa3p+2Zjw2649he+YzTblbM=",
+        "lastModified": 1789506641,
+        "narHash": "sha256-TqVoCuyFC4KiRj2EtHdHr1WoVShkHnsR2Pof7pzkx1g=",
         "ref": "refs/heads/main",
-        "rev": "53523e28f57bbec26ad682e85f0fc1fbc457d4cf",
-        "revCount": 479,
+        "rev": "b9cfca8933dd91946ddcf4b6a0ee082a2803dc97",
+        "revCount": 484,
         "type": "git",
         "url": "https://github.com/wtflegal/milly2.git"
       },
@@ -102,25 +101,6 @@
         "type": "git",
         "url": "https://github.com/wtflegal/milly2.git"
       }
-    },
-    "milly-runtime": {
-      "inputs": {
-        "nixpkgs": [
-          "milly-base",
-          "nixpkgs"
-        ]
-      },
-      "locked": {
-        "path": "../milly-runtime",
-        "type": "path"
-      },
-      "original": {
-        "path": "../milly-runtime",
-        "type": "path"
-      },
-      "parent": [
-        "milly-base"
-      ]
     },
     "nixpkgs": {
       "locked": {

@@ -1,5 +1,5 @@
 import { WebSocket } from 'ws'
-import type { DeviceId } from 'favatypes'
+import type { DeviceId } from 'favalib/types'
 
 /**
  * Manages the connected devices and their corresponding WebSocket connections.

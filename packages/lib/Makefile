@@ -1,4 +1,4 @@
-INSTALL_DEPS:=node_modules ../types/build ../server/build
+INSTALL_DEPS:=node_modules
 SRC_FILES:=$(shell find src/)
 TEST_FILES:=$(shell find tests/)
 

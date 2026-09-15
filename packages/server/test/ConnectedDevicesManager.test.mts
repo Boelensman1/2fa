@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { WebSocket } from 'ws'
 import ConnectedDevicesManager from '../src/ConnectedDevicesManager.mjs'
-import type { DeviceId } from 'favatypes'
+import type { DeviceId } from 'favalib/types'
 
 describe('ConnectedDevicesManager', () => {
   let manager: ConnectedDevicesManager

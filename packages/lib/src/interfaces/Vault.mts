@@ -6,10 +6,13 @@ import type {
 } from './CryptoLib.mjs'
 import type Entry from './Entry.mjs'
 import type { DeviceFriendlyName, DeviceId, SyncDevice } from './SyncTypes.mjs'
-import type { SyncCommandFromClient } from 'favaserver/ClientMessage'
-import type { EncryptedVaultStateString } from 'favatypes'
+import type { SyncCommandFromClient } from './protocol/ClientMessage.mjs'
+import type { EncryptedVaultStateString } from './BrandedTypes.mjs'
 
-export type { EncryptedVaultStateString, VaultStateString } from 'favatypes'
+export type {
+  EncryptedVaultStateString,
+  VaultStateString,
+} from './BrandedTypes.mjs'
 
 export type Vault = Entry[]
 

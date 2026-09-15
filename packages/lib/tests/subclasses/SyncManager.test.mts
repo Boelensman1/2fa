@@ -9,12 +9,12 @@ import {
 } from 'vitest'
 import WS from 'vitest-websocket-mock'
 
-import type ServerMessage from 'favaserver/ServerMessage'
+import type ServerMessage from '../../src/interfaces/protocol/ServerMessage.mjs'
 import type {
   ConnectClientMessage,
   SyncCommandsClientMessage,
   StartResilverClientMessage,
-} from 'favaserver/ClientMessage'
+} from '../../src/interfaces/protocol/ClientMessage.mjs'
 import {
   EncryptedPrivateKey,
   EncryptedSymmetricKey,
@@ -49,7 +49,7 @@ import type {
   DeviceId,
 } from '../../src/interfaces/SyncTypes.mjs'
 import { FavaLibEvent } from '../../src/FavaLibEvent.mjs'
-import { VaultServerMessage } from 'favaserver/ServerMessage'
+import type { VaultServerMessage } from '../../src/interfaces/protocol/ServerMessage.mjs'
 
 const serverPort = 9770
 const serverBaseUrl = 'ws://localhost'

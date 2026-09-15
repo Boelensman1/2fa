@@ -7,9 +7,9 @@ import UnExecutedSyncCommand from './models/UnExecutedSyncCommand.mjs'
 import knexConfig from '../knexfile.js'
 import ConnectedDevicesManager from './ConnectedDevicesManager.mjs'
 
-import type ClientMessage from './types/ClientMessage.mjs'
-import type { AddSyncDeviceInitialiseDataClientMessage } from './types/ClientMessage.mjs'
-import type OutgoingMessage from './types/ServerMessage.mjs'
+import type ClientMessage from 'favalib/protocol/ClientMessage'
+import type { AddSyncDeviceInitialiseDataClientMessage } from 'favalib/protocol/ClientMessage'
+import type OutgoingMessage from 'favalib/protocol/ServerMessage'
 
 const knex = createKnex(knexConfig)
 Model.knex(knex)

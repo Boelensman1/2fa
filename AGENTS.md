@@ -7,18 +7,27 @@ browser PWA and a browser extension, in one pnpm workspace.
 
 | Package | npm name | What it is |
 | --- | --- | --- |
-| `packages/types` | `favatypes` | Shared types, no dependencies |
+| `packages/lib` | `favalib` | Vault/crypto core; openpgp, node-forge, jpake, canvas, qrcode. Also owns the shared branded types (`favalib/types`) and the sync wire protocol (`favalib/protocol/*`) |
 | `packages/server` | `favaserver` | WebSocket sync server; `ws` + knex/objection on PostgreSQL |
-| `packages/lib` | `favalib` | Vault/crypto core; openpgp, node-forge, jpake, canvas, qrcode |
 | `packages/app-cli` | `favacli` | Clipanion CLI; stores secrets with keytar |
 | `packages/app-browser` | `favabrowser` | SolidJS + Vite PWA |
 | `packages/app-extension` | `favabrowserext` | WXT + React MV3 browser extension |
 
-Build order is `types -> server -> lib -> {app-cli, app-browser,
-app-extension}`. `packages/deps.mk`, included by every package Makefile, encodes
-it as rules that rebuild an upstream `build/` when it is missing or older than
-its sources, so building or linting a leaf brings the whole chain up to date. A
-package that consumes another's output lists it in `INSTALL_DEPS`.
+Build order is `lib -> {server, app-cli, app-browser, app-extension}`.
+`packages/deps.mk`, included by every package Makefile, encodes it as rules that
+rebuild an upstream `build/` when it is missing or older than its sources, so
+building or linting a leaf brings the whole chain up to date. A package that
+consumes another's output lists it in `INSTALL_DEPS`.
+
+`favalib` and `favacli` are published to npm; `favaserver`, `favabrowser` and
+`favabrowserext` are marked `private`. A published package must have no
+`workspace:*` dependencies — `pnpm publish` rewrites those to versions that
+were never published, and `npm i favalib` then fails to resolve. That is why
+the shared branded types and the sync wire protocol live in `favalib` and
+`favaserver` imports them back from it, rather than the other way round. For
+the same reason, anything appearing in `packages/lib/build/**/*.d.mts` has to
+be a real entry in favalib's `dependencies` — that is why `type-fest` is a
+dependency rather than a devDependency, even though no runtime code uses it.
 
 Do not give a `../<pkg>/build` rule an empty prerequisite list: make would then
 only ever run it when the directory is absent, and a stale build survives. It

@@ -1,4 +1,4 @@
-INSTALL_DEPS=node_modules ../types/build
+INSTALL_DEPS:=node_modules ../lib/build
 SRC_FILES:=$(shell find src/)
 
 include ../deps.mk

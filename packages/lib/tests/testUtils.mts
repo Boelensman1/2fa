@@ -16,11 +16,11 @@ import {
 import type { Client as WsClient } from 'mock-socket'
 import { PasswordExtraDict } from '../src/interfaces/PasswordExtraDict.js'
 
-import type ServerMessage from 'favaserver/ServerMessage'
+import type ServerMessage from '../src/interfaces/protocol/ServerMessage.mjs'
 import type {
   SyncCommandsClientMessage,
   SyncCommandsExecutedClientMessage,
-} from 'favaserver/ClientMessage'
+} from '../src/interfaces/protocol/ClientMessage.mjs'
 import type { SaveFunction } from '../src/interfaces/SaveFunction.mjs'
 
 export const newTotpEntry: NewEntry = {

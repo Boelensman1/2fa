@@ -4,7 +4,7 @@ import type {
   EncryptedSymmetricKey,
   PublicKey,
   SymmetricKey,
-} from 'favatypes'
+} from './BrandedTypes.mjs'
 
 export type {
   Encrypted,
@@ -12,7 +12,7 @@ export type {
   EncryptedSymmetricKey,
   PublicKey,
   SymmetricKey,
-} from 'favatypes'
+} from './BrandedTypes.mjs'
 
 /** Represents a password  */
 export type Password = Tagged<string, 'Password'>

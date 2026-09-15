@@ -15,10 +15,11 @@ here.
 Workspace dependency graph:
 
 ```
-favatypes  ←  favaserver  ←  favalib  ←  favacli
-                              ↑↑
-                              │└── favabrowser
-                              └─── favabrowserext   (this package)
+favalib  ←  favacli
+   ↑↑↑
+   ││└── favabrowser
+   │└─── favabrowserext   (this package)
+   └──── favaserver
 ```
 
 ## Development commands

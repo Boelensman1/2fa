@@ -1,20 +1,13 @@
 {
   "name": "favaserver",
   "version": "0.0.1",
+  "private": true,
   "description": "",
   "type": "module",
   "exports": {
     ".": {
       "import": "./build/src/main.mjs",
       "types": "./build/src/main.d.mts"
-    },
-    "./ClientMessage": {
-      "import": "./build/src/types/ClientMessage.mjs",
-      "types": "./build/src/types/ClientMessage.d.mts"
-    },
-    "./ServerMessage": {
-      "import": "./build/src/types/ServerMessage.mjs",
-      "types": "./build/src/types/ServerMessage.d.mts"
     }
   },
   "types": "./build/src/main.d.mts",
@@ -29,11 +22,10 @@
   "devDependencies": {
     "@types/node": "catalog:",
     "@types/ws": "^8.18.1",
-    "type-fest": "catalog:",
     "vitest": "catalog:"
   },
   "dependencies": {
-    "favatypes": "workspace:*",
+    "favalib": "workspace:*",
     "knex": "^3.3.0",
     "objection": "^3.1.5",
     "pg": "^8.23.0",

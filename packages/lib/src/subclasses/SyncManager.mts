@@ -11,8 +11,8 @@ import {
   Pass2Result,
   Pass3Result,
 } from 'jpake-ts'
-import type ServerMessage from 'favaserver/ServerMessage'
-import type ClientMessage from 'favaserver/ClientMessage'
+import type ServerMessage from '../interfaces/protocol/ServerMessage.mjs'
+import type ClientMessage from '../interfaces/protocol/ClientMessage.mjs'
 
 import { FavaLibEvent } from '../FavaLibEvent.mjs'
 import {
@@ -53,8 +53,8 @@ import {
 } from '../interfaces/Vault.mjs'
 import type { FavaMeta } from '../interfaces/FavaMeta.mjs'
 
-import { SyncCommandFromServer } from 'favaserver/ServerMessage'
-import { SyncCommandFromClient } from 'favaserver/ClientMessage'
+import type { SyncCommandFromServer } from '../interfaces/protocol/ServerMessage.mjs'
+import type { SyncCommandFromClient } from '../interfaces/protocol/ClientMessage.mjs'
 import AddSyncDeviceCommand from '../Command/commands/AddSyncDeviceCommand.mjs'
 
 const IN_TESTING = process.env.NODE_ENV === 'test'

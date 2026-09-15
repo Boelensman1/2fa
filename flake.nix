@@ -16,7 +16,11 @@
 
         favacli = pkgs.stdenv.mkDerivation (finalAttrs: {
           pname = "favacli";
-          version = "0.0.27";
+          # Read from the package this actually builds. Hard-coding it drifts
+          # silently on a version bump - it had already reached 0.0.28 here
+          # while this said 0.0.27.
+          version =
+            (builtins.fromJSON (builtins.readFile ./packages/app-cli/package.json)).version;
 
           src = ./.;
 
@@ -28,7 +32,7 @@
             inherit (finalAttrs) pname version src;
             pnpm = pkgs.pnpm_11;
             fetcherVersion = 4;
-            hash = "sha256-BYRVHuCAEE58/jUZhqsmGWIvsZ0oHH0UX+rY9X23Dnc=";
+            hash = "sha256-bwg8dz1sfh8O+zQVIAXllRk6iLz39Df0w0QF1ORulDc=";
           };
 
           # The installPhase allowlist below resolves each dependency at
@@ -88,8 +92,6 @@
             # just walks node_modules and compiles what it is told to.
             npm rebuild --no-save keytar bufferutil
 
-            ( cd packages/types && pnpm exec tsc --project tsconfig.build.json )
-            ( cd packages/server && pnpm exec tsc --project tsconfig.build.json )
             ( cd packages/lib && pnpm exec tsc --project tsconfig.build.json )
           '';
 
@@ -112,21 +114,13 @@
             cp -r packages/app-cli/build "$root/"
             cp packages/app-cli/package.json "$root/"
 
-            # Copy the workspace packages app-cli depends on (favalib, which in
-            # turn pulls in favaserver and favatypes). pnpm symlinks these from
-            # the store, so their paths never contain a /node_modules/ segment
-            # and they never show up in the allowlist below — copy them here.
+            # Copy the one workspace package app-cli depends on (favalib, which
+            # has no workspace dependencies of its own). pnpm symlinks it from
+            # the store, so its path never contains a /node_modules/ segment
+            # and it never shows up in the allowlist below — copy it here.
             mkdir -p "$root/node_modules/favalib"
             cp packages/lib/package.json "$root/node_modules/favalib/"
             cp -r packages/lib/build "$root/node_modules/favalib/"
-
-            mkdir -p "$root/node_modules/favaserver"
-            cp packages/server/package.json "$root/node_modules/favaserver/"
-            cp -r packages/server/build "$root/node_modules/favaserver/"
-
-            mkdir -p "$root/node_modules/favatypes"
-            cp packages/types/package.json "$root/node_modules/favatypes/"
-            cp -r packages/types/build "$root/node_modules/favatypes/"
 
             # Ship only app-cli's transitive npm closure on top of those.
             # Anything hoisted to node_modules/ purely for other workspaces
@@ -142,7 +136,7 @@
 
             while IFS= read -r name; do
               case "$name" in
-                ""|favacli|favabrowser|favalib|favaserver|favatypes) continue ;;
+                ""|favacli|favabrowser|favalib) continue ;;
                 *)
                   src="node_modules/$name"
                   [ -e "$src" ] || continue

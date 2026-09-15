@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { readFileSync } from 'node:fs'
 import { Cli, Builtins } from 'clipanion'
 
 import VaultCreateCommand from './commands/vault/create.mjs'
@@ -25,12 +26,18 @@ if (nodeRuntimeMajorVersion < 20) {
   throw new Error('Node.js version must be 20 or higher')
 }
 
+// Read from package.json rather than a literal, which drifts silently on a
+// version bump. Resolves to the package root from both src/ (tsx) and build/.
+const { version } = JSON.parse(
+  readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
+) as { version: string }
+
 const [, , ...args] = process.argv
 
 const cli = new Cli({
   binaryLabel: 'FavaCli',
   binaryName: `favacli`,
-  binaryVersion: '0.0.27',
+  binaryVersion: version,
 })
 
 cli.register(VaultCreateCommand)

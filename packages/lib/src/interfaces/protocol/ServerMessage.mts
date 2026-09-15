@@ -8,7 +8,11 @@ import type {
   AddSyncDeviceCancelledClientMessage,
   StartResilverClientMessage,
 } from './ClientMessage.mjs'
-import type { Encrypted, EncryptedSymmetricKey, DeviceId } from 'favatypes'
+import type {
+  Encrypted,
+  EncryptedSymmetricKey,
+  DeviceId,
+} from '../BrandedTypes.mjs'
 
 export interface ConfirmAddSyncDeviceInitialiseServerMessage {
   type: 'confirmAddSyncDeviceInitialiseData'

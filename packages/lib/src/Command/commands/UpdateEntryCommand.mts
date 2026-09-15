@@ -74,14 +74,15 @@ class UpdateEntryCommand extends Command<UpdateEntryData> {
    * @returns The reason the command is invalid, or null when it is valid.
    */
   private invalidReason(): string | null {
-    if (!this.data?.entryId) {
+    if (typeof this.data?.entryId !== 'string' || !this.data.entryId) {
       return 'no entryId'
     }
     if (this.data.updatedEntry?.id !== this.data.entryId) {
       return 'updatedEntry.id does not match entryId'
     }
+    // Validate only the replacement, so older entries can be repaired.
     const check = this.fromRemote ? validateEntryFatal : validateEntryStrict
-    return check(this.data.oldEntry) ?? check(this.data.updatedEntry)
+    return check(this.data.updatedEntry)
   }
 
   /**

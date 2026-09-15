@@ -29,16 +29,6 @@ export const MAX_URL_LENGTH = 2048
 /** The longest `inputSelector` an entry may hold. */
 export const MAX_INPUT_SELECTOR_LENGTH = 256
 
-/**
- * How long a single `findEntryMetasForUrl` call may spend on `Regex` matchers
- * before it stops evaluating the rest of them.
- *
- * This bounds a *set* of individually-slow regexes. It cannot interrupt one
- * catastrophic regex: javascript has no way to abort a `RegExp.test` that is
- * already running.
- */
-export const REGEX_BUDGET_MS = 20
-
 /** How many compiled regexes to keep around. */
 const REGEX_CACHE_MAX_SIZE = 256
 
@@ -70,8 +60,8 @@ export const isUrlMatcherType = (value: unknown): value is UrlMatcherType =>
  * stops a top-level alternation (`a|.*`) from escaping the anchors.
  *
  * The nested-quantifier check is a heuristic, not a decision procedure. It
- * catches the shapes people copy and paste; `(a|aa)+` still slips through,
- * which is why the caller also caps the subject length and the time budget.
+ * catches the shapes people copy and paste; `(a|aa)+` still slips through.
+ * Neither this check nor the length limits guarantee bounded execution time.
  * @param source - The regex source, as stored on the matcher.
  * @returns The compiled, anchored regex, or null when the source is refused.
  */
@@ -139,8 +129,9 @@ export const validateUrlMatcher = (matcher: unknown): string | null => {
  * `--match` flag and by the `favaMatcher` otpauth parameter.
  *
  * Splits on the first colon only, so values containing colons (a `UrlPrefix`
- * of `https://example.com/login`, say) survive. The value is percent-decoded
- * when it can be, and taken verbatim when it cannot.
+ * of `https://example.com/login`, say) survive. The value is taken literally:
+ * CLI arguments are already literal, and URI parameters are decoded once by
+ * `URLSearchParams` before reaching this function.
  * @param spec - The spec to parse.
  * @returns The matcher, or null when the spec is unusable.
  */
@@ -151,14 +142,7 @@ export const parseMatcherSpec = (spec: string): UrlMatcher | null => {
   }
 
   const type = spec.slice(0, separator)
-  const rawValue = spec.slice(separator + 1)
-
-  let value: string
-  try {
-    value = decodeURIComponent(rawValue)
-  } catch {
-    value = rawValue
-  }
+  const value = spec.slice(separator + 1)
 
   const matcher = { type, value } as UrlMatcher
   return validateUrlMatcher(matcher) === null ? matcher : null

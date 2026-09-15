@@ -17,7 +17,6 @@ import DeleteEntryCommand from '../Command/commands/DeleteEntryCommand.mjs'
 import UpdateEntryCommand from '../Command/commands/UpdateEntryCommand.mjs'
 import { EntryNotFoundError, InvalidCommandError } from '../FavaLibError.mjs'
 import { validateEntryStrict } from '../utils/entryValidation.mjs'
-import { REGEX_BUDGET_MS } from '../utils/matcherValidation.mjs'
 import {
   MATCHER_SPECIFICITY,
   buildUrlMatchContext,
@@ -194,18 +193,18 @@ class VaultOperationsManager {
       return []
     }
 
-    const regexDeadline = Date.now() + REGEX_BUDGET_MS
-
     return this.vaultDataManager
       .getAllEntries()
       .reduce<EntryMetaForUrl[]>((matched, entry) => {
         const matchedBy: UrlMatcher | null = findMatcherForUrl(
           entry.matchers,
           ctx,
-          regexDeadline,
         )
         if (matchedBy) {
-          matched.push({ ...getMetaForEntry(entry), matchedBy })
+          matched.push({
+            ...getMetaForEntry(entry),
+            matchedBy: { ...matchedBy },
+          })
         }
         return matched
       }, [])
@@ -219,9 +218,7 @@ class VaultOperationsManager {
    * one whose scheme is not http(s), yields an empty list rather than an
    * error.
    *
-   * Must not be called from a content script: a `Regex` matcher that
-   * backtracks badly would freeze the page. Run it in the extension's
-   * background worker or popup, where a hang costs only a worker restart.
+   * Regex matchers run synchronously and can block the calling thread.
    * @param url - The url to match against.
    * @returns The matching entry ids.
    */

@@ -114,14 +114,11 @@ const matchesUrlPrefix = (prefix: string, href: string): boolean => {
  * Decides whether a single matcher covers a url.
  * @param matcher - The matcher to apply.
  * @param ctx - The url being matched.
- * @param regexDeadline - A `Date.now()` timestamp past which `Regex` matchers
- * are skipped. Omit to allow them unconditionally.
  * @returns True when the matcher covers the url.
  */
 export const matcherMatchesUrl = (
   matcher: UrlMatcher,
   ctx: UrlMatchContext,
-  regexDeadline?: number,
 ): boolean => {
   switch (matcher.type) {
     case 'BaseDomain': {
@@ -142,9 +139,9 @@ export const matcherMatchesUrl = (
       if (ctx.href.length > MAX_MATCHABLE_URL_LENGTH) {
         return false
       }
-      if (regexDeadline !== undefined && Date.now() > regexDeadline) {
-        return false
-      }
+      // User-authored regexes run synchronously, without a time limit. A
+      // pathological pattern can block the calling thread; RegExp.test cannot
+      // be interrupted once it starts.
       return compileMatcherRegex(matcher.value)?.test(ctx.href) ?? false
     }
     default:
@@ -162,19 +159,16 @@ export const matcherMatchesUrl = (
  * entry correctly against the others. Ties keep the order the user chose.
  * @param matchers - The entry's matchers, in the order the user put them.
  * @param ctx - The url being matched.
- * @param regexDeadline - A `Date.now()` timestamp past which `Regex` matchers
- * are skipped.
  * @returns The most specific matcher covering the url, or null when none does.
  */
 export const findMatcherForUrl = (
   matchers: UrlMatcher[],
   ctx: UrlMatchContext,
-  regexDeadline?: number,
 ): UrlMatcher | null => {
   let best: UrlMatcher | null = null
 
   for (const matcher of matchers) {
-    if (!matcherMatchesUrl(matcher, ctx, regexDeadline)) {
+    if (!matcherMatchesUrl(matcher, ctx)) {
       continue
     }
     if (

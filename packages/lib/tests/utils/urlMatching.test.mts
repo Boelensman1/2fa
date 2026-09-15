@@ -170,13 +170,6 @@ describe('Regex', () => {
     expect(matches(matcher, url)).toBe(true)
     expect(matches(matcher, url)).toBe(true)
   })
-
-  it('skips regexes once the deadline has passed', () => {
-    const ctx = buildUrlMatchContext('https://example.com/')!
-    const matcher: UrlMatcher = { type: 'Regex', value: '.*' }
-    expect(matcherMatchesUrl(matcher, ctx, Date.now() + 1000)).toBe(true)
-    expect(matcherMatchesUrl(matcher, ctx, Date.now() - 1)).toBe(false)
-  })
 })
 
 describe('findMatcherForUrl', () => {

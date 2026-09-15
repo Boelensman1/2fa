@@ -4,6 +4,7 @@ import {
   createResource,
   createSignal,
   For,
+  Index,
   onCleanup,
   Show,
 } from 'solid-js'
@@ -230,7 +231,7 @@ const EntryComponent = (props: {
                   <span class="text-xs font-semibold text-gray-600">
                     Site matchers
                   </span>
-                  <For
+                  <Index
                     each={editMatchers()}
                     fallback={
                       <span class="text-xs text-gray-500">
@@ -241,9 +242,9 @@ const EntryComponent = (props: {
                     {(matcher, index) => (
                       <div class="flex gap-1">
                         <select
-                          value={matcher.type}
+                          value={matcher().type}
                           onChange={(e) =>
-                            updateMatcher(index(), {
+                            updateMatcher(index, {
                               type: e.currentTarget.value as UrlMatcherType,
                             })
                           }
@@ -255,9 +256,9 @@ const EntryComponent = (props: {
                         </select>
                         <input
                           type="text"
-                          value={matcher.value}
+                          value={matcher().value}
                           onInput={(e) =>
-                            updateMatcher(index(), {
+                            updateMatcher(index, {
                               value: e.currentTarget.value,
                             })
                           }
@@ -265,7 +266,7 @@ const EntryComponent = (props: {
                           class="border border-gray-300 rounded px-2 py-1 text-xs flex-1 min-w-0"
                         />
                         <button
-                          on:click={(e) => removeMatcher(e, index())}
+                          on:click={(e) => removeMatcher(e, index)}
                           class="px-2 py-1 text-xs text-red-600 hover:bg-gray-200 rounded"
                           title="Remove this matcher"
                         >
@@ -273,7 +274,7 @@ const EntryComponent = (props: {
                         </button>
                       </div>
                     )}
-                  </For>
+                  </Index>
                   <button
                     on:click={addMatcher}
                     disabled={editMatchers().length >= MAX_MATCHERS_PER_ENTRY}

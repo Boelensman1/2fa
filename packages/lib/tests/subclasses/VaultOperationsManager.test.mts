@@ -7,11 +7,13 @@ import {
   type NewEntry,
   type FavaLib,
 } from '../../src/main.mjs'
+import type FavaLibMediator from '../../src/FavaLibMediator.mjs'
 
 import {
   anotherNewTotpEntry,
   matcherNewTotpEntry,
   newTotpEntry,
+  totpEntry,
   clearEntries,
   createFavaLibForTests,
   omit,
@@ -124,6 +126,28 @@ describe('VaultManager', () => {
       favaLib.vault.updateEntry('non-existing' as EntryId, newTotpEntry),
     ).rejects.toThrow(EntryNotFoundError)
   })
+
+  it.each([
+    ['empty issuer', { issuer: '' }, { issuer: 'Repaired Issuer' }],
+    ['oversized name', { name: 'x'.repeat(257) }, { name: 'Repaired Name' }],
+  ])(
+    'repairs an %s while rejecting invalid replacements',
+    async (_label, historical, repair) => {
+      const mediator = (favaLib as unknown as { mediator: FavaLibMediator })
+        .mediator
+      const vaultDataManager = mediator.getComponent('vaultDataManager')
+      const legacyEntry = { ...totpEntry, ...historical }
+      vaultDataManager.replaceVault([legacyEntry])
+
+      await favaLib.vault.updateEntry(legacyEntry.id, repair)
+      const repaired = favaLib.vault.getEntryMeta(legacyEntry.id)
+      expect(repaired).toMatchObject(repair)
+
+      await expect(
+        favaLib.vault.updateEntry(legacyEntry.id, historical),
+      ).rejects.toThrow(/Cannot update entry/)
+    },
+  )
 
   it('should search for entries', async () => {
     const id1 = await favaLib.vault.addEntry(newTotpEntry)
@@ -257,6 +281,29 @@ describe('VaultManager', () => {
   })
 
   describe('findEntryMetasForUrl', () => {
+    it.each([false, true])(
+      'returns detached matchers (includeTokens=%s)',
+      async (includeTokens) => {
+        const entryId = await favaLib.vault.addEntry(matcherNewTotpEntry)
+        const url = 'https://gist.github.com/x'
+        const matches = includeTokens
+          ? await favaLib.vault.findEntryMetasForUrl(url, true)
+          : favaLib.vault.findEntryMetasForUrl(url)
+
+        matches[0].matchedBy.value = 'injected.example'
+        matches[0].matchers[0].value = 'another.example'
+        matches[0].matchers.push({ type: 'Regex', value: '.*' })
+
+        expect(favaLib.vault.getEntryMeta(entryId).matchers).toEqual(
+          matcherNewTotpEntry.matchers,
+        )
+        expect(favaLib.vault.findEntriesForUrl(url)).toEqual([entryId])
+        expect(
+          favaLib.vault.findEntriesForUrl('https://injected.example/'),
+        ).toEqual([])
+      },
+    )
+
     it('reports which matcher fired', async () => {
       await favaLib.vault.addEntry(matcherNewTotpEntry)
 

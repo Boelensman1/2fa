@@ -6,8 +6,8 @@ import type { QrCodeLib } from '../interfaces/QrCodeLib.mjs'
 import type { OpenPgpLib } from '../interfaces/OpenPgpLib.mjs'
 import type { UrlParser } from '../interfaces/UrlParserLib.mjs'
 import { ExportImportError } from '../FavaLibError.mjs'
+import { sanitiseInputSelector } from './entrySanitisation.mjs'
 import {
-  MAX_INPUT_SELECTOR_LENGTH,
   MAX_MATCHERS_PER_ENTRY,
   MAX_URL_LENGTH,
   parseMatcherSpec,
@@ -117,10 +117,7 @@ export const parseOtpUri = (parseUrl: UrlParser, otpUri: string): NewEntry => {
     type: 'TOTP',
     matchers,
     url: url && url.length <= MAX_URL_LENGTH ? url : null,
-    inputSelector:
-      inputSelector && inputSelector.length <= MAX_INPUT_SELECTOR_LENGTH
-        ? inputSelector
-        : null,
+    inputSelector: sanitiseInputSelector(inputSelector),
     payload: {
       secret,
       algorithm,

@@ -56,6 +56,14 @@ const sanitiseOptionalString = (
 }
 
 /**
+ * Drops an unusable selector before it reaches strict entry validation.
+ * @param value - The selector to check, which may be anything at all.
+ * @returns The selector, or null when it is empty, too long, or contains CR/LF.
+ */
+export const sanitiseInputSelector = (value: unknown): string | null =>
+  sanitiseOptionalString(value, MAX_INPUT_SELECTOR_LENGTH, true)
+
+/**
  * Repairs the matching fields of an entry that may have come from somewhere
  * untrusted: a peer's sync command, or an imported otpauth uri.
  *
@@ -71,11 +79,7 @@ export const sanitiseEntry = (entry: Entry): Entry => {
     ...entry,
     matchers: sanitiseMatchers(loose.matchers),
     url: sanitiseOptionalString(loose.url, MAX_URL_LENGTH),
-    inputSelector: sanitiseOptionalString(
-      loose.inputSelector,
-      MAX_INPUT_SELECTOR_LENGTH,
-      true,
-    ),
+    inputSelector: sanitiseInputSelector(loose.inputSelector),
   }
 }
 

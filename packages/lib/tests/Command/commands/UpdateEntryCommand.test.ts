@@ -62,6 +62,17 @@ describe('UpdateEntryCommand', () => {
     expect(invalidCommand.validate()).toBe(false)
   })
 
+  it('accepts a remote repair whose old entry fails current validation', async () => {
+    const command = UpdateEntryCommand.fromJSON({
+      id: 'repair-command',
+      timestamp: Date.now(),
+      version: '1.0',
+      data: { ...updateData, oldEntry: { ...totpEntry, issuer: '' } },
+    })
+    await command.execute(mockFavaLibMediator)
+    expect(updateEntry).toHaveBeenLastCalledWith(updateData.updatedEntry)
+  })
+
   it('should throw an error when executing with invalid data', async () => {
     const invalidCommand = new UpdateEntryCommand({
       ...updateData,

@@ -4,6 +4,8 @@ import path from 'path'
 import * as openpgp from 'openpgp'
 
 import { FavaLib } from '../../src/main.mjs'
+import type { UrlMatcher } from '../../src/main.mjs'
+import { MAX_INPUT_SELECTOR_LENGTH } from '../../src/utils/matcherValidation.mjs'
 
 import {
   anotherNewTotpEntry,
@@ -375,6 +377,66 @@ describe('ExportImportManager', () => {
         matcherNewTotpEntry.inputSelector,
       )
     })
+
+    it.each<{ matcher: UrlMatcher; url: string }>([
+      ...['a%2Fb', 'a%25b', 'a%b', 'a+b'].map((path) => ({
+        matcher: {
+          type: 'UrlPrefix' as const,
+          value: `https://example.com/${path}`,
+        },
+        url: `https://example.com/${path}`,
+      })),
+      {
+        matcher: {
+          type: 'Regex',
+          value: String.raw`https://example\.com/\d+%2F\w+`,
+        },
+        url: 'https://example.com/123%2Fabc',
+      },
+    ])(
+      'preserves matcher values and behavior for $url',
+      async ({ matcher, url }) => {
+        const originalId = await favaLib.vault.addEntry({
+          ...newTotpEntry,
+          matchers: [matcher],
+        })
+        expect(favaLib.vault.findEntriesForUrl(url)).toEqual([originalId])
+        const exported = await favaLib.exportImport.exportEntries(
+          'text',
+          undefined,
+          true,
+        )
+
+        await clearEntries(favaLib)
+        const importedId = await favaLib.exportImport.importFromUri(exported)
+        expect(favaLib.vault.getEntryMeta(importedId).matchers).toEqual([
+          matcher,
+        ])
+        expect(favaLib.vault.findEntriesForUrl(url)).toEqual([importedId])
+      },
+    )
+
+    it.each([
+      ['LF', '#form\n input', null],
+      ['CR', '#form\r input', null],
+      ['CRLF', '#form\r\n input', null],
+      ['empty', '', null],
+      ['oversized', 'x'.repeat(MAX_INPUT_SELECTOR_LENGTH + 1), null],
+      ['valid', '#form input[name="otp"]', '#form input[name="otp"]'],
+    ])(
+      'imports the secret with a %s selector',
+      async (_label, selector, expected) => {
+        const uri =
+          'otpauth://totp/Example:Account?secret=TESTSECRET&issuer=Example' +
+          `&favaInputSelector=${encodeURIComponent(selector)}`
+        const entryId = await favaLib.exportImport.importFromUri(uri)
+
+        expect(favaLib.vault.getEntryMeta(entryId).inputSelector).toBe(expected)
+        expect(
+          (await favaLib.vault.generateTokenForEntry(entryId, 0)).otp,
+        ).toBe('810290')
+      },
+    )
 
     it('should keep the generated uri parseable and its otp params intact', async () => {
       await clearEntries(favaLib)

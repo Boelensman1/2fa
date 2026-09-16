@@ -48,6 +48,10 @@ const VaultTab: FC<VaultTabProps> = ({ onCopy, onOpen, onLock }) => {
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search vault"
             aria-label="Search vault"
+            /* The popup opens straight onto this tab, and the thing you came
+               for is almost always one entry out of many: taking the caret
+               means clicking the popup and typing is enough to narrow it. */
+            autoFocus
             className="w-full rounded-md border border-gray-300 py-1.5 pr-2 pl-8 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:outline-none"
           />
         </div>

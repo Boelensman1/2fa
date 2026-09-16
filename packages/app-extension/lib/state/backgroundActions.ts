@@ -23,6 +23,8 @@ import type {
   FillOtpFieldActionObject,
   FillResult,
   FillTarget,
+  PopupFillResult,
+  RememberEntrySiteActionObject,
   GetFillTargetActionObject,
   GetMenuEntriesActionObject,
   ListedEntry,
@@ -69,6 +71,7 @@ export const BG_ACTION_KEYS = {
 
   GET_FILL_TARGET: 'GET_FILL_TARGET' as const,
   FILL_DETECTED_FIELD: 'FILL_DETECTED_FIELD' as const,
+  REMEMBER_ENTRY_SITE: 'REMEMBER_ENTRY_SITE' as const,
 }
 
 const send = <T extends BgActionObject, U = void>(arg: T): Promise<U | null> =>
@@ -216,10 +219,25 @@ const actions = {
     target: FillTarget,
     entryId: EntryId,
     confirmed = false,
-  ): Promise<FillResult | null> =>
-    send<FillDetectedFieldActionObject, FillResult>({
+  ): Promise<PopupFillResult | null> =>
+    send<FillDetectedFieldActionObject, PopupFillResult>({
       type: BG_ACTION_KEYS.FILL_DETECTED_FIELD,
       data: { target, entryId, confirmed },
+    }),
+  /**
+   * Accepts the offer a fill came back with.
+   *
+   * The url is the page's, echoed back from the offer rather than looked up
+   * again: the site may well have submitted the form itself the moment the
+   * code was complete, and the background re-derives everything else from it.
+   */
+  rememberEntrySite: (
+    entryId: EntryId,
+    url: string,
+  ): Promise<VaultActionResult | null> =>
+    send<RememberEntrySiteActionObject, VaultActionResult>({
+      type: BG_ACTION_KEYS.REMEMBER_ENTRY_SITE,
+      data: { entryId, url },
     }),
 }
 

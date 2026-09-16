@@ -215,6 +215,27 @@ export interface FillDetectedFieldActionObject {
   data: { target: FillTarget; entryId: EntryId; confirmed?: boolean }
 }
 
+/**
+ * The popup accepting the offer a successful fill came back with.
+ *
+ * The extension's only write into the vault, and the narrowest one that does
+ * the job: it names an entry and a url, and the background derives the matcher
+ * and the site url from that url itself, with `siteOfferFor` -- the same
+ * function that produced the offer. Nothing the caller says can turn into a
+ * matcher the background would not have suggested on its own.
+ *
+ * The url *is* taken from the payload, like `LIST_ENTRIES`'s and unlike
+ * `REPORT_OTP_FIELDS`'s: this action is popup-only -- see
+ * `actionsReachableFromATab` in `background/handleMessage.ts` -- so there is no
+ * untrusted page in the chain to lie about it. It is the page url the offer
+ * named, echoed back rather than re-read, because a page that submitted itself
+ * the moment the code was complete has already navigated by now.
+ */
+export interface RememberEntrySiteActionObject {
+  type: typeof BG_ACTION_KEYS.REMEMBER_ENTRY_SITE
+  data: { entryId: EntryId; url: string }
+}
+
 export interface GetPasswordStrengthActionObject {
   type: typeof BG_ACTION_KEYS.GET_PASSWORD_STRENGTH
   data: { password: Password }
@@ -241,5 +262,6 @@ export type BgActionObject =
   | ListEntriesActionObject
   | GetFillTargetActionObject
   | FillDetectedFieldActionObject
+  | RememberEntrySiteActionObject
   | GetTokenActionObject
   | GetPasswordStrengthActionObject

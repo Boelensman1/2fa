@@ -20,6 +20,7 @@ import type {
   VaultStatus,
   VaultSummary,
 } from '../../types/VaultState'
+import type { SiteOffer } from '../../types/Autofill'
 import type Db from './Db'
 
 const log = new Logger('background-script/VaultContainer')
@@ -333,6 +334,53 @@ class VaultContainer {
     return (this.favaLib?.vault.findEntryMetasForUrl(url) ?? []).map(
       toListedEntry,
     )
+  }
+
+  /**
+   * One entry, for a question that is about that entry rather than a list.
+   *
+   * Null rather than a throw for an id that is not there: an entry can be
+   * deleted on another device while the popup is holding a row for it, and
+   * that is not an error worth a message.
+   * @param entryId - The entry to look up.
+   * @returns The entry, or null when the vault is locked or does not have it.
+   */
+  entryFor(entryId: EntryId): ListedEntry | null {
+    if (!this.isUnlocked) return null
+    try {
+      const meta = this.favaLib?.vault.getEntryMeta(entryId)
+      return meta ? toListedEntry(meta) : null
+    } catch {
+      return null
+    }
+  }
+
+  /**
+   * Records what a fill taught us: one more matcher, and the site url when the
+   * entry had none.
+   *
+   * The only write this package makes into the vault. `updateEntry` replaces
+   * the matcher list rather than merging into it, so the append is done here;
+   * the encrypted save and the sync push both fall out of that one call.
+   *
+   * The offer is the background's own (`siteOfferFor`), never the popup's
+   * word for it -- see `REMEMBER_ENTRY_SITE` in `handleMessage`.
+   * @param entryId - The entry to extend.
+   * @param offer - What to add, as the background decided it.
+   */
+  async addSiteToEntry(entryId: EntryId, offer: SiteOffer): Promise<void> {
+    const favaLib = this.favaLib
+    if (!favaLib || this.pairing) throw new Error('The vault is locked')
+
+    const meta = favaLib.vault.getEntryMeta(entryId)
+    await favaLib.vault.updateEntry(entryId, {
+      matchers: [...meta.matchers, offer.matcher],
+      // `url` is display-only and never matched on, so this changes nothing
+      // about where the entry is offered. `?? meta.url` rather than a
+      // conditional spread because the offer already decided: it carries a
+      // url only when the entry had none.
+      url: offer.siteUrl ?? meta.url,
+    })
   }
 
   /**

@@ -1,3 +1,5 @@
+import type { UrlMatcher } from 'favalib'
+
 import type { OtpConfidence } from '../detect'
 
 /**
@@ -71,6 +73,55 @@ export type FillReason =
 export interface FillResult {
   filled: boolean
   reason?: FillReason
+}
+
+/**
+ * What a successful popup fill suggests writing down about the page.
+ *
+ * A fill the user just performed is the best evidence there is that the entry
+ * belongs to the page, and the popup offers every entry for any site -- so the
+ * entry that was filled very often does not claim the page at all. This is the
+ * question that follows: keep it?
+ *
+ * The matcher is for the *page's* host, never the frame that was filled. A
+ * matcher naming an embedded third party's origin would make
+ * `isTrustedFrame`'s `entryClaimsFrame` branch true for it from then on and
+ * retire the `FillConfirm` question permanently -- turning one "fill it
+ * anyway" into a standing trust grant. Saying yes here must not be able to do
+ * that.
+ */
+export interface SiteOffer {
+  /**
+   * The page url the offer is about, as the background resolved it.
+   *
+   * Carried so the popup can hand it straight back when the user accepts. By
+   * then the page may well have submitted itself and navigated -- plenty of
+   * sites do, the moment the code is complete -- so re-reading it at that
+   * point would be reading a different page.
+   */
+  pageUrl: string
+  /** `suggestMatchersForUrl`'s suggestion: a `BaseDomain` of the page's host. */
+  matcher: UrlMatcher
+  /**
+   * The url to record as the entry's site, or null to leave it alone.
+   *
+   * Set only when the entry has none. `EntryMeta.url` is shown to the user and
+   * never matched on, so this changes nothing about where the entry is
+   * offered -- `matcher` is the half that does.
+   */
+  siteUrl: string | null
+}
+
+/**
+ * What the popup gets back from a fill.
+ *
+ * `remember` is deliberately not a field on `FillResult`. That type travels to
+ * the menu iframe, which is reachable from a tab; this half is the popup's and
+ * is answered by an action the allowlist keeps a tab away from.
+ */
+export interface PopupFillResult extends FillResult {
+  /** Set only on a fill that succeeded and taught us something. */
+  remember?: SiteOffer | null
 }
 
 /** What the menu iframe may post up to the content script. */

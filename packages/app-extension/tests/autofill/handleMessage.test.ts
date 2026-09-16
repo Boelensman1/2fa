@@ -80,6 +80,9 @@ const entryMeta = (
 /** A spy, so a test can assert that no code was minted at all. */
 const generateTokenForEntry = vi.fn<() => Promise<{ otp: string }>>()
 
+/** The only write this package makes into the vault. */
+const updateEntry = vi.fn<(id: string, updates: unknown) => Promise<unknown>>()
+
 /** Stands in for an unlocked favalib, since only the selection is under test. */
 const fakeVault = (entries: EntryMetaForUrl[], otp = '123456') => ({
   meta: { deviceId: 'd', deviceFriendlyName: 'n' },
@@ -90,6 +93,17 @@ const fakeVault = (entries: EntryMetaForUrl[], otp = '123456') => ({
       url.startsWith('https://github.com') ? entries : [],
     listEntriesMetas: () => entries,
     searchEntriesMetas: () => entries,
+    getEntryMeta: (id: string) => {
+      const found = entries.find((entry) => entry.id === id)
+      // favalib throws an EntryNotFoundError here, and the callers under test
+      // are the ones that have to survive it.
+      if (!found) throw new Error(`no entry ${id}`)
+      return found
+    },
+    updateEntry: (id: string, updates: unknown) => {
+      updateEntry.mockResolvedValue(undefined)
+      return updateEntry(id, updates)
+    },
     generateTokenForEntry: () => {
       generateTokenForEntry.mockResolvedValue({ otp })
       return generateTokenForEntry()
@@ -174,6 +188,7 @@ beforeEach(async () => {
   store.clear()
   sendMessage.mockReset()
   generateTokenForEntry.mockReset()
+  updateEntry.mockReset()
   // The fill path sends two different ct actions and reads both answers, so a
   // single canned reply will not do.
   sendMessage.mockImplementation((_tabId: number, message: { type: string }) =>
@@ -471,6 +486,10 @@ describe('who may send what', () => {
     { type: BG_ACTION_KEYS.RESET_VAULT },
     { type: BG_ACTION_KEYS.UNLOCK_VAULT, data: { password: 'hunter2' } },
     { type: BG_ACTION_KEYS.GET_FILL_TARGET, data: { tabId: 7 } },
+    {
+      type: BG_ACTION_KEYS.REMEMBER_ENTRY_SITE,
+      data: { entryId: 'a', url: 'https://elsewhere.example/login' },
+    },
   ]
 
   it.each(tabOnly)('refuses $type from the menu iframe', async (action) => {
@@ -652,7 +671,9 @@ describe('FILL_DETECTED_FIELD', () => {
     unlockWith([entryMeta('a')], '987654')
     const target = await openOn(pageSender)
 
-    expect(await fill(target)).toEqual({ filled: true })
+    // `remember: null` because this entry does claim github.com; the offer has
+    // its own tests below.
+    expect(await fill(target)).toEqual({ filled: true, remember: null })
 
     const [confirm, deliver] = sendMessage.mock.calls as [
       [number, { type: string }, undefined],
@@ -681,7 +702,72 @@ describe('FILL_DETECTED_FIELD', () => {
       url: 'https://elsewhere.example/login',
     })
 
-    expect(await fill(target)).toEqual({ filled: true })
+    expect(await fill(target)).toMatchObject({ filled: true })
+  })
+
+  /**
+   * The other half of that: the fill is the evidence, so the answer comes back
+   * with the offer to write it down.
+   */
+  it('offers to remember a page the entry does not claim', async () => {
+    unlockWith([entryMeta('a')], '987654')
+    const target = await openOn({
+      ...pageSender,
+      url: 'https://elsewhere.example/login?session=abc123',
+    })
+
+    expect(await fill(target)).toEqual({
+      filled: true,
+      remember: {
+        pageUrl: 'https://elsewhere.example/login?session=abc123',
+        matcher: { type: 'BaseDomain', value: 'elsewhere.example' },
+        // Origin and path. The session id is not kept, and would be synced to
+        // every device the user has if it were.
+        siteUrl: 'https://elsewhere.example/login',
+      },
+    })
+  })
+
+  it('leaves a site the entry already has alone', async () => {
+    unlockWith(
+      [entryMeta('a', { url: 'https://elsewhere.example/' })],
+      '987654',
+    )
+    const target = await openOn({
+      ...pageSender,
+      url: 'https://elsewhere.example/login',
+    })
+
+    expect(await fill(target)).toMatchObject({ remember: { siteUrl: null } })
+  })
+
+  /**
+   * The rule the offer must not break. A matcher for the *frame's* host would
+   * make `isTrustedFrame` vouch for that third party from then on, turning one
+   * "fill it anyway" into a standing grant -- so the offer names the page.
+   */
+  it('offers the page, never the embedded frame it filled', async () => {
+    unlockWith([entryMeta('a')], '987654')
+    await reportFrom({ ...pageSender, url: 'https://elsewhere.example/' }, [])
+    const target = await openOn(widgetSender)
+
+    expect(await fill(target, 'a', true)).toMatchObject({
+      remember: {
+        pageUrl: 'https://elsewhere.example/',
+        matcher: { type: 'BaseDomain', value: 'elsewhere.example' },
+      },
+    })
+  })
+
+  /** Nothing to name, so nothing to offer. */
+  it('offers nothing when the top frame has not reported', async () => {
+    unlockWith([entryMeta('a')], '987654')
+    const target = await openOn({
+      ...widgetSender,
+      url: 'https://github.com/otp-widget',
+    })
+
+    expect(await fill(target)).toEqual({ filled: true, remember: null })
   })
 
   /**
@@ -745,7 +831,10 @@ describe('FILL_DETECTED_FIELD', () => {
     await reportFrom(pageSender, [])
     const target = await openOn(widgetSender)
 
-    expect(await fill(target, 'a', true)).toEqual({ filled: true })
+    expect(await fill(target, 'a', true)).toEqual({
+      filled: true,
+      remember: null,
+    })
   })
 
   /** The hosted second-factor widget: another origin, but one the entry names. */
@@ -757,6 +846,86 @@ describe('FILL_DETECTED_FIELD', () => {
       url: 'https://github.com/otp-widget',
     })
 
-    expect(await fill(target)).toEqual({ filled: true })
+    expect(await fill(target)).toEqual({ filled: true, remember: null })
+  })
+})
+
+/**
+ * The extension's only write into the vault.
+ *
+ * Every case here is about the same thing: what the popup sends is a url and
+ * an id, and the background decides everything else -- with the same function
+ * that built the offer, so what is saved is what was shown.
+ */
+describe('REMEMBER_ENTRY_SITE', () => {
+  const remember = (url: string, entryId = 'a') =>
+    send(
+      {
+        type: BG_ACTION_KEYS.REMEMBER_ENTRY_SITE,
+        data: { entryId: entryId as EntryId, url },
+      },
+      popupSender,
+    )
+
+  it('appends the matcher and fills in the site', async () => {
+    unlockWith([entryMeta('a')])
+
+    expect(
+      await remember('https://elsewhere.example/login?session=abc'),
+    ).toEqual({ ok: true, error: null })
+    // Appended, not replaced: `updateEntry` takes the whole list.
+    expect(updateEntry).toHaveBeenCalledWith('a', {
+      matchers: [
+        { type: 'BaseDomain', value: 'github.com' },
+        { type: 'BaseDomain', value: 'elsewhere.example' },
+      ],
+      url: 'https://elsewhere.example/login',
+    })
+  })
+
+  it('does not overwrite a site the entry already has', async () => {
+    unlockWith([entryMeta('a', { url: 'https://typed-by-hand.example/' })])
+
+    await remember('https://elsewhere.example/login')
+
+    expect(updateEntry).toHaveBeenCalledWith(
+      'a',
+      expect.objectContaining({ url: 'https://typed-by-hand.example/' }),
+    )
+  })
+
+  /**
+   * A no-op success rather than an error: another device may have synced the
+   * matcher in while the prompt was on screen, and the user asked for a state
+   * that is now true.
+   */
+  it('writes nothing when the entry already claims the page', async () => {
+    unlockWith([entryMeta('a')])
+
+    expect(await remember('https://github.com/2fa')).toEqual({
+      ok: true,
+      error: null,
+    })
+    expect(updateEntry).not.toHaveBeenCalled()
+  })
+
+  it('writes nothing for an entry that is no longer there', async () => {
+    unlockWith([entryMeta('a')])
+
+    expect(await remember('https://elsewhere.example/login', 'gone')).toEqual({
+      ok: true,
+      error: null,
+    })
+    expect(updateEntry).not.toHaveBeenCalled()
+  })
+
+  it('says so rather than silently doing nothing on a locked vault', async () => {
+    loseTheKeys()
+
+    expect(await remember('https://elsewhere.example/login')).toEqual({
+      ok: false,
+      error: 'The vault is locked',
+    })
+    expect(updateEntry).not.toHaveBeenCalled()
   })
 })

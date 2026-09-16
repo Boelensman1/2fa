@@ -13,10 +13,12 @@ import type {
   FillResult,
   OtpFieldRegistry,
   OtpFieldReport,
+  SiteOffer,
   StateManager,
   VaultActionResult,
   VaultContainer,
 } from '../types'
+import type { EntryId } from 'favalib'
 
 const log = new Logger('background-script/handleMessage')
 
@@ -25,6 +27,7 @@ import { setVerboseLogging } from '../classes/Logger'
 import { describeVaultError } from '../ioc/entities/VaultContainer'
 
 import { isTrustedFrame, pickFillTarget, stillHoldsTarget } from './fillTarget'
+import { siteOfferFor } from './rememberSite'
 import handleDebugCommand from './handleDebugCommand'
 import { whenInitFinished } from './init'
 
@@ -387,6 +390,10 @@ async function unboundHandleMessage(
       const report = otpFieldRegistry.forFrame(target.tabId, target.frameId)
       if (!stillHoldsTarget(report, target)) return failed('stale-target')
 
+      // The top frame's own report, not the popup's idea of the tab url:
+      // browser-supplied, and it needs no permission we do not have.
+      const pageUrl = otpFieldRegistry.forFrame(target.tabId, 0)?.url ?? null
+
       // Bitwarden's rule for manual autofill, and the one place this feature
       // says no. *Which entry* is unrestricted on purpose -- the user picked
       // it, and reaching an entry whose matchers do not claim the site is the
@@ -395,9 +402,7 @@ async function unboundHandleMessage(
       const trusted = isTrustedFrame({
         frameId: report.frameId,
         frameUrl: report.url,
-        // The top frame's own report, not the popup's idea of the tab url:
-        // browser-supplied, and it needs no permission we do not have.
-        pageUrl: otpFieldRegistry.forFrame(target.tabId, 0)?.url ?? null,
+        pageUrl,
         entryClaimsFrame: vaultContainer
           .entriesForUrl(report.url)
           .some((entry) => entry.id === entryId),
@@ -425,7 +430,35 @@ async function unboundHandleMessage(
         { fieldId: target.fieldId, otp },
       )
 
-      return result ?? failed('no-frame')
+      if (!result) return failed('no-frame')
+
+      // The fill is the evidence: the user picked this entry for this page, and
+      // the popup offers every entry for any site, so very often it does not
+      // claim the page at all. Asked about the *page*, never the frame that was
+      // filled -- see `SiteOffer`.
+      return {
+        ...result,
+        remember: result.filled
+          ? entrySiteOffer(vaultContainer, entryId, pageUrl)
+          : null,
+      }
+    }
+
+    case BG_ACTION_KEYS.REMEMBER_ENTRY_SITE: {
+      const { entryId, url } = action.data
+      if (!vaultContainer.isUnlocked) {
+        return { ok: false, error: 'The vault is locked' }
+      }
+
+      return attempt(async () => {
+        // Recomputed rather than taken from the popup's answer, by the same
+        // function that built the offer: what is written is then what was
+        // offered, whatever the caller sent. A null offer is a no-op success --
+        // another device may have synced the matcher in while the prompt was
+        // up, and there is nothing left to do and nothing wrong.
+        const offer = entrySiteOffer(vaultContainer, entryId, url)
+        if (offer) await vaultContainer.addSiteToEntry(entryId, offer)
+      })
     }
 
     case BG_ACTION_KEYS.GET_PASSWORD_STRENGTH: {
@@ -438,6 +471,36 @@ const failed = (reason: FillResult['reason']): FillResult => ({
   filled: false,
   reason,
 })
+
+/**
+ * What a fill on this page suggests writing onto this entry, if anything.
+ *
+ * Here rather than in `VaultContainer` so that the rule stays in the pure,
+ * tested module and the vault stays a vault: the container answers "does this
+ * entry claim that url" and "what are its matchers", and `siteOfferFor`
+ * decides. Called twice -- once for the offer, once for the write.
+ * @param vaultContainer - The unlocked vault.
+ * @param entryId - The entry that was filled.
+ * @param pageUrl - The top frame's url, or null when it has not reported.
+ * @returns The offer, or null when there is nothing to ask about.
+ */
+const entrySiteOffer = (
+  vaultContainer: VaultContainer,
+  entryId: EntryId,
+  pageUrl: string | null,
+): SiteOffer | null => {
+  const entry = vaultContainer.entryFor(entryId)
+  if (!entry) return null
+
+  return siteOfferFor({
+    pageUrl,
+    entryClaimsPage:
+      pageUrl !== null &&
+      vaultContainer.entriesForUrl(pageUrl).some((it) => it.id === entryId),
+    matchers: entry.matchers,
+    siteUrl: entry.url,
+  })
+}
 
 /**
  * Runs a vault action and reports its outcome instead of throwing.

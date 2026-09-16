@@ -316,7 +316,8 @@ It offers **every** entry, matching site or not. That is the difference from
 the menu and the reason this exists: an entry the user has not given a matcher
 yet, or a second-factor step that lives on a different host, can otherwise
 never be filled at all. Site matches still sort to the top, in the "For this
-site" group that was already there.
+site" group that was already there -- and a fill that was not one of them ends
+in an offer to make it one next time ([below](#offering-to-remember-the-site)).
 
 ### Discovery is best-effort; correctness is at fill time
 
@@ -394,6 +395,44 @@ the _receiving_ side of a message gets a browser-supplied `sender.url`, so only
 the background can learn which frame an answer came from and what origin that
 frame is. A popup-side scan would have to take a frame's word for its own
 identity, which is the thing this whole design refuses.
+
+### Offering to remember the site
+
+A popup fill very often lands on a page the entry does not claim -- that is the
+feature. So a fill that succeeded comes back carrying a `SiteOffer` when it
+did, and the popup asks once, instead of closing: keep it? Yes appends the
+`BaseDomain` matcher `suggestMatchersForUrl` suggests, and fills in
+`EntryMeta.url` when the entry has none -- origin and path, never the query,
+because a second-factor url routinely carries a session id and that string is
+stored in the vault and synced to every device.
+
+**The matcher is for the page's host, never the frame that was filled.** A
+matcher naming an embedded third party's origin would make `isTrustedFrame`'s
+`entryClaimsFrame` branch true for that origin from then on, retiring the
+`FillConfirm` question permanently -- one "fill it anyway" turned into a
+standing trust grant. `RememberSite` says that out loud rather than leaving it
+to be discovered.
+
+The rule is `background/rememberSite.ts`: pure, beside `fillTarget.ts` for the
+reason that file gives, and shaped like `isTrustedFrame` -- the vault question
+(`entryClaimsPage`) is answered by the caller. It is called **twice**, and that
+is the point. `REMEMBER_ENTRY_SITE` carries an entry id and a url and nothing
+else; the background re-derives the matcher and the site url with the same
+function that built the offer, so what is written is what was shown.
+
+The url is echoed back from the offer rather than re-read from the registry,
+because plenty of sites submit themselves the moment the code is complete: by
+the time the user answers, frame 0 may be reporting the page _after_ login.
+
+This is the package's first write into the vault. `VaultContainer.addSiteToEntry`
+is the only mutator there is, and `updateEntry` replaces the matcher list
+rather than merging into it, so the append happens there; the encrypted save
+and the sync push both fall out of that one call.
+
+It also means the popup's auto-close waits on an answer. Closing behind the
+toast exists because the popup is standing between the user and the page's own
+submit button, and the offer is the one thing worth that delay. An unanswered
+offer is a no: clicking the page dismisses the popup and drops it.
 
 ## Development commands
 

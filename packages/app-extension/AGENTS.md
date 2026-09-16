@@ -421,6 +421,34 @@ first and delegates installs to the repo root.
 - Never run `pnpm install` by hand; the `node_modules` target delegates to the
   repo root, which runs `pnpm install --frozen-lockfile`.
 
+### The inline menu cannot work under `make dev` on Firefox
+
+Verified on dash.bunny.net, Firefox, 2026-09-16: the menu mounts, is placed
+correctly and its iframe fires `load`, and the panel is blank.
+
+In dev mode WXT leaves the html entrypoints loading their modules from
+`http://localhost:3000`. That is fine for the popup, whose top-level document
+_is_ the extension. The menu is an extension document framed by a web page, so
+its **top-level site is the page** — and Firefox's Local Network Access policy
+auto-denies a request to loopback from a document whose top-level site is
+public. Every module the menu needs is refused:
+
+```
+Local Network Access permission required: top-level site
+"https://dash.bunny.net/...", initiator "moz-extension://<uuid>/menu.html#token=...",
+attempting to access target "http://localhost:3000/entrypoints/menu/main.tsx"
+... prompt action: auto_deny
+```
+
+Nothing on the content script's side can see this: the frame still fires `load`
+for the blank document it was left with, and the violations are reported in the
+_page's_ console, not the extension's.
+
+So test the inline menu from a production build — `make dist/firefox`, then
+about:debugging → Load Temporary Add-on → `.output/firefox-mv2/manifest.json` —
+where every script is bundled into the extension and nothing reaches for
+localhost. `make dev` remains fine for the popup, the background and detection.
+
 ## Package-specific configuration
 
 Unlike the other packages, this one keeps its own `eslint.config.mjs` (built on

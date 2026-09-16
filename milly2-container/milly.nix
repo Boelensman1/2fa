@@ -92,6 +92,7 @@ in
       pkg-config
       stdenv.cc # node-gyp needs a C/C++ toolchain; the base image has none
       postgresql_17 # psql/createdb for setup.command
+      zip # packages/app-extension: the firefox source-upload zip target
     ];
 
     node.enable = true;

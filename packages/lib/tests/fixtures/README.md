@@ -47,6 +47,11 @@ timestamp. Both expected values were cross-checked against an independent
 RFC 6238 implementation, so the test pins genuine correctness end to end rather
 than merely agreeing with itself.
 
+This fixture's password and salt are reused as the argon2id test vector in
+`tests/CryptoProviders/kdf-vectors.test.ts`, on purpose: that vector isolates
+the KDF step of this very vault, so when both go red the vector says which layer
+moved. Changing either file means looking at the other.
+
 `deviceId` is `91b8a8bf-3450-4e68-94db-4d6051901ffa` and `sync.serverUrl` is
 `undefined` — it was generated without a `serverUrl`, so no `SyncManager` was
 ever constructed and neither generating nor reopening it touches a socket.

@@ -25,7 +25,7 @@ file as work lands, and change its `Status:` line and the row here to match.
 | [03](03-storage-versioning.md)      | `storageVersion` is write-only                | weak                     | P0       | done               |
 | [04](04-key-rotation.md)            | No rotation; `changePassword` revokes nothing | weak                     | P1       | open               |
 | [05](05-load-path-validation.md)    | Load path skips the entry validators          | weak                     | P1       | open               |
-| [06](06-crypto-test-coverage.md)    | Nothing pins the KDF or the stored format     | weak                     | P1       | open               |
+| [06](06-crypto-test-coverage.md)    | Nothing pins the KDF or the stored format     | weak                     | P1       | done               |
 | [07](07-session-key-api.md)         | Extension stores the raw master password      | untidy                   | P2       | open               |
 | [08](08-whole-vault-blob.md)        | Whole-vault blob vs per-item                  | **sound**                | —        | closed — no action |
 | [09](09-iv-handling.md)             | IV handling                                   | **sound**                | —        | closed — no action |
@@ -63,9 +63,18 @@ is now satisfied**: the gate landed 2026-09-16, and it brought item 2 of `06`
 (the v1 fixture vault) with it. The format itself is still `storageVersion: 1`
 — `01` and `02` are what bump it to `2`, and they still ship together.
 
-`06`'s remaining items (a KDF test vector, and unmocking `encryptSymmetric` in a
-`PersistentStorageManager` test) should still land before `01`. After that,
-`01` and `02` ship together as `storageVersion: 2`, then `04`, `05`, `07`.
+**`06` is now also done** (2026-09-16): `tests/CryptoProviders/kdf-vectors.test.ts`
+pins the argon2id parameters against values independently reproduced with the
+reference implementation, and `PersistentStorageManager`'s identity mock of
+`encryptSymmetric` is gone, so the stored `base64(iv) + ":" + base64(ct)`
+encoding is asserted directly. Changing a KDF parameter or the envelope now
+reddens the suite.
+
+Nothing blocks `01` any more. `01` and `02` ship together as
+`storageVersion: 2`, then `04`, `05`, `07`. Whoever lands `01` must move the
+policy assertion in `kdf-vectors.test.ts` to a v2 vector and leave the v1 anchor
+beside it — the v1 parameters still have to open every vault written before the
+change.
 
 ## The verified hierarchy
 

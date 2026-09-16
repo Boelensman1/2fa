@@ -7,6 +7,7 @@ import {
   beforeAll,
   type Mock,
 } from 'vitest'
+import { base64ToUint8Array } from 'uint8array-extras'
 import {
   getFavaLibVaultCreationUtils,
   FavaLib,
@@ -16,6 +17,7 @@ import {
   EncryptedPrivateKey,
   EncryptedSymmetricKey,
   STORAGE_VERSION,
+  type SymmetricKey,
 } from '../../src/main.mjs'
 import { nodeProviders } from '../../src/platformProviders/node/index.mjs'
 import {
@@ -42,6 +44,7 @@ describe('PersistentStorageManager', () => {
   let salt: Salt
   let encryptedPrivateKey: EncryptedPrivateKey
   let encryptedSymmetricKey: EncryptedSymmetricKey
+  let symmetricKey: SymmetricKey
 
   beforeAll(async () => {
     const result = await createFavaLibForTests()
@@ -50,6 +53,7 @@ describe('PersistentStorageManager', () => {
     salt = result.salt
     encryptedPrivateKey = result.encryptedPrivateKey
     encryptedSymmetricKey = result.encryptedSymmetricKey
+    symmetricKey = result.symmetricKey
 
     // eslint-disable-next-line @typescript-eslint/dot-notation
     persistentStorageManager = favaLib['persistentStorageManager']
@@ -66,17 +70,11 @@ describe('PersistentStorageManager', () => {
     // @ts-expect-error: Using private property for testing
     const internalCryptoLib = persistentStorageManager.cryptoLib
 
-    // Store original implementations
-    const originalEncryptSymmetric = internalCryptoLib.encryptSymmetric
-
-    // mockEncryptSymmetric for easier testing
-    const mockEncryptSymmetric = vi
-      .fn()
-      .mockImplementation((_key: string, vaultState: string) => {
-        return vaultState
-      })
-    // Override the implementation on the internal cryptoLib
-    internalCryptoLib.encryptSymmetric = mockEncryptSymmetric
+    // A spy, not a stub: vitest's spyOn calls through, so everything below is
+    // asserted against the real ciphertext. This used to be mocked to the
+    // identity function, which left the stored encoding asserted nowhere --
+    // see key-hierarchy-review/06-crypto-test-coverage.md.
+    const encryptSymmetricSpy = vi.spyOn(internalCryptoLib, 'encryptSymmetric')
 
     // @ts-expect-error: Using private property for testing
     const mediator = persistentStorageManager.mediator
@@ -89,7 +87,7 @@ describe('PersistentStorageManager', () => {
 
     const locked = await persistentStorageManager.getLockedRepresentation()
 
-    expect(mockEncryptSymmetric).toHaveBeenCalledOnce()
+    expect(encryptSymmetricSpy).toHaveBeenCalledOnce()
 
     // should be json
     expect(locked).toMatch(/^{/)
@@ -105,10 +103,24 @@ describe('PersistentStorageManager', () => {
       encryptedVaultState: expect.any(String) as string,
     })
 
-    expect(parsed.encryptedVaultState).toMatch(/^{/)
-    const parsedVaultState = JSON.parse(
+    // The stored envelope is base64(iv) + ":" + base64(ciphertext), with a
+    // fresh 16-byte IV per encryption and AES-256-CBC's 16-byte block size.
+    const envelope = parsed.encryptedVaultState.split(':')
+    expect(envelope).toHaveLength(2)
+    const [iv, cipherText] = envelope
+    expect(base64ToUint8Array(iv)).toHaveLength(16)
+    const cipherBytes = base64ToUint8Array(cipherText)
+    expect(cipherBytes.length).toBeGreaterThan(0)
+    expect(cipherBytes.length % 16).toBe(0)
+
+    // And it decrypts, with the vault's own symmetric key, back to the state.
+    const cryptoLib = new nodeProviders.CryptoLib()
+    const vaultStateString = await cryptoLib.decryptSymmetric(
+      symmetricKey,
       parsed.encryptedVaultState,
-    ) as VaultState
+    )
+    expect(vaultStateString).toMatch(/^{/)
+    const parsedVaultState = JSON.parse(vaultStateString) as VaultState
     expect(parsedVaultState).toEqual({
       deviceId: favaLib.meta.deviceId,
       sync: {
@@ -137,8 +149,7 @@ describe('PersistentStorageManager', () => {
       ],
     })
 
-    // Restore original implementations
-    internalCryptoLib.encryptSymmetric = originalEncryptSymmetric
+    encryptSymmetricSpy.mockRestore()
     mediator.unRegisterComponent('syncManager')
   })
 

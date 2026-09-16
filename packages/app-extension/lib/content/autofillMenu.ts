@@ -49,6 +49,20 @@ export interface AutofillMenu {
   focused: (target: EventTarget | null) => void
   /** Call when the field's frame should stop offering: lock, navigation, teardown. */
   close: () => void
+  /**
+   * Swallows the next `focusin`, if one comes.
+   *
+   * A fill driven from the popup ends by focusing the field so the user can
+   * press Enter -- but the field was never focused to begin with, because the
+   * user was looking at the popup. That `focus()` fires `focusin`, which is
+   * what opens this menu, so without this the popup closes and an offer menu
+   * pops up under the field that was just filled.
+   *
+   * Self-clearing on a timeout, because `focus()` fires synchronously or not
+   * at all: if the element already had focus no event comes, and a flag left
+   * armed would eat the user's next genuine focus instead.
+   */
+  ignoreFocusOnce: () => void
   /** Whether a menu is on screen right now. */
   isOpen: () => boolean
   stop: () => void
@@ -102,6 +116,8 @@ export const createAutofillMenu = (
   let lastKey = ''
   /** Bumped on every open, so a slow reply for a field we have left is dropped. */
   let generation = 0
+  /** Set by a popup-driven fill; see `ignoreFocusOnce`. */
+  let ignoreNextFocus = false
 
   const close = () => {
     generation += 1
@@ -196,6 +212,10 @@ export const createAutofillMenu = (
   }
 
   const focused = (target: EventTarget | null) => {
+    if (ignoreNextFocus) {
+      ignoreNextFocus = false
+      return
+    }
     if (!(target instanceof Element)) return
 
     const handle = handleForElement(target)
@@ -256,6 +276,12 @@ export const createAutofillMenu = (
   return {
     focused,
     close,
+    ignoreFocusOnce: () => {
+      ignoreNextFocus = true
+      setTimeout(() => {
+        ignoreNextFocus = false
+      }, 0)
+    },
     isOpen: () => host !== null,
     stop: () => {
       close()

@@ -3,8 +3,11 @@ import { useCallback, useRef, useState } from 'react'
 
 import { bgActions } from '@/lib/state'
 import Logger from '@/lib/classes/Logger'
-import type { ListedEntry, VaultSummary } from '@/lib/types'
+import type { FillTarget, ListedEntry, VaultSummary } from '@/lib/types'
+import { useActiveTab, useFillTarget } from '../../hooks'
+import { describeFillFailure } from '../../fillMessages'
 import EntryDetail from '../EntryDetail'
+import FillConfirm from '../FillConfirm'
 import SettingsTab from '../SettingsTab'
 import TabBar, { type TabId } from '../TabBar'
 import Toast from '../Toast'
@@ -26,6 +29,19 @@ const AuthenticatedApp: FC<AuthenticatedAppProps> = ({
 }) => {
   const [tab, setTab] = useState<TabId>('vault')
   const [selected, setSelected] = useState<ListedEntry | null>(null)
+  /**
+   * Set when a fill needs the user to look at the frame it is going into.
+   *
+   * Holds the target as well as the entry, frozen. `fillTarget` is polled, so
+   * it can change under an open confirmation -- and the user would then be
+   * saying yes to a url they were never shown.
+   */
+  const [confirming, setConfirming] = useState<{
+    entry: ListedEntry
+    target: FillTarget
+  } | null>(null)
+  const activeTab = useActiveTab()
+  const fillTarget = useFillTarget(activeTab?.id)
   const [toast, setToast] = useState<{
     message: string
     tone: 'success' | 'error'
@@ -70,6 +86,67 @@ const AuthenticatedApp: FC<AuthenticatedAppProps> = ({
 
   const onCopy = useCallback((entry: ListedEntry) => void copy(entry), [copy])
 
+  /**
+   * Types a code into the field the background found on the page.
+   *
+   * The entry is whichever one the user clicked, matching site or not -- that
+   * is the whole point of filling from here rather than from the inline menu,
+   * which only ever offers what the frame's url claims.
+   *
+   * `untrusted-frame` is not a failure. It is the background saying the field
+   * lives in an embedded frame this entry does not vouch for, and that it has
+   * generated nothing and will not until asked twice. Everything else is over.
+   */
+  const fill = useCallback(
+    async (
+      entry: ListedEntry,
+      target: FillTarget | null,
+      confirmed = false,
+    ) => {
+      if (!target) return
+      try {
+        const result = await bgActions.fillDetectedField(
+          target,
+          entry.id,
+          confirmed,
+        )
+
+        if (result?.reason === 'untrusted-frame') {
+          setConfirming({ entry, target })
+          return
+        }
+
+        setConfirming(null)
+
+        if (result?.filled === true) {
+          // `partial` still filled -- the code and the row of boxes were
+          // different lengths -- so it closes like any other success, but says
+          // what happened rather than claiming everything was fine.
+          showToast(
+            result.reason ? describeFillFailure(result.reason) : 'Code filled',
+          )
+          // Close behind the toast: the code is in the field, and the popup is
+          // now standing between the user and the button they are about to
+          // press. Deliberately not immediate, so "did that work?" has an
+          // answer other than the popup vanishing.
+          setTimeout(() => window.close(), TOAST_MS)
+          return
+        }
+
+        showToast(describeFillFailure(result?.reason), 'error')
+      } catch (error) {
+        log.error(error instanceof Error ? error : new Error(String(error)))
+        showToast('Could not fill that field', 'error')
+      }
+    },
+    [showToast],
+  )
+
+  const onFill = useCallback(
+    (entry: ListedEntry) => void fill(entry, fillTarget),
+    [fill, fillTarget],
+  )
+
   const lock = () => {
     void bgActions.lockVault().then(onVaultChanged)
   }
@@ -81,14 +158,32 @@ const AuthenticatedApp: FC<AuthenticatedAppProps> = ({
   return (
     <div className="flex h-[32rem] flex-col bg-white">
       <div className="min-h-0 flex-1">
-        {selected ? (
+        {confirming ? (
+          <FillConfirm
+            entry={confirming.entry}
+            target={confirming.target}
+            onConfirm={() =>
+              void fill(confirming.entry, confirming.target, true)
+            }
+            onCancel={() => setConfirming(null)}
+          />
+        ) : selected ? (
           <EntryDetail
             entry={selected}
             onCopy={onCopy}
+            onFill={fillTarget ? onFill : null}
+            fillHost={fillTarget?.host ?? null}
             onBack={() => setSelected(null)}
           />
         ) : tab === 'vault' ? (
-          <VaultTab onCopy={onCopy} onOpen={setSelected} onLock={lock} />
+          <VaultTab
+            url={activeTab?.url}
+            fillTarget={fillTarget}
+            onCopy={onCopy}
+            onOpen={setSelected}
+            onFill={onFill}
+            onLock={lock}
+          />
         ) : (
           <SettingsTab summary={summary} onLock={lock} onReset={reset} />
         )}
@@ -96,9 +191,12 @@ const AuthenticatedApp: FC<AuthenticatedAppProps> = ({
 
       <Toast message={toast?.message ?? null} tone={toast?.tone} />
 
-      {/* Hidden behind the detail view: it is a drill-down from the vault tab,
-          not a third destination, so a highlighted tab there would lie. */}
-      {selected ? null : <TabBar active={tab} onChange={setTab} />}
+      {/* Hidden behind the detail view and the fill confirmation: both are
+          drill-downs from the vault tab, not third destinations, so a
+          highlighted tab there would lie. */}
+      {selected || confirming ? null : (
+        <TabBar active={tab} onChange={setTab} />
+      )}
     </div>
   )
 }

@@ -18,16 +18,25 @@ export interface EventNotificationCTActionObject {
 }
 
 /**
- * The background asking a frame to scan itself now.
+ * The background asking a frame to scan itself now, and report.
  *
  * Its own action rather than another `CTEvent` string: `CTEvent` is a
- * fire-and-forget notification with no meaningful return channel, and this
- * one answers.
+ * fire-and-forget notification with no meaningful return channel, and this one
+ * answers. The answer is a convenience, though -- the *report* it triggers is
+ * what the background is really waiting for, because only a report carries a
+ * browser-supplied `sender.url` saying which frame the fields were found in.
+ *
+ * It carries **no `inputSelectors`, and must not grow any.** Those are vault
+ * data, derived from a url; the background does not know a frame's url until
+ * that frame reports, so the only list it could put here is the *tab's* --
+ * which would push one frame's overrides into the isolated world of every
+ * third-party frame on the page. That is the same leak matching against the
+ * frame's own url exists to prevent. Each frame already holds the selectors it
+ * was given for its own url, and the `REPORT_OTP_FIELDS` response re-delivers
+ * them on every report.
  */
 export interface DetectOtpFieldsCTActionObject {
   type: typeof CT_ACTION_KEYS.DETECT_OTP_FIELDS
-  /** The `inputSelector` of every entry matching this frame's url. */
-  data: { inputSelectors: string[] }
 }
 
 /**

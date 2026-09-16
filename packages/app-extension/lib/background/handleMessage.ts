@@ -24,6 +24,7 @@ import { setVerboseLogging } from '../classes/Logger'
 
 import { describeVaultError } from '../ioc/entities/VaultContainer'
 
+import { isTrustedFrame, pickFillTarget, stillHoldsTarget } from './fillTarget'
 import handleDebugCommand from './handleDebugCommand'
 import { whenInitFinished } from './init'
 
@@ -173,12 +174,16 @@ async function unboundHandleMessage(
     }
 
     case BG_ACTION_KEYS.REPORT_OTP_FIELDS: {
-      const { tab, frameId, url } = sender
+      const { tab, frameId, documentId, url } = sender
       if (tab?.id === undefined) return null
 
       otpFieldRegistry.record({
         tabId: tab.id,
         frameId: frameId ?? 0,
+        // Chrome only, and preferred over the frame id when delivering a code:
+        // a frame id is reused across that frame's own navigations, a document
+        // id never is.
+        documentId,
         // From the browser, not from the payload: a content script must not be
         // trusted to name its own origin.
         url: url ?? '',
@@ -331,6 +336,96 @@ async function unboundHandleMessage(
 
     case BG_ACTION_KEYS.GET_TOKEN: {
       return vaultContainer.generateToken(action.data.entryId)
+    }
+
+    case BG_ACTION_KEYS.GET_FILL_TARGET: {
+      const { tabId } = action.data
+      const target = pickFillTarget(otpFieldRegistry.forTab(tabId))
+      if (target) return target
+
+      // Nothing known, which after an mv3 eviction is the common case rather
+      // than the rare one: the worker dies after ~30s idle, and "open the 2fa
+      // page, wait for the code, then open the popup" is exactly the sequence
+      // that lands in. So ask the page instead of answering no.
+      //
+      // Broadcast, because which frame owns the field is the question being
+      // asked, and this action is safe to broadcast in a way `FILL_OTP_FIELD`
+      // is not -- it carries nothing. The reply is ignored: a broadcast hands
+      // back whichever frame answers first, and it is each frame's own
+      // *report* that this is really after, since only a report carries a
+      // browser-supplied url saying where the fields were.
+      //
+      // Throttled per tab, because this branch is permanently true on a page
+      // with no otp field on it, and the popup polls.
+      if (otpFieldRegistry.mayRescan(tabId)) {
+        void ctActions.detectOtpFields(tabId)
+      }
+
+      return null
+    }
+
+    case BG_ACTION_KEYS.FILL_DETECTED_FIELD: {
+      const { target, entryId, confirmed } = action.data
+      if (!vaultContainer.isUnlocked) return failed('locked')
+
+      // Make the frame say what it holds *now*, before a code exists. It
+      // re-reports under its browser-supplied url as part of answering, so the
+      // registry read below is current by the time this resolves.
+      //
+      // This is what stands in for the inline menu's offer token. The registry
+      // is keyed by frame and nothing invalidates it on navigation, and a
+      // frame id is reused across that frame's own navigations -- so a popup
+      // left open while an embedded widget navigated could otherwise name a
+      // document that no longer exists. A dead frame rejects here and never
+      // gets a code.
+      const answered = await ctActions.detectOtpFields(target.tabId, {
+        frameId: target.frameId,
+        documentId: target.documentId,
+      })
+      if (answered === null) return failed('no-frame')
+
+      const report = otpFieldRegistry.forFrame(target.tabId, target.frameId)
+      if (!stillHoldsTarget(report, target)) return failed('stale-target')
+
+      // Bitwarden's rule for manual autofill, and the one place this feature
+      // says no. *Which entry* is unrestricted on purpose -- the user picked
+      // it, and reaching an entry whose matchers do not claim the site is the
+      // whole point. *Which frame* is not: a code typed into some embedded
+      // third party is a code given to that third party.
+      const trusted = isTrustedFrame({
+        frameId: report.frameId,
+        frameUrl: report.url,
+        // The top frame's own report, not the popup's idea of the tab url:
+        // browser-supplied, and it needs no permission we do not have.
+        pageUrl: otpFieldRegistry.forFrame(target.tabId, 0)?.url ?? null,
+        entryClaimsFrame: vaultContainer
+          .entriesForUrl(report.url)
+          .some((entry) => entry.id === entryId),
+      })
+      if (!trusted && confirmed !== true) {
+        // The popup turns this into a question naming `target.url`. Note where
+        // it sits: no code has been generated yet, and none will be unless the
+        // user comes back having said yes.
+        return failed('untrusted-frame')
+      }
+
+      let otp: string
+      try {
+        otp = await vaultContainer.generateToken(entryId)
+      } catch (error) {
+        log.warn(`Could not generate a code: ${describeVaultError(error)}`)
+        return failed('gone')
+      }
+
+      const result = await ctActions.fillOtpField(
+        target.tabId,
+        // From the refreshed report rather than from the payload: same frame,
+        // but its document id is whatever the frame just said it was.
+        { frameId: report.frameId, documentId: report.documentId },
+        { fieldId: target.fieldId, otp },
+      )
+
+      return result ?? failed('no-frame')
     }
 
     case BG_ACTION_KEYS.GET_PASSWORD_STRENGTH: {

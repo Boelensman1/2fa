@@ -64,17 +64,20 @@ const actions = {
       type: CT_ACTION_KEYS.EVENT_NOTIFICATION,
       data: { event },
     }),
-  detectOtpFields: (
-    tabId: TabIdOpt,
-    inputSelectors: string[],
-    target?: FrameTarget,
-  ) =>
+  /**
+   * Asks a frame -- or, with no target, every frame -- to scan and report.
+   *
+   * Safe to broadcast, unlike `fillOtpField`: it carries nothing. The resolved
+   * value is close to meaningless when broadcast, though, because
+   * `tabs.sendMessage` with no frame delivers to every listener and hands back
+   * whichever one answers first. The reports are how the other frames are
+   * heard, which is also the only way the background learns which frame each
+   * answer came from.
+   */
+  detectOtpFields: (tabId: TabIdOpt, target?: FrameTarget) =>
     send<DetectOtpFieldsCTActionObject, DetectOtpFieldsResponse>(
       tabId,
-      {
-        type: CT_ACTION_KEYS.DETECT_OTP_FIELDS,
-        data: { inputSelectors },
-      },
+      { type: CT_ACTION_KEYS.DETECT_OTP_FIELDS },
       target,
     ),
   /**

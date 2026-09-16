@@ -19,8 +19,11 @@ import type {
   AutofillOfferSummary,
   CloseAutofillMenuActionObject,
   CreateVaultActionObject,
+  FillDetectedFieldActionObject,
   FillOtpFieldActionObject,
   FillResult,
+  FillTarget,
+  GetFillTargetActionObject,
   GetMenuEntriesActionObject,
   ListedEntry,
   OpenAutofillMenuActionObject,
@@ -63,6 +66,9 @@ export const BG_ACTION_KEYS = {
   LIST_ENTRIES: 'LIST_ENTRIES' as const,
   GET_TOKEN: 'GET_TOKEN' as const,
   GET_PASSWORD_STRENGTH: 'GET_PASSWORD_STRENGTH' as const,
+
+  GET_FILL_TARGET: 'GET_FILL_TARGET' as const,
+  FILL_DETECTED_FIELD: 'FILL_DETECTED_FIELD' as const,
 }
 
 const send = <T extends BgActionObject, U = void>(arg: T): Promise<U | null> =>
@@ -194,6 +200,26 @@ const actions = {
     send<GetPasswordStrengthActionObject, PasswordStrength>({
       type: BG_ACTION_KEYS.GET_PASSWORD_STRENGTH,
       data: { password },
+    }),
+  getFillTarget: (tabId: number): Promise<FillTarget | null> =>
+    send<GetFillTargetActionObject, FillTarget>({
+      type: BG_ACTION_KEYS.GET_FILL_TARGET,
+      data: { tabId },
+    }),
+  /**
+   * Fills the detected field with a code for one entry.
+   *
+   * `confirmed` answers one question and one only: the user has been shown the
+   * frame this is going into and said yes. It is not a way past anything else.
+   */
+  fillDetectedField: (
+    target: FillTarget,
+    entryId: EntryId,
+    confirmed = false,
+  ): Promise<FillResult | null> =>
+    send<FillDetectedFieldActionObject, FillResult>({
+      type: BG_ACTION_KEYS.FILL_DETECTED_FIELD,
+      data: { target, entryId, confirmed },
     }),
 }
 

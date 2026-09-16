@@ -78,7 +78,9 @@ const SettingsTab: FC<SettingsTabProps> = ({ summary, onLock, onReset }) => {
               Offer to fill codes on the page
               <span className="block text-gray-400">
                 Clicking a verification code field shows the entries that match
-                that site. Fava never fills anything until you pick one.
+                that site. Fava never fills anything until you pick one. With
+                this off you can still fill from this popup, which offers every
+                entry rather than only the matching ones.
               </span>
             </span>
           </label>

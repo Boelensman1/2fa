@@ -7,6 +7,10 @@ interface EntryRowProps {
   entry: ListedEntry
   onCopy: (_entry: ListedEntry) => void
   onOpen: (_entry: ListedEntry) => void
+  /** Null when the tab has no detected field to fill. */
+  onFill: ((_entry: ListedEntry) => void) | null
+  /** The host the code would be typed into, for the button's own label. */
+  fillHost: string | null
 }
 
 /**
@@ -19,8 +23,26 @@ interface EntryRowProps {
  *
  * The chevron is a separate button so "copy" and "inspect" do not fight over
  * the same click target, the way `../app-browser`'s row does with its kebab.
+ *
+ * Fill is a third button rather than a change to the first: clicking a row has
+ * always copied, and a control that silently becomes a different verb when the
+ * page happens to have a field on it is the kind of thing that puts a code
+ * somewhere the user did not mean. It is rendered even when there is nothing
+ * to fill, just invisible, because the fill target is *polled* -- a button that
+ * appeared a second after the popup opened would shift every row under a
+ * cursor already aimed at Copy.
+ *
+ * The host is on the button as well as in the banner below the list, so the
+ * disclosure travels with the control rather than sitting at the edge of the
+ * screen where a screen reader will not tie the two together.
  */
-const EntryRow: FC<EntryRowProps> = ({ entry, onCopy, onOpen }) => (
+const EntryRow: FC<EntryRowProps> = ({
+  entry,
+  onCopy,
+  onOpen,
+  onFill,
+  fillHost,
+}) => (
   <li className="group flex items-stretch border-b border-gray-100 last:border-b-0">
     <button
       type="button"
@@ -49,6 +71,24 @@ const EntryRow: FC<EntryRowProps> = ({ entry, onCopy, onOpen }) => (
       <span className="shrink-0 text-xs font-medium text-gray-400 group-hover:text-blue-600">
         Copy
       </span>
+    </button>
+    <button
+      type="button"
+      disabled={onFill === null}
+      onClick={() => onFill?.(entry)}
+      title={fillHost === null ? undefined : `Fill the code into ${fillHost}`}
+      aria-label={
+        fillHost === null
+          ? undefined
+          : `Fill the code for ${entry.issuer || entry.name} into ${fillHost}`
+      }
+      className={`shrink-0 px-2 text-xs font-medium ${
+        onFill === null
+          ? 'invisible'
+          : 'text-blue-600 hover:bg-blue-50 hover:text-blue-700'
+      }`}
+    >
+      Fill
     </button>
     <button
       type="button"

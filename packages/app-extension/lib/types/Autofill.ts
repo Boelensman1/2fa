@@ -1,3 +1,5 @@
+import type { OtpConfidence } from '../detect'
+
 /**
  * The vocabulary the autofill menu is driven by.
  *
@@ -36,13 +38,16 @@ export interface AutofillOfferSummary {
 }
 
 /**
- * - `gone`          the field was detached before or during the fill
- * - `empty-code`    there was nothing to type
- * - `partial`       the code and the row of boxes are different lengths
- * - `no-offer`      the token was unknown, stale or from another tab
- * - `locked`        the vault locked between opening the menu and clicking
- * - `unknown-entry` the entry was not one this offer listed
- * - `no-frame`      the frame the offer named is no longer listening
+ * - `gone`            the field was detached before or during the fill
+ * - `empty-code`      there was nothing to type
+ * - `partial`         the code and the row of boxes are different lengths
+ * - `no-offer`        the token was unknown, stale or from another tab
+ * - `locked`          the vault locked between opening the menu and clicking
+ * - `unknown-entry`   the entry was not one this offer listed
+ * - `no-frame`        the frame the offer named is no longer listening
+ * - `stale-target`    the frame navigated, or lost the field, since it was offered
+ * - `untrusted-frame` the field is in an embedded frame the entry does not
+ *                     claim; the user has not been asked about it yet
  */
 export type FillReason =
   | 'gone'
@@ -52,6 +57,8 @@ export type FillReason =
   | 'locked'
   | 'unknown-entry'
   | 'no-frame'
+  | 'stale-target'
+  | 'untrusted-frame'
 
 /**
  * What a fill attempt reports back.
@@ -96,3 +103,40 @@ export const MENU_MESSAGE_SOURCE = 'fava-menu' as const
 export type MenuControlMessage =
   | { source: typeof MENU_MESSAGE_SOURCE; height: number }
   | { source: typeof MENU_MESSAGE_SOURCE; action: 'close' }
+
+/**
+ * The otp field the popup is offering to fill, as the background resolved it.
+ *
+ * Every field here is the background's answer, not the popup's claim.
+ * `frameId`, `documentId` and `url` come from the `MessageSender` of the report
+ * that produced it, and `host` is derived here rather than in the popup so the
+ * origin the user is shown and the address the code is delivered to cannot
+ * disagree -- the disclosure is this feature's main control, and a disclosure
+ * computed from a different string than the delivery is no control at all.
+ *
+ * It travels back on the fill request, but as an *assertion* rather than an
+ * instruction: the background re-derives it from a fresh report and refuses if
+ * it has moved. This is what the user was shown; the registry is what is true.
+ */
+export interface FillTarget {
+  tabId: number
+  /** The frame holding the field, from the browser. */
+  frameId: number
+  /**
+   * Chrome's per-document id for that frame (106+), absent on Firefox mv2.
+   *
+   * Preferred over `frameId` when delivering: a frame id belongs to the
+   * browsing context and is reused across that frame's own navigations, so it
+   * can outlive the document that was detected in it. A document id cannot.
+   */
+  documentId?: string
+  /** Which detected field, within that frame. */
+  fieldId: string
+  /** The *frame's* url. Never the tab's -- they differ exactly when it matters. */
+  url: string
+  /** `new URL(url).host`, for the banner. Derived where the url is validated. */
+  host: string
+  confidence: OtpConfidence
+  /** True when the field is in an embedded frame rather than the page itself. */
+  inSubframe: boolean
+}

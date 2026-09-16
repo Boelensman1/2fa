@@ -1,14 +1,19 @@
 import type { FC } from 'react'
 import { useState } from 'react'
 
-import { useActiveTabUrl, useEntries } from '../../hooks'
-import type { ListedEntry } from '@/lib/types'
+import { useEntries } from '../../hooks'
+import type { FillTarget, ListedEntry } from '@/lib/types'
 import EntryRow from '../EntryRow'
 import Splash from '../Splash'
 
 interface VaultTabProps {
+  /** The active tab's url; undefined while it is still being looked up. */
+  url: string | null | undefined
+  /** The field on the page, when there is one. */
+  fillTarget: FillTarget | null
   onCopy: (_entry: ListedEntry) => void
   onOpen: (_entry: ListedEntry) => void
+  onFill: (_entry: ListedEntry) => void
   onLock: () => void
 }
 
@@ -18,9 +23,15 @@ const SectionHeading: FC<{ children: string }> = ({ children }) => (
   </h2>
 )
 
-const VaultTab: FC<VaultTabProps> = ({ onCopy, onOpen, onLock }) => {
+const VaultTab: FC<VaultTabProps> = ({
+  url,
+  fillTarget,
+  onCopy,
+  onOpen,
+  onFill,
+  onLock,
+}) => {
   const [query, setQuery] = useState('')
-  const url = useActiveTabUrl()
   const { entries, loading } = useEntries(query, url)
 
   const searching = query.trim().length > 0
@@ -100,6 +111,8 @@ const VaultTab: FC<VaultTabProps> = ({ onCopy, onOpen, onLock }) => {
                   entry={entry}
                   onCopy={onCopy}
                   onOpen={onOpen}
+                  onFill={fillTarget ? onFill : null}
+                  fillHost={fillTarget?.host ?? null}
                 />
               ))}
             </ul>
@@ -120,12 +133,26 @@ const VaultTab: FC<VaultTabProps> = ({ onCopy, onOpen, onLock }) => {
                   entry={entry}
                   onCopy={onCopy}
                   onOpen={onOpen}
+                  onFill={fillTarget ? onFill : null}
+                  fillHost={fillTarget?.host ?? null}
                 />
               ))}
             </ul>
           </section>
         ) : null}
       </div>
+
+      {/* Below the list, not above it. The target is polled, so a banner at
+          the top would appear a second after the popup opened and push every
+          row down -- under a cursor already aimed at one of them. Growing from
+          the bottom moves nothing that is scrolled into view. */}
+      {fillTarget ? (
+        <p className="border-t border-blue-100 bg-blue-50 px-3 py-1.5 text-xs text-blue-900">
+          Fill types the code into{' '}
+          <span className="font-medium">{fillTarget.host}</span>
+          {fillTarget.inSubframe ? ', an embedded frame on this page' : ''}.
+        </p>
+      ) : null}
     </div>
   )
 }

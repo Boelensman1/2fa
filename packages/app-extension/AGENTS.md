@@ -12,9 +12,12 @@ The popup and the ioc/config/logging plumbing are still the upstream starter;
 TOTP and sync logic belongs; prefer extending it over reimplementing that logic
 here. Detection was step 1, reading the vault was step 2 — an unlock flow,
 device pairing and an entry list — and filling a detected field from the vault
-is step 3, which is now done: focusing a detected field offers the entries that
-match that frame, and picking one types the code in. See
-[The inline autofill menu](#the-inline-autofill-menu).
+is step 3, which is now done, twice over. Focusing a detected field offers the
+entries that match that frame ([the inline autofill
+menu](#the-inline-autofill-menu)); and while a page has a field on it, every row
+in the popup gains a Fill button ([filling from the
+popup](#filling-from-the-popup)). The two look similar and are matched
+differently on purpose.
 
 ## The vault
 
@@ -103,7 +106,10 @@ The seam is `signals.ts`. Above it (`collectSignals`, `walkDom`,
   clamped to 99 so `definite` always means "the page said so". The three
   signal families are capped separately because their members are correlated.
 - `detectOtpFields.ts` — the orchestrator. `observe.ts` wraps it in a
-  debounced `MutationObserver`, one per root.
+  debounced `MutationObserver`, one per root, and exposes two ways in:
+  `rescan()`, which reports only a change, and `scanNow()`, which hands the
+  result back whether or not anything moved. The background needs the second
+  when its own registry has been evicted.
 
 `EntryMeta.inputSelector` (favalib) is the escape hatch for pages the
 heuristic gets wrong; it suppresses the heuristic rather than merging with it.
@@ -165,6 +171,12 @@ code is GPL-3.0 and must not be read while working on this** (see the note on
 │   └───────────────────────┘  │        └────────────┬─────────────┘
 │  fillOtpField(id, otp) ◀─────┼─────────────────────┘
 └──────────────────────────────┘   tabs.sendMessage(tabId, {frameId})
+                                              ▲
+                                   ┌──────────┴─────────────┐
+                                   │ popup                  │
+                                   │  every entry, any site │
+                                   │  OtpFieldRegistry      │
+                                   └────────────────────────┘
 ```
 
 The content script shares a realm with the page, so it is told only a state, a
@@ -190,6 +202,15 @@ origin embedded in a trusted page therefore gets nothing — the shape of the
 credential-theft report Bitwarden shipped in 2023 (`clients#5608`). The cost is
 that a legitimate hosted second-factor widget on its own origin needs its own
 matcher on the entry, which is the right trade and the right default.
+
+Filling from the popup deliberately breaks half of that, and it is worth
+knowing which half. _Delivery_ is still matched to the frame — the code goes to
+one frame id, chosen from a browser-supplied `sender.url`. What is dropped is
+_entry↔url_ matching: the popup offers every entry, for any site. The
+justification is the trigger. The menu appears because the page did something,
+so it has to be conservative about what it reveals; the popup opened because
+the user opened it and clicked a row, which is the authorisation. Read the new
+code as an oversight and you will "fix" the feature away.
 
 ### The offer token
 
@@ -284,6 +305,96 @@ likely to quietly do nothing on a real widget.
   button. That is as far as the promise goes: plenty of sites submit themselves
   the instant the value is complete, and that is their call.
 
+## Filling from the popup
+
+The other entry point. While the active tab has a detected field, every row in
+the popup carries a **Fill** button, and `EntryDetail` a Fill on this page
+button. Picking one makes the background generate a code and deliver it to that
+frame, exactly as the menu does.
+
+It offers **every** entry, matching site or not. That is the difference from
+the menu and the reason this exists: an entry the user has not given a matcher
+yet, or a second-factor step that lives on a different host, can otherwise
+never be filled at all. Site matches still sort to the top, in the "For this
+site" group that was already there.
+
+### Discovery is best-effort; correctness is at fill time
+
+`GET_FILL_TARGET` answers from `OtpFieldRegistry`, and when the registry knows
+nothing it broadcasts `DETECT_OTP_FIELDS` and lets the popup's poll collect the
+answer. That is not belt and braces — an mv3 worker is evicted after ~30s idle
+and takes the registry with it, and "open the 2fa page, wait for the code, then
+open the popup" is exactly the sequence an eviction lands in the middle of.
+Without the rescan the feature would be missing precisely when it is wanted.
+
+The broadcast is throttled per tab (`mayRescan`), because "the registry knows
+nothing" is permanently true on a page with no otp field on it — nearly every
+page — and the popup polls. Unthrottled it would walk the dom of every frame of
+the user's active tab twice a second for as long as the popup is open.
+
+That is safe only because none of the _correctness_ rests on it. See below.
+
+### A fill re-asks the frame before a code exists
+
+`FILL_DETECTED_FIELD` cannot use an offer token: `AutofillOfferRegistry`
+resolves against `sender.tab.id`, and the popup has no tab. The equivalent
+guarantee is rebuilt from a round trip. Before anything is generated, the
+background sends `DETECT_OTP_FIELDS` to that one frame and waits; the frame
+reports as part of answering, under its **browser-supplied** url, and the
+background then checks the refreshed record against the target the popup was
+showing.
+
+This is not ceremony. Nothing invalidates the registry on navigation —
+`forgetTab` runs when the tab closes and that is all — and a frame id belongs
+to the browsing context, so a browser reuses it across that frame's own
+navigations. A popup left open while an embedded widget navigated could
+otherwise deliver a live code into whatever replaced it. A dead frame rejects
+the round trip and never gets one; a navigated frame fails the url check;
+a frame that lost the field fails the field check.
+
+`documentId` is carried on the report for the same reason and preferred when
+delivering. It is Chrome-only, which is why the url check and not the document
+id is the load-bearing one.
+
+### Which frame may be filled without asking
+
+The one place this feature says no, and it is Bitwarden's published rule for
+_manual_ autofill: an embedded frame is untrusted when its url does not match a
+uri saved on the item being filled, and filling an untrusted one names the url
+and lets the user cancel or proceed. Their behaviour only — **their autofill
+source is GPL-3.0 and was not read**, for the reason `patterns.ts` gives.
+
+`isTrustedFrame` says yes when the field is in the tab's own document, or the
+entry claims the frame's url, or the frame and the page are the same host or a
+subdomain of one another. Otherwise the fill returns `untrusted-frame` — before
+generating anything — and the popup asks.
+
+Note that "trusted" is a property of the _entry_, not of the frame's position:
+a hosted second-factor widget on its own origin is trusted for an entry that
+carries a matcher for it, which is the same case the menu's frame-url rule
+already serves.
+
+The subdomain test is narrower than Bitwarden's "same domain as the website".
+Telling `bbc.co.uk` from `co.uk` needs a public suffix list and favalib carries
+none on purpose (`suggestMatchersForUrl` says so). Same host or a subdomain of
+it, on a dot boundary, is what can be decided without one — an extra
+confirmation, never a missing one.
+
+### Why the offer registry was not reused
+
+It holds **one offer per tab**, so minting a popup offer on every poll would
+clobber a live inline offer twice a second; and an offer's `entries` list is
+exactly the restriction this feature removes. Two lifecycles entangled for no
+gain.
+
+### Why the popup does not just ask the page itself
+
+It could: it is an extension page and has `tabs.sendMessage`. It must not. Only
+the _receiving_ side of a message gets a browser-supplied `sender.url`, so only
+the background can learn which frame an answer came from and what origin that
+frame is. A popup-side scan would have to take a frame's word for its own
+identity, which is the thing this whole design refuses.
+
 ## Development commands
 
 Run `make` from this directory (`packages/app-extension`). The Makefile — not
@@ -374,6 +485,24 @@ and are referenced as `"typescript": "catalog:"`.
   `entrypoints/content.ts` uses the `sendResponse` + `return true` shape that
   `lib/background/handleMessage.ts` has always used. Getting this wrong makes
   every fill look like it silently failed.
+- **A broadcast `tabs.sendMessage` returns one arbitrary frame's reply.** With
+  no `frameId` the message reaches every frame, but only the first
+  `sendResponse` is delivered. `GET_FILL_TARGET` therefore ignores what
+  `detectOtpFields` hands back and reads the registry the reports fill instead.
+  The `DetectOtpFieldsResponse` return type invites the opposite.
+- **`DETECT_OTP_FIELDS` carries no `inputSelectors`, and must not grow any.**
+  They are vault data derived from a url, and the background does not know a
+  frame's url until that frame reports — so the only list it could put on a
+  broadcast is the _tab's_, pushed into the isolated world of every third-party
+  frame on the page. That is the leak matching against the frame's own url
+  exists to prevent. Each frame already holds the selectors it was given for
+  its own url.
+- **`observer.rescan()` answers an unchanged page with silence**, because its
+  only output is `onChange` and a form that re-renders per keystroke would
+  otherwise spam the background. That is exactly the answer the background
+  cannot use when its registry is empty, which is what `scanNow()` is for — and
+  it goes through the observer rather than calling `detectOtpFields` beside it,
+  so the selectors and the fingerprint keep one owner.
 - **`web_accessible_resources` must be written in the mv3 object form.** wxt
   flattens it to mv2's plain string array for the Firefox build and throws
   outright if you write the string form yourself. `use_dynamic_url` is

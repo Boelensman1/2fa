@@ -54,7 +54,7 @@ vi.mock('../../lib/vault/creationUtils', () => ({
 }))
 
 const { default: container, IOC_TYPES } = await import('../../lib/ioc')
-const { BG_ACTION_KEYS } = await import('../../lib/state')
+const { BG_ACTION_KEYS, CT_ACTION_KEYS } = await import('../../lib/state')
 const { default: handleMessageContainer } =
   await import('../../lib/background/handleMessage')
 const { default: init } = await import('../../lib/background/init')
@@ -77,6 +77,9 @@ const entryMeta = (
   ...over,
 })
 
+/** A spy, so a test can assert that no code was minted at all. */
+const generateTokenForEntry = vi.fn<() => Promise<{ otp: string }>>()
+
 /** Stands in for an unlocked favalib, since only the selection is under test. */
 const fakeVault = (entries: EntryMetaForUrl[], otp = '123456') => ({
   meta: { deviceId: 'd', deviceFriendlyName: 'n' },
@@ -87,7 +90,10 @@ const fakeVault = (entries: EntryMetaForUrl[], otp = '123456') => ({
       url.startsWith('https://github.com') ? entries : [],
     listEntriesMetas: () => entries,
     searchEntriesMetas: () => entries,
-    generateTokenForEntry: () => Promise.resolve({ otp }),
+    generateTokenForEntry: () => {
+      generateTokenForEntry.mockResolvedValue({ otp })
+      return generateTokenForEntry()
+    },
   },
 })
 
@@ -124,10 +130,59 @@ const loseTheKeys = () => {
   internals(vaultContainer).favaLib = null
 }
 
+/**
+ * One detected field, as a frame reports it.
+ *
+ * Only `id`, `score` and `confidence` are ever read on this path; the rest is
+ * there because the type demands it.
+ */
+const detectedField = (id: string, score = 60) => ({
+  id,
+  kind: 'single',
+  confidence: 'likely',
+  score,
+  source: 'heuristic',
+  reasons: [],
+  selector: '#code',
+  elementDescription: 'input#code',
+  expectedLength: 6,
+  segmentCount: 1,
+  matchedInputSelectors: [],
+  inShadowRoot: false,
+  shadowHostPath: null,
+})
+
+/** Fills the registry the way production fills it: through a real report. */
+const reportFrom = (
+  sender: { tab: { id: number }; frameId: number; url: string },
+  fields: ReturnType<typeof detectedField>[],
+) =>
+  send(
+    {
+      type: BG_ACTION_KEYS.REPORT_OTP_FIELDS,
+      data: {
+        fields,
+        overrideMissed: false,
+        scannedAt: 0,
+        usedInputSelectors: [],
+      },
+    },
+    sender,
+  )
+
 beforeEach(async () => {
   store.clear()
   sendMessage.mockReset()
-  sendMessage.mockResolvedValue({ filled: true })
+  generateTokenForEntry.mockReset()
+  // The fill path sends two different ct actions and reads both answers, so a
+  // single canned reply will not do.
+  sendMessage.mockImplementation((_tabId: number, message: { type: string }) =>
+    Promise.resolve(
+      message.type === 'DETECT_OTP_FIELDS'
+        ? [detectedField('otp-1')]
+        : { filled: true },
+    ),
+  )
   vaultContainer = container.get<VaultContainer>(IOC_TYPES.VaultContainer)
   loseTheKeys()
   container
@@ -135,6 +190,11 @@ beforeEach(async () => {
       IOC_TYPES.AutofillOfferRegistry,
     )
     .forgetAll()
+  container
+    .get<import('../../lib/ioc/entities/OtpFieldRegistry').default>(
+      IOC_TYPES.OtpFieldRegistry,
+    )
+    .forgetTab(7)
   await init()
   await container
     .get<import('../../lib/ioc/entities/ConfigContainer').default>(
@@ -410,6 +470,7 @@ describe('who may send what', () => {
     { type: BG_ACTION_KEYS.LOCK_VAULT },
     { type: BG_ACTION_KEYS.RESET_VAULT },
     { type: BG_ACTION_KEYS.UNLOCK_VAULT, data: { password: 'hunter2' } },
+    { type: BG_ACTION_KEYS.GET_FILL_TARGET, data: { tabId: 7 } },
   ]
 
   it.each(tabOnly)('refuses $type from the menu iframe', async (action) => {
@@ -478,5 +539,224 @@ describe('who may send what', () => {
     )
 
     expect(response).toEqual({ inputSelectors: ['#code'] })
+  })
+})
+
+/** The frame holding the field, and the page it is embedded in. */
+const pageSender = { tab: { id: 7 }, frameId: 0, url: 'https://github.com/2fa' }
+const widgetSender = {
+  tab: { id: 7 },
+  frameId: 4,
+  url: 'https://widget.example/otp',
+}
+const popupSender = { url: 'popup.html' }
+
+const getFillTarget = () =>
+  send(
+    { type: BG_ACTION_KEYS.GET_FILL_TARGET, data: { tabId: 7 } },
+    popupSender,
+  ) as Promise<{ frameId: number; fieldId: string; host: string } | null>
+
+describe('GET_FILL_TARGET', () => {
+  it('answers with the field a frame reported', async () => {
+    unlockWith([entryMeta('a')])
+    await reportFrom(pageSender, [detectedField('otp-1')])
+
+    expect(await getFillTarget()).toMatchObject({
+      frameId: 0,
+      fieldId: 'otp-1',
+      host: 'github.com',
+      inSubframe: false,
+    })
+    // Nothing to ask the page: it has already said.
+    expect(sendMessage).not.toHaveBeenCalled()
+  })
+
+  /**
+   * An mv3 worker is evicted after ~30s idle and takes the registry with it,
+   * and "open the 2fa page, wait for the code, then open the popup" is exactly
+   * the sequence that lands in. Answering "nothing" would make the feature
+   * missing precisely when it is wanted.
+   */
+  it('asks the page to rescan when it knows nothing', async () => {
+    unlockWith([entryMeta('a')])
+
+    expect(await getFillTarget()).toBeNull()
+
+    expect(sendMessage).toHaveBeenCalledTimes(1)
+    const [tabId, message, target] = sendMessage.mock.calls[0] as [
+      number,
+      { type: string },
+      undefined,
+    ]
+    expect(tabId).toBe(7)
+    expect(message).toEqual({ type: CT_ACTION_KEYS.DETECT_OTP_FIELDS })
+    // No third argument: a broadcast, because which frame owns the field is
+    // the question. Safe here in a way `FILL_OTP_FIELD` is not -- it carries
+    // nothing.
+    expect(target).toBeUndefined()
+  })
+
+  /** The popup polls, and this branch is permanently true on most pages. */
+  it('does not rescan again immediately', async () => {
+    unlockWith([entryMeta('a')])
+
+    await getFillTarget()
+    await getFillTarget()
+    await getFillTarget()
+
+    expect(sendMessage).toHaveBeenCalledTimes(1)
+  })
+
+  it('prefers the most confident frame', async () => {
+    unlockWith([entryMeta('a')])
+    await reportFrom(widgetSender, [detectedField('otp-weak', 40)])
+    await reportFrom(pageSender, [detectedField('otp-strong', 95)])
+
+    expect(await getFillTarget()).toMatchObject({
+      frameId: 0,
+      fieldId: 'otp-strong',
+    })
+  })
+
+  it('ignores a frame that reported no fields', async () => {
+    unlockWith([entryMeta('a')])
+    await reportFrom(pageSender, [])
+
+    expect(await getFillTarget()).toBeNull()
+  })
+})
+
+describe('FILL_DETECTED_FIELD', () => {
+  const fill = (
+    target: unknown,
+    entryId = 'a',
+    confirmed?: boolean,
+  ): Promise<{ filled: boolean; reason?: string }> =>
+    send(
+      {
+        type: BG_ACTION_KEYS.FILL_DETECTED_FIELD,
+        data: { target, entryId: entryId as EntryId, confirmed },
+      },
+      popupSender,
+    ) as Promise<{ filled: boolean; reason?: string }>
+
+  const openOn = async (sender: typeof pageSender) => {
+    await reportFrom(sender, [detectedField('otp-1')])
+    const target = await getFillTarget()
+    sendMessage.mockClear()
+    return target
+  }
+
+  it('confirms the frame before it mints a code, then fills it', async () => {
+    unlockWith([entryMeta('a')], '987654')
+    const target = await openOn(pageSender)
+
+    expect(await fill(target)).toEqual({ filled: true })
+
+    const [confirm, deliver] = sendMessage.mock.calls as [
+      [number, { type: string }, undefined],
+      [
+        number,
+        { type: string; data: { fieldId: string; otp: string } },
+        { frameId: number; documentId?: string },
+      ],
+    ]
+    // The order is the point: the frame says what it holds, and only then is
+    // there a code.
+    expect(confirm[1].type).toBe(CT_ACTION_KEYS.DETECT_OTP_FIELDS)
+    expect(deliver[1].type).toBe(CT_ACTION_KEYS.FILL_OTP_FIELD)
+    expect(deliver[2]).toEqual({ frameId: 0, documentId: undefined })
+    expect(deliver[1].data).toEqual({ fieldId: 'otp-1', otp: '987654' })
+  })
+
+  /**
+   * The feature, in one test. The inline menu would never offer this entry on
+   * this page; the popup does, because the user picked it by hand.
+   */
+  it('fills an entry whose matchers do not claim the page', async () => {
+    unlockWith([entryMeta('a')], '987654')
+    const target = await openOn({
+      ...pageSender,
+      url: 'https://elsewhere.example/login',
+    })
+
+    expect(await fill(target)).toEqual({ filled: true })
+  })
+
+  /**
+   * The check the confirm round trip exists for. Nothing clears the registry
+   * on navigation, and a frame id is reused across a frame's own navigations,
+   * so a popup left open while an embedded widget navigates must not be able
+   * to put a code into whatever replaced it.
+   */
+  it('refuses a target whose frame has navigated, without minting a code', async () => {
+    unlockWith([entryMeta('a')])
+    const target = await openOn(pageSender)
+    // The frame answers the confirmation from its new document.
+    await reportFrom({ ...pageSender, url: 'https://evil.example/' }, [
+      detectedField('otp-1'),
+    ])
+
+    expect(await fill(target)).toEqual({
+      filled: false,
+      reason: 'stale-target',
+    })
+    expect(generateTokenForEntry).not.toHaveBeenCalled()
+  })
+
+  it('refuses when the frame no longer answers', async () => {
+    unlockWith([entryMeta('a')])
+    const target = await openOn(pageSender)
+    sendMessage.mockRejectedValue(new Error('no receiving end'))
+
+    expect(await fill(target)).toEqual({ filled: false, reason: 'no-frame' })
+    expect(generateTokenForEntry).not.toHaveBeenCalled()
+  })
+
+  it('refuses on a locked vault before it touches the page at all', async () => {
+    unlockWith([entryMeta('a')])
+    const target = await openOn(pageSender)
+    loseTheKeys()
+
+    expect(await fill(target)).toEqual({ filled: false, reason: 'locked' })
+    expect(sendMessage).not.toHaveBeenCalled()
+  })
+
+  /**
+   * Bitwarden's rule for manual autofill: an embedded frame whose url the item
+   * does not claim gets named, and the user says yes or no. What matters here
+   * is that saying nothing yet costs nothing -- no code exists.
+   */
+  it('asks before filling a third-party frame, and mints nothing meanwhile', async () => {
+    unlockWith([entryMeta('a')])
+    await reportFrom(pageSender, [])
+    const target = await openOn(widgetSender)
+
+    expect(await fill(target)).toEqual({
+      filled: false,
+      reason: 'untrusted-frame',
+    })
+    expect(generateTokenForEntry).not.toHaveBeenCalled()
+  })
+
+  it('fills that frame once the user has said so', async () => {
+    unlockWith([entryMeta('a')], '987654')
+    await reportFrom(pageSender, [])
+    const target = await openOn(widgetSender)
+
+    expect(await fill(target, 'a', true)).toEqual({ filled: true })
+  })
+
+  /** The hosted second-factor widget: another origin, but one the entry names. */
+  it('does not ask about a frame the entry itself claims', async () => {
+    unlockWith([entryMeta('a')])
+    await reportFrom(pageSender, [])
+    const target = await openOn({
+      ...widgetSender,
+      url: 'https://github.com/otp-widget',
+    })
+
+    expect(await fill(target)).toEqual({ filled: true })
   })
 })

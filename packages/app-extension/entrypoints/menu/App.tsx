@@ -4,7 +4,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import Logger from '@/lib/classes/Logger'
 import { bgActions } from '@/lib/state'
 import { MENU_MESSAGE_SOURCE } from '@/lib/types/Autofill'
-import type { FillReason, ListedEntry, MenuControlMessage } from '@/lib/types'
+import type { ListedEntry, MenuControlMessage } from '@/lib/types'
+import MESSAGES from '@/lib/ui/fillMessages'
 import MenuRow from '@/lib/ui/components/MenuRow'
 
 const log = new Logger('menu')
@@ -18,16 +19,6 @@ const log = new Logger('menu')
  */
 const postToHost = (message: MenuControlMessage): void => {
   window.parent.postMessage(message, '*')
-}
-
-const MESSAGES: Record<FillReason, string> = {
-  gone: 'That field is no longer on the page.',
-  'empty-code': 'Could not generate a code.',
-  partial: 'Filled, but the code and the field are different lengths.',
-  'no-offer': 'This menu expired. Click the field again.',
-  locked: 'The vault locked. Unlock Fava and try again.',
-  'unknown-entry': 'That entry is not available for this page.',
-  'no-frame': 'The page changed before the code could be filled.',
 }
 
 /**

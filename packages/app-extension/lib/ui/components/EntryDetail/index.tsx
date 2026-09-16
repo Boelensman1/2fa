@@ -6,6 +6,10 @@ import Button from '../Button'
 interface EntryDetailProps {
   entry: ListedEntry
   onCopy: (_entry: ListedEntry) => void
+  /** Null when the tab has no detected field to fill. */
+  onFill: ((_entry: ListedEntry) => void) | null
+  /** The host the code would be typed into. */
+  fillHost: string | null
   onBack: () => void
 }
 
@@ -29,7 +33,13 @@ const Field: FC<{ label: string; children: ReactNode }> = ({
  * place a user can see *why* an entry did or did not show up under "for this
  * site".
  */
-const EntryDetail: FC<EntryDetailProps> = ({ entry, onCopy, onBack }) => (
+const EntryDetail: FC<EntryDetailProps> = ({
+  entry,
+  onCopy,
+  onFill,
+  fillHost,
+  onBack,
+}) => (
   <div className="flex h-full flex-col">
     <header className="flex items-center gap-2 border-b border-gray-200 bg-white px-2 py-2">
       <button
@@ -90,8 +100,16 @@ const EntryDetail: FC<EntryDetailProps> = ({ entry, onCopy, onBack }) => (
       </Field>
     </dl>
 
-    <div className="border-t border-gray-200 p-3">
-      <Button onClick={() => onCopy(entry)}>Copy verification code</Button>
+    <div className="space-y-2 border-t border-gray-200 p-3">
+      {onFill ? (
+        <Button onClick={() => onFill(entry)}>Fill into {fillHost}</Button>
+      ) : null}
+      <Button
+        variant={onFill ? 'secondary' : 'primary'}
+        onClick={() => onCopy(entry)}
+      >
+        Copy verification code
+      </Button>
     </div>
   </div>
 )

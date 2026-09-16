@@ -3,7 +3,7 @@ import type { DetectedOtpField } from '../detect'
 import type { EntryId, Password } from 'favalib'
 
 import type { BG_ACTION_KEYS } from '../state'
-import type { Config, LogEntryPayload } from './'
+import type { Config, FillTarget, LogEntryPayload } from './'
 
 export interface GetStateActionObject {
   type: typeof BG_ACTION_KEYS.GET_STATE
@@ -175,6 +175,46 @@ export interface GetTokenActionObject {
   data: { entryId: EntryId }
 }
 
+/**
+ * The popup asking whether the tab it is open over has a field worth filling.
+ *
+ * The tab id *is* taken from the payload, like `LIST_ENTRIES`'s url and unlike
+ * `REPORT_OTP_FIELDS`'s: this action is popup-only -- see
+ * `actionsReachableFromATab` in `background/handleMessage.ts` -- so there is no
+ * untrusted page in the chain to lie about it. `tab.id` is also the one thing
+ * `tabs.query` returns whatever the permissions are, which is why the popup
+ * passes an id rather than a url. The origin the answer discloses is the
+ * *frame's*, and that reaches the background on a `MessageSender`.
+ */
+export interface GetFillTargetActionObject {
+  type: typeof BG_ACTION_KEYS.GET_FILL_TARGET
+  data: { tabId: number }
+}
+
+/**
+ * The popup asking for a code to be typed into the detected field.
+ *
+ * There is no offer token, because there is no offer: `AutofillOfferRegistry`
+ * resolves against `sender.tab.id` and the popup has no tab. The equivalent
+ * guarantee is rebuilt instead -- the target is confirmed against a fresh
+ * report from the live frame before a code is ever generated.
+ *
+ * `entryId` is unrestricted, deliberately, and that is the feature. The inline
+ * menu may only fill an entry its offer listed, because the *page* caused that
+ * menu to appear. Here the user opened the popup and picked a row, which is
+ * the authorisation, and reaching an entry whose matchers do not claim the
+ * site is the whole point. The compensating control is disclosure: the popup
+ * names the host before the click, and asks again for an embedded frame the
+ * entry does not vouch for.
+ *
+ * `confirmed` is the answer to that second question, and only that. It is not
+ * a way to skip any other check.
+ */
+export interface FillDetectedFieldActionObject {
+  type: typeof BG_ACTION_KEYS.FILL_DETECTED_FIELD
+  data: { target: FillTarget; entryId: EntryId; confirmed?: boolean }
+}
+
 export interface GetPasswordStrengthActionObject {
   type: typeof BG_ACTION_KEYS.GET_PASSWORD_STRENGTH
   data: { password: Password }
@@ -199,5 +239,7 @@ export type BgActionObject =
   | LockVaultActionObject
   | ResetVaultActionObject
   | ListEntriesActionObject
+  | GetFillTargetActionObject
+  | FillDetectedFieldActionObject
   | GetTokenActionObject
   | GetPasswordStrengthActionObject

@@ -5,7 +5,7 @@
 // through the barrel put 2.7MB of vault code on every page load.
 import Logger from '../classes/Logger'
 import { bgActions, CT_ACTION_KEYS } from '../state'
-import { detectOtpFields, observeOtpFields } from '../detect'
+import { observeOtpFields } from '../detect'
 import type { DetectedOtpFieldHandle, OtpFieldObserver } from '../detect'
 import { createAutofillMenu } from './autofillMenu'
 import type { AutofillMenu } from './autofillMenu'
@@ -178,10 +178,21 @@ export const handleMessage = async (
 ): Promise<DetectOtpFieldsResponse | FillOtpFieldResponse | undefined> => {
   switch (msg.type) {
     case CT_ACTION_KEYS.DETECT_OTP_FIELDS: {
-      const result = detectOtpFields({
-        inputSelectors: msg.data.inputSelectors,
-      })
+      // Reporting is the point, not the return value. The background asks
+      // because its registry is empty -- an mv3 eviction takes it, and "load
+      // the page, wait for the code, open the popup" is exactly the sequence
+      // an eviction lands in the middle of -- or because it is about to
+      // deliver a code here and wants this frame's browser-supplied url
+      // refreshed first. So this awaits the report rather than firing it off.
+      //
+      // Through the observer, so the selectors and the fingerprint keep one
+      // owner: a scan run beside it would leave `lastFingerprint` describing a
+      // different set and could suppress a later report that mattered.
+      const result = observer?.scanNow()
+      if (!result) return []
+
       remember(result.handles)
+      await report(result)
       return result.handles.map((handle) => handle.field)
     }
 
@@ -199,6 +210,11 @@ export const handleMessage = async (
       // segmented row is where typing the code by hand would have left them.
       menu?.close()
       if (result.filled) {
+        // Filled from the popup the field was never focused, so this focus()
+        // does fire focusin -- which is what opens the menu. Without the
+        // suppression the popup would close and an offer menu would appear
+        // under the field that was just filled.
+        menu?.ignoreFocusOnce()
         handle.elements[handle.elements.length - 1]?.focus()
       }
       return result

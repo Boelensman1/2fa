@@ -59,6 +59,22 @@ export interface OtpFieldObserver {
   /** Scan now, bypassing the debounce. */
   rescan: () => void
   /**
+   * Scans and hands the result back, whether or not anything changed.
+   *
+   * `rescan` answers an unchanged page with silence, because its only output
+   * is `onChange` and a form that re-renders per keystroke would otherwise
+   * spam the background with identical reports. The background asks for this
+   * one when its own registry is empty or suspect -- where "nothing has
+   * changed since you last heard" is precisely the answer it cannot use.
+   *
+   * It still goes through the observer rather than calling `detectOtpFields`
+   * directly, so the selectors and the fingerprint keep a single owner. A scan
+   * run beside the observer would leave `lastFingerprint` describing a
+   * different set and could suppress a later report that mattered.
+   * @returns What is on the page now, or nothing once stopped.
+   */
+  scanNow: () => DetectionResult
+  /**
    * Replaces the entry `inputSelector` overrides and rescans with them.
    *
    * The frame cannot know these when it starts: they live in the vault, which
@@ -154,8 +170,7 @@ export const observeOtpFields = (options: ObserveOptions): OtpFieldObserver => {
     observers.push(observer)
   }
 
-  const scan = (): void => {
-    if (stopped) return
+  const scan = (): DetectionResult => {
     pending = null
     firstPendingAt = 0
 
@@ -165,9 +180,24 @@ export const observeOtpFields = (options: ObserveOptions): OtpFieldObserver => {
     const current = fingerprint(result)
     // A six-digit form that re-renders on every keystroke would otherwise spam
     // the background with identical reports.
-    if (current === lastFingerprint) return
-    lastFingerprint = current
-    onChange(result)
+    if (current !== lastFingerprint) {
+      lastFingerprint = current
+      onChange(result)
+    }
+    return result
+  }
+
+  /** What a stopped observer reports: nothing, rather than a stale answer. */
+  const NOTHING: DetectionResult = {
+    handles: [],
+    overrideMissed: false,
+    scannedRoots: 0,
+  }
+
+  /** The scheduled entry point, which a stopped observer ignores. */
+  const scanUnlessStopped = (): void => {
+    if (stopped) return
+    scan()
   }
 
   function schedule(): void {
@@ -180,16 +210,17 @@ export const observeOtpFields = (options: ObserveOptions): OtpFieldObserver => {
     } else {
       firstPendingAt = now
     }
-    pending = timers.setTimeout(scan, debounceMs)
+    pending = timers.setTimeout(scanUnlessStopped, debounceMs)
   }
 
   scan()
 
   return {
-    rescan: scan,
+    rescan: scanUnlessStopped,
+    scanNow: () => (stopped ? NOTHING : scan()),
     setInputSelectors: (next) => {
       inputSelectors = next
-      scan()
+      scanUnlessStopped()
     },
     stop: () => {
       stopped = true

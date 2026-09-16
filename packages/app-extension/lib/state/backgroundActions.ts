@@ -13,6 +13,22 @@ import type {
   ReportOtpFieldsActionObject,
 } from '../types'
 import type { DetectedOtpField } from '../detect'
+import type { EntryId, Password } from 'favalib'
+import type {
+  CreateVaultActionObject,
+  GetPasswordStrengthActionObject,
+  PasswordStrength,
+  EntryList,
+  GetTokenActionObject,
+  GetVaultStateActionObject,
+  ListEntriesActionObject,
+  LockVaultActionObject,
+  PairDeviceActionObject,
+  ResetVaultActionObject,
+  UnlockVaultActionObject,
+  VaultActionResult,
+  VaultSummary,
+} from '../types'
 
 export const BG_ACTION_KEYS = {
   GET_STATE: 'GET_STATE' as const,
@@ -24,6 +40,16 @@ export const BG_ACTION_KEYS = {
   SEND_DEBUG_COMMAND: 'SEND_DEBUG_COMMAND' as const,
 
   REPORT_OTP_FIELDS: 'REPORT_OTP_FIELDS' as const,
+
+  GET_VAULT_STATE: 'GET_VAULT_STATE' as const,
+  CREATE_VAULT: 'CREATE_VAULT' as const,
+  PAIR_DEVICE: 'PAIR_DEVICE' as const,
+  UNLOCK_VAULT: 'UNLOCK_VAULT' as const,
+  LOCK_VAULT: 'LOCK_VAULT' as const,
+  RESET_VAULT: 'RESET_VAULT' as const,
+  LIST_ENTRIES: 'LIST_ENTRIES' as const,
+  GET_TOKEN: 'GET_TOKEN' as const,
+  GET_PASSWORD_STRENGTH: 'GET_PASSWORD_STRENGTH' as const,
 }
 
 const send = <T extends BgActionObject, U = void>(arg: T): Promise<U | null> =>
@@ -69,6 +95,57 @@ const actions = {
     sendAlways<ReportOtpFieldsActionObject>({
       type: BG_ACTION_KEYS.REPORT_OTP_FIELDS,
       data: { fields, overrideMissed, scannedAt: Date.now() },
+    }),
+
+  getVaultState: (): Promise<VaultSummary | null> =>
+    send<GetVaultStateActionObject, VaultSummary>({
+      type: BG_ACTION_KEYS.GET_VAULT_STATE,
+    }),
+  // The create/pair/unlock trio resolve a VaultActionResult rather than
+  // rejecting, because a rejection across sendMessage arrives as a bare
+  // "could not establish connection" string with the real reason -- a wrong
+  // password, a weak one, a dead sync server -- lost on the way.
+  createVault: (
+    password: Password,
+    mode: 'create' | 'connect',
+  ): Promise<VaultActionResult | null> =>
+    send<CreateVaultActionObject, VaultActionResult>({
+      type: BG_ACTION_KEYS.CREATE_VAULT,
+      data: { password, mode },
+    }),
+  pairDevice: (
+    connectionString: string,
+    deviceFriendlyName?: string,
+  ): Promise<VaultActionResult | null> =>
+    send<PairDeviceActionObject, VaultActionResult>({
+      type: BG_ACTION_KEYS.PAIR_DEVICE,
+      data: { connectionString, deviceFriendlyName },
+    }),
+  unlockVault: (password: Password): Promise<VaultActionResult | null> =>
+    send<UnlockVaultActionObject, VaultActionResult>({
+      type: BG_ACTION_KEYS.UNLOCK_VAULT,
+      data: { password },
+    }),
+  lockVault: () =>
+    send<LockVaultActionObject>({ type: BG_ACTION_KEYS.LOCK_VAULT }),
+  resetVault: () =>
+    send<ResetVaultActionObject>({ type: BG_ACTION_KEYS.RESET_VAULT }),
+  listEntries: (query: string, url: string | null): Promise<EntryList | null> =>
+    send<ListEntriesActionObject, EntryList>({
+      type: BG_ACTION_KEYS.LIST_ENTRIES,
+      data: { query, url },
+    }),
+  // Returns the code itself: the popup owns the clipboard write, because a
+  // service worker has no navigator.clipboard.
+  getToken: (entryId: EntryId): Promise<string | null> =>
+    send<GetTokenActionObject, string>({
+      type: BG_ACTION_KEYS.GET_TOKEN,
+      data: { entryId },
+    }),
+  getPasswordStrength: (password: Password): Promise<PasswordStrength | null> =>
+    send<GetPasswordStrengthActionObject, PasswordStrength>({
+      type: BG_ACTION_KEYS.GET_PASSWORD_STRENGTH,
+      data: { password },
     }),
 }
 

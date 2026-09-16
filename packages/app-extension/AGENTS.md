@@ -10,8 +10,69 @@ The popup and the ioc/config/logging plumbing are still the upstream starter;
 
 `favalib` (`../lib`) is linked as `workspace:*` and is where all vault, crypto,
 TOTP and sync logic belongs; prefer extending it over reimplementing that logic
-here. Note that nothing in this package imports it yet — there is no vault, no
-unlock flow and no sync url. Detection is step 1; reading the vault is step 2.
+here. Detection was step 1 and reading the vault is step 2, which is done:
+there is an unlock flow, device pairing and an entry list. Filling a detected
+field from the vault is step 3 and is **not** built — `ctActions.detectOtpFields`
+/ `DETECT_OTP_FIELDS` is still the unused seam for it.
+
+## The vault
+
+The one `FavaLib` instance lives in the **background service worker**, owned by
+`lib/ioc/entities/VaultContainer.ts`. It is there and not in the popup because
+the popup is destroyed every time it closes, and because the sync websocket has
+to outlive it. The popup holds no keys, no entries and no favalib import; it is
+a thin client over the same typed `sendMessage` protocol the rest of the package
+uses (`GET_VAULT_STATE`, `UNLOCK_VAULT`, `LIST_ENTRIES`, `GET_TOKEN`, …).
+
+Four states, and `entrypoints/popup/App.tsx` is a switch over them:
+
+| status     | meaning                                                |
+| ---------- | ------------------------------------------------------ |
+| `no-vault` | nothing stored; the user creates one or joins one      |
+| `locked`   | a locked representation is on disk, no keys in memory  |
+| `pairing`  | a placeholder vault exists, waiting for another device |
+| `unlocked` | ready to list and to generate tokens                   |
+
+Three things are worth knowing before changing any of it.
+
+- **The popup never renders a code.** `listEntries` uses favalib's
+  `listEntriesMetas()` (the overload _without_ tokens), so a secret never
+  crosses the message boundary, and `EntryMeta` carries no `payload` anyway.
+  A token is generated only when the user clicks a row, and is copied straight
+  to the clipboard. The clipboard write happens in the popup because a service
+  worker has no `navigator.clipboard`.
+- **Pairing is text-only.** The other clients also accept a pasted QR _image_,
+  which favalib decodes with `getImageDataFromInput` — that needs `Image`,
+  `document` and `FileReader`, none of which exist in a service worker. The
+  text code carries the same payload.
+- **Search is delegated,** not filtered locally, so this and the pwa agree on
+  what matches: `searchEntriesMetas` is a case-insensitive substring of issuer
+  or name. The "for this site" group is `findEntryMetasForUrl(activeTabUrl)`,
+  already sorted most-specific-first, and is hidden while a query is active.
+
+### Staying unlocked across a worker restart
+
+mv3 evicts the worker after ~30s idle, which would otherwise mean retyping the
+master password almost every time the popup opens. `init.ts` calls
+`vaultContainer.restoreSession()` on every boot to rebuild the instance.
+
+Only Chrome is affected. wxt builds Firefox as **mv2**, whose background is a
+persistent page rather than a service worker, so nothing is evicted and the
+instance simply stays in memory — the same code runs, `restoreSession()` finds
+the vault already open and returns. Check the built manifest when changing
+anything manifest-shaped, because the two targets differ more than usual here:
+wxt rewrites `content_security_policy` from the mv3 object form to mv2's single
+string, and the background from `service_worker` to `scripts`.
+
+That works by keeping the **master password** in `Db`'s `session:` area
+(`browser.storage.session`: memory-backed, never written to disk, wiped when
+the browser closes, unreadable from content scripts). That is not a casual
+choice — favalib can only build a `FavaLib` from
+`(lockedRepresentation, password)`, with no api to rehydrate one from the keys
+it has already derived, so there is nothing else to keep. Anything able to read
+that area is already a context that could read the unlocked vault directly. The
+clean fix is an export/import-unlocked-session api in favalib; until then, do
+not move this to `local:`, and keep `lock()` clearing it.
 
 ## `lib/detect/` — the otp field heuristic
 
@@ -130,6 +191,25 @@ and are referenced as `"typescript": "catalog:"`.
   changing it after publishing makes it a different add-on that existing users
   never receive as an update. Chrome derives its own id from the signing key
   and ignores this.
+- **Do not import the `lib/` barrel from the content script.** `lib/index.ts`
+  re-exports the ioc container, which now reaches `VaultContainer` and through
+  it all of favalib — node-forge, jpake, openpgp. `lib/content/index.ts` used
+  to take `Logger` and `bgActions` from it, and that alone put **2.7MB** of
+  vault code into `content-scripts/content.js`, injected into every frame of
+  every page. It imports `../classes/Logger` and `../state` directly for that
+  reason; the content script is back to ~19kB. Check the build's size table
+  after touching those imports.
+- `content_security_policy.extension_pages` carries `'wasm-unsafe-eval'`
+  because favalib derives the vault key with argon2id from `hash-wasm`, which
+  instantiates a WebAssembly module. It runs on **every** unlock, so without
+  this nothing unlocks, in the popup or the background. It permits no `eval()`
+  and no remote script — it is specifically the wasm carve-out.
+- The background bundle is ~2.7MB and that is expected: rolldown inlines every
+  one of favalib's dynamic `import()`s (jsqr, zxcvbn, openpgp, qrcode). That is
+  load-bearing rather than merely wasteful — the worker is declared as a
+  _classic_ service worker, which cannot do a runtime `import()` at all. If a
+  build ever leaves a real `import(` in `background.js`, pairing and the
+  password-strength meter break at runtime while still typechecking.
 - `browser_specific_settings` is added only for the Firefox build.
   `data_collection_permissions: { required: ['none'] }` is the explicit "this
   extension collects nothing", required for new Firefox extensions from

@@ -7,6 +7,7 @@ import type {
   Db,
   OtpFieldRegistry,
   StateManager,
+  VaultContainer,
 } from '../types'
 
 const log = new Logger('background-script/init')
@@ -31,6 +32,12 @@ const runInit = async () => {
     browser.tabs.onRemoved.addListener((tabId) => {
       registry.forgetTab(tabId)
     })
+
+    // mv3 evicts this worker after ~30s idle, so a popup opening a minute
+    // later lands on a cold start. Without this the vault would read as locked
+    // and ask for the password again, every time.
+    const vault = container.get<VaultContainer>(IOC_TYPES.VaultContainer)
+    await vault.restoreSession()
 
     state.status = 'ready'
   } catch (error) {

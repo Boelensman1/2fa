@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeAll } from 'vitest'
-import crypto from 'node:crypto'
 import { base64ToUint8Array, uint8ArrayToBase64 } from 'uint8array-extras'
 
 import {
@@ -25,9 +24,6 @@ import {
   newTotpEntry,
   passwordExtraDict,
 } from './testUtils.mjs'
-
-// @ts-expect-error node crypto and webcrypto don't have the exact same types
-globalThis.window = { crypto: crypto.webcrypto }
 
 const cryptoLib = new nodeProviders.CryptoLib()
 

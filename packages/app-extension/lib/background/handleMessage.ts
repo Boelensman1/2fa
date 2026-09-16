@@ -10,11 +10,15 @@ import type {
   OtpFieldRegistry,
   OtpFieldReport,
   StateManager,
+  VaultActionResult,
+  VaultContainer,
 } from '../types'
 
 const log = new Logger('background-script/handleMessage')
 
 import { setVerboseLogging } from '../classes/Logger'
+
+import { describeVaultError } from '../ioc/entities/VaultContainer'
 
 import handleDebugCommand from './handleDebugCommand'
 import { whenInitFinished } from './init'
@@ -35,10 +39,11 @@ const actionsThatMustNotWaitForInit: BgActionObject['type'][] = [
 ]
 
 async function unboundHandleMessage(
-  [stateManager, configContainer, otpFieldRegistry]: [
+  [stateManager, configContainer, otpFieldRegistry, vaultContainer]: [
     StateManager,
     ConfigContainer,
     OtpFieldRegistry,
+    VaultContainer,
   ],
   action: BgActionObject,
   sender: Browser.runtime.MessageSender,
@@ -112,6 +117,71 @@ async function unboundHandleMessage(
       state.debugString = describeReport(otpFieldRegistry.forTab(tab.id))
       return null
     }
+
+    case BG_ACTION_KEYS.GET_VAULT_STATE: {
+      return vaultContainer.getSummary()
+    }
+
+    case BG_ACTION_KEYS.CREATE_VAULT: {
+      return attempt(() =>
+        vaultContainer.createVault(action.data.password, action.data.mode),
+      )
+    }
+
+    case BG_ACTION_KEYS.PAIR_DEVICE: {
+      return attempt(() =>
+        vaultContainer.pair(
+          action.data.connectionString,
+          action.data.deviceFriendlyName,
+        ),
+      )
+    }
+
+    case BG_ACTION_KEYS.UNLOCK_VAULT: {
+      return attempt(() => vaultContainer.unlock(action.data.password))
+    }
+
+    case BG_ACTION_KEYS.LOCK_VAULT: {
+      await vaultContainer.lock()
+      return null
+    }
+
+    case BG_ACTION_KEYS.RESET_VAULT: {
+      await vaultContainer.reset()
+      return null
+    }
+
+    case BG_ACTION_KEYS.LIST_ENTRIES: {
+      return vaultContainer.listEntries(action.data.query, action.data.url)
+    }
+
+    case BG_ACTION_KEYS.GET_TOKEN: {
+      return vaultContainer.generateToken(action.data.entryId)
+    }
+
+    case BG_ACTION_KEYS.GET_PASSWORD_STRENGTH: {
+      return vaultContainer.getPasswordStrength(action.data.password)
+    }
+  }
+}
+
+/**
+ * Runs a vault action and reports its outcome instead of throwing.
+ *
+ * A handler that rejects reaches the popup as a generic runtime error with the
+ * real reason stripped off, and the reason is the whole message here -- "wrong
+ * password" and "password is too weak" are what the user has to act on.
+ */
+const attempt = async (
+  action: () => Promise<unknown>,
+): Promise<VaultActionResult> => {
+  try {
+    await action()
+    return { ok: true, error: null }
+  } catch (error) {
+    const message = describeVaultError(error)
+    log.warn(`Vault action failed: ${message}`)
+    return { ok: false, error: message }
   }
 }
 
@@ -174,6 +244,7 @@ const handleMessage = bindDependencies(unboundHandleMessage, [
   IOC_TYPES.StateManager,
   IOC_TYPES.ConfigContainer,
   IOC_TYPES.OtpFieldRegistry,
+  IOC_TYPES.VaultContainer,
 ])
 
 function handleMessageContainer(

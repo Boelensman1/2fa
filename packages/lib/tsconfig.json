@@ -5,7 +5,12 @@
   "compilerOptions": {
     "allowJs": true,
     "types": ["node"],
-    "lib": ["dom"],
+    // `dom` alone replaces the base's list rather than adding to it, so
+    // pinning it here left the package with no ES lib at all -- it only
+    // typechecked because @types/node transitively referenced one, which
+    // is how `Error` ended up with its pre-ES2022 signature. `es2023`
+    // matches what @tsconfig/node20 intends; keep the two in step.
+    "lib": ["dom", "es2023"],
     "module": "nodenext",
     "composite": true,
     "experimentalDecorators": true,

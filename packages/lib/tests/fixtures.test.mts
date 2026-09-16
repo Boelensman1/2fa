@@ -1,5 +1,4 @@
 import { readFileSync } from 'node:fs'
-import crypto from 'node:crypto'
 import { describe, it, expect, beforeAll } from 'vitest'
 
 import {
@@ -16,12 +15,6 @@ import {
 import { nodeProviders } from '../src/platformProviders/node/index.mjs'
 import { browserProviders } from '../src/platformProviders/browser/index.mjs'
 import type { UnlockedSessionString } from '../src/interfaces/Vault.mjs'
-
-// The browser CryptoLib reads window.crypto inside its method bodies only, and
-// nothing in src/ does environment detection, so this shim cannot perturb the
-// node half of this file. Same trick as CryptoProviders/compare-node-browser.
-// @ts-expect-error node crypto and webcrypto don't have the exact same types
-globalThis.window = { crypto: crypto.webcrypto }
 
 // See tests/fixtures/README.md. This vault is frozen: written by favalib 0.0.21
 // at commit e88f50b, never to be regenerated. Storage version 1 is no longer

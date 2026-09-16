@@ -1,5 +1,7 @@
 import type { DetectedOtpField } from '../detect'
 
+import type { EntryId, Password } from 'favalib'
+
 import type { BG_ACTION_KEYS } from '../state'
 import type { Config, LogEntryPayload } from './'
 
@@ -49,6 +51,66 @@ export interface ReportOtpFieldsActionObject {
   }
 }
 
+export interface GetVaultStateActionObject {
+  type: typeof BG_ACTION_KEYS.GET_VAULT_STATE
+}
+
+export interface CreateVaultActionObject {
+  type: typeof BG_ACTION_KEYS.CREATE_VAULT
+  data: {
+    password: Password
+    /** `connect` leaves the new vault unsaved until pairing delivers one. */
+    mode: 'create' | 'connect'
+  }
+}
+
+export interface PairDeviceActionObject {
+  type: typeof BG_ACTION_KEYS.PAIR_DEVICE
+  data: {
+    /** The text code from another device. Qr images cannot be decoded here. */
+    connectionString: string
+    deviceFriendlyName?: string
+  }
+}
+
+export interface UnlockVaultActionObject {
+  type: typeof BG_ACTION_KEYS.UNLOCK_VAULT
+  data: { password: Password }
+}
+
+export interface LockVaultActionObject {
+  type: typeof BG_ACTION_KEYS.LOCK_VAULT
+}
+
+export interface ResetVaultActionObject {
+  type: typeof BG_ACTION_KEYS.RESET_VAULT
+}
+
+export interface ListEntriesActionObject {
+  type: typeof BG_ACTION_KEYS.LIST_ENTRIES
+  data: {
+    query: string
+    /**
+     * The active tab's url, for the "for this site" group.
+     *
+     * Unlike REPORT_OTP_FIELDS this one *is* taken from the payload: the popup
+     * is an extension page, not a content script, and it reads the url from
+     * browser.tabs -- there is no untrusted page in the chain to lie about it.
+     */
+    url: string | null
+  }
+}
+
+export interface GetTokenActionObject {
+  type: typeof BG_ACTION_KEYS.GET_TOKEN
+  data: { entryId: EntryId }
+}
+
+export interface GetPasswordStrengthActionObject {
+  type: typeof BG_ACTION_KEYS.GET_PASSWORD_STRENGTH
+  data: { password: Password }
+}
+
 export type BgActionObject =
   | GetStateActionObject
   | GetConfigActionObject
@@ -57,3 +119,12 @@ export type BgActionObject =
   | SendLogActionObject
   | SendDebugCommandActionObject
   | ReportOtpFieldsActionObject
+  | GetVaultStateActionObject
+  | CreateVaultActionObject
+  | PairDeviceActionObject
+  | UnlockVaultActionObject
+  | LockVaultActionObject
+  | ResetVaultActionObject
+  | ListEntriesActionObject
+  | GetTokenActionObject
+  | GetPasswordStrengthActionObject

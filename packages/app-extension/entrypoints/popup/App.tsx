@@ -1,45 +1,48 @@
-import { useConfig, useGlobalState } from '@/lib/ui/hooks'
+import {
+  AuthenticatedApp,
+  CreateVaultScreen,
+  PairScreen,
+  Splash,
+  UnlockScreen,
+} from '@/lib/ui/components'
+import { useVault } from '@/lib/ui/hooks'
 
 /**
- * The popup, which for now is a window onto the otp-field detector.
+ * The popup.
  *
- * There is no vault in this package yet, so there is nothing to fill and
- * nothing to list. What there is worth seeing is what the heuristic made of
- * the page in the active tab, and its reasons -- the fixture suite cannot tell
- * us how it does against a real site, and this is the only thing that can.
+ * A switch on where the vault is, the way `../app-browser`'s App gates with
+ * nested `<Show>`. The vault itself lives in the background service worker --
+ * this holds no keys and no entries, only what the background last told it.
+ *
+ * `summary === null` is "the background has not answered yet", which is not
+ * the same as "there is no vault"; rendering the create screen in that gap
+ * would flash first-run onboarding at someone who is merely locked.
  */
 const Popup = () => {
-  const { config, saveConfig } = useConfig()
-  const globalState = useGlobalState()
+  const { summary, refresh } = useVault()
 
-  return (
-    <div className="p-3 text-xs">
-      <h1 className="mb-2 font-semibold">Detected otp fields</h1>
+  if (!summary) return <Splash />
 
-      {globalState.status !== 'ready' ? (
-        <p className="text-neutral-500">Starting up ({globalState.status})…</p>
-      ) : globalState.debugString === '' ? (
-        <p className="text-neutral-500">
-          No otp fields on this page. A frame that finds nothing is not listed,
-          so this also covers a tab that was open before the extension loaded --
-          reload it if that is what happened.
-        </p>
-      ) : (
-        <pre className="overflow-x-auto whitespace-pre-wrap break-words">
-          {globalState.debugString}
-        </pre>
-      )}
-
-      <label className="mt-3 flex items-center gap-1.5 text-neutral-500">
-        <input
-          type="checkbox"
-          checked={config.debug}
-          onChange={(event) => void saveConfig({ debug: event.target.checked })}
+  switch (summary.status) {
+    case 'no-vault':
+      return <CreateVaultScreen onCreated={() => void refresh()} />
+    case 'pairing':
+      return (
+        <PairScreen
+          syncConnected={summary.syncConnected}
+          onPaired={() => void refresh()}
         />
-        Verbose logging
-      </label>
-    </div>
-  )
+      )
+    case 'locked':
+      return <UnlockScreen onUnlocked={() => void refresh()} />
+    case 'unlocked':
+      return (
+        <AuthenticatedApp
+          summary={summary}
+          onVaultChanged={() => void refresh()}
+        />
+      )
+  }
 }
 
 export default Popup

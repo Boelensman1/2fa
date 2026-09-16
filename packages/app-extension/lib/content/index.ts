@@ -1,4 +1,10 @@
-import { Logger, bgActions, CT_ACTION_KEYS } from '../'
+// Imported from their own modules rather than through `../`, deliberately.
+// That barrel also exports the ioc container, which now reaches VaultContainer
+// and through it the whole of favalib -- node-forge, jpake and the rest. A
+// content script runs in every frame of every page and needs none of it; going
+// through the barrel put 2.7MB of vault code on every page load.
+import Logger from '../classes/Logger'
+import { bgActions, CT_ACTION_KEYS } from '../state'
 import { detectOtpFields, observeOtpFields } from '../detect'
 import type { DetectedOtpFieldHandle, OtpFieldObserver } from '../detect'
 import type { CtActionObject, DetectOtpFieldsResponse } from '../types'

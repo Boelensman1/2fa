@@ -1,2 +1,5 @@
 export { default as useConfig } from './useConfig'
 export { default as useGlobalState } from './useGlobalState'
+export { default as useVault } from './useVault'
+export { default as useEntries } from './useEntries'
+export { default as useActiveTabUrl } from './useActiveTabUrl'

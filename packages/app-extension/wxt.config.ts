@@ -18,6 +18,16 @@ export default defineConfig({
     // id, which the browser derives from the signing key.
     name: 'Fava',
     permissions: ['storage'],
+    // favalib derives the vault key with argon2id from `hash-wasm`, which
+    // instantiates a WebAssembly module. mv3's default page csp allows
+    // script-src 'self' only, and compiling wasm needs 'wasm-unsafe-eval' on
+    // top of it -- without this every unlock fails with a csp violation, in
+    // the popup and in the background alike. It does not permit eval() or
+    // remote script; it is specifically the wasm carve-out.
+    content_security_policy: {
+      extension_pages:
+        "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'",
+    },
     //host_permissions: ['https://www.google.com/*'],
     // Firefox only. Chrome treats browser_specific_settings as an
     // unrecognised key, and a manifest that ships keys the target browser does

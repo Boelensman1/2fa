@@ -3,6 +3,7 @@ const IOC_TYPES = {
   StateManager: Symbol.for('StateManager'),
   DB: Symbol.for('DB'),
   OtpFieldRegistry: Symbol.for('OtpFieldRegistry'),
+  VaultContainer: Symbol.for('VaultContainer'),
 }
 
 export default IOC_TYPES

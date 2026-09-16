@@ -17,8 +17,10 @@ import {
   EncryptedPrivateKey,
   EncryptedSymmetricKey,
   STORAGE_VERSION,
+  type KdfParameters,
   type SymmetricKey,
 } from '../../src/main.mjs'
+import { buildVaultAad } from '../../src/utils/canonical.mjs'
 import { nodeProviders } from '../../src/platformProviders/node/index.mjs'
 import {
   clearEntries,
@@ -45,6 +47,7 @@ describe('PersistentStorageManager', () => {
   let encryptedPrivateKey: EncryptedPrivateKey
   let encryptedSymmetricKey: EncryptedSymmetricKey
   let symmetricKey: SymmetricKey
+  let kdf: KdfParameters
 
   beforeAll(async () => {
     const result = await createFavaLibForTests()
@@ -54,6 +57,7 @@ describe('PersistentStorageManager', () => {
     encryptedPrivateKey = result.encryptedPrivateKey
     encryptedSymmetricKey = result.encryptedSymmetricKey
     symmetricKey = result.symmetricKey
+    kdf = result.kdf
 
     // eslint-disable-next-line @typescript-eslint/dot-notation
     persistentStorageManager = favaLib['persistentStorageManager']
@@ -100,24 +104,46 @@ describe('PersistentStorageManager', () => {
       encryptedPrivateKey,
       encryptedSymmetricKey,
       salt,
+      kdf,
+      envelopeMac: expect.any(String) as string,
       encryptedVaultState: expect.any(String) as string,
     })
 
-    // The stored envelope is base64(iv) + ":" + base64(ciphertext), with a
-    // fresh 16-byte IV per encryption and AES-256-CBC's 16-byte block size.
+    // The stored envelope is "v2" + ":" + base64(nonce) + ":" +
+    // base64(ciphertext || tag): a 12-byte GCM nonce, and a payload that is
+    // the plaintext length plus the 16-byte tag. GCM is a stream cipher, so
+    // unlike the v1 CBC envelope the ciphertext is NOT a multiple of 16.
     const envelope = parsed.encryptedVaultState.split(':')
-    expect(envelope).toHaveLength(2)
-    const [iv, cipherText] = envelope
-    expect(base64ToUint8Array(iv)).toHaveLength(16)
+    expect(envelope).toHaveLength(3)
+    const [prefix, nonce, cipherText] = envelope
+    expect(prefix).toBe('v2')
+    expect(base64ToUint8Array(nonce)).toHaveLength(12)
     const cipherBytes = base64ToUint8Array(cipherText)
-    expect(cipherBytes.length).toBeGreaterThan(0)
-    expect(cipherBytes.length % 16).toBe(0)
+    expect(cipherBytes.length).toBeGreaterThan(16)
 
-    // And it decrypts, with the vault's own symmetric key, back to the state.
+    // And it decrypts, with the vault's own symmetric key AND the at-rest
+    // AAD, back to the state. Rebuilding the AAD here rather than reading it
+    // from the library is the point: if the two ever disagree, this fails.
     const cryptoLib = new nodeProviders.CryptoLib()
+    const aad = buildVaultAad(
+      STORAGE_VERSION,
+      salt,
+      kdf,
+      await cryptoLib.sha256(encryptedPrivateKey),
+    )
+    expect(cipherBytes.length).toBe(
+      new TextEncoder().encode(
+        await cryptoLib.decryptSymmetric(
+          symmetricKey,
+          parsed.encryptedVaultState,
+          aad,
+        ),
+      ).length + 16,
+    )
     const vaultStateString = await cryptoLib.decryptSymmetric(
       symmetricKey,
       parsed.encryptedVaultState,
+      aad,
     )
     expect(vaultStateString).toMatch(/^{/)
     const parsedVaultState = JSON.parse(vaultStateString) as VaultState

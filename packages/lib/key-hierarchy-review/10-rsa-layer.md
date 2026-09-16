@@ -60,5 +60,58 @@ that is churn on a published package's stored format for no security gain.
 
 ## Resolution
 
-Closed 2026-09-16 — reviewed, no security change warranted. The two cleanups
-above are open as ordinary housekeeping, not findings.
+Closed 2026-09-16 — reviewed, no security change warranted. **Amended the same
+day** when [02](02-ciphertext-authenticity.md) shipped: the Decision stands, but
+two costs of the at-rest self-wrap that this review did not weigh came out of
+that work and belong here, next to the benefits.
+
+### Amendment: two costs of the at-rest self-wrap
+
+1. **The self-wrap makes the vault ciphertext forgeable by anyone holding the
+   device's public key.** The data encryption key is RSA-OAEP wrapped under the
+   device's _own_ public key, so an AES-GCM tag over the vault state proves only
+   that the writer held that key — and anyone with the public key can mint one,
+   wrap it, re-encrypt an arbitrary vault state and build a matching AAD from
+   the cleartext fields they are writing. "Cryptographically equivalent to
+   wrapping it directly under `passwordHash`, just with more moving parts" is
+   true of confidentiality and **false of integrity**: wrapping under
+   `passwordHash` would not have had this property.
+
+   This is why v2 carries a separate `envelopeMac` keyed from the password hash.
+   A separate MAC rather than mixing the password hash into the content key,
+   precisely to keep the re-wrap-to-another-public-key affordance that is the
+   reason this finding kept the RSA layer — a future recovery flow re-issues the
+   MAC. See `02`'s Resolution, and the named regression test in
+   `tests/envelope-integrity.test.mts`.
+
+2. **`encryptedPrivateKey` exists at all only because of the self-wrap, and it
+   is still AES-256-CBC.** Routing the DEK through an RSA private key means that
+   private key must itself be stored encrypted, which is the PBES2 blob — and
+   `decryptKeys` still distinguishes `ERR_OSSL_BAD_DECRYPT` from
+   `ERR_OSSL_UNSUPPORTED` (forge: `'Invalid password'` vs `'Unsupported private
+key'`). So "AES-GCM everywhere" is not true of the at-rest path and the
+   README hierarchy does not claim it. Not urgent — it is PBES2, and there is no
+   adaptive oracle against a local file — but it is a cost of this design, not
+   an incidental detail.
+
+Neither changes the Decision. Both are the honest other half of it.
+
+### The cleanups
+
+`02` took all three of the items in this file that were actionable:
+
+- **OAEP MGF1 SHA-1 → SHA-256**, on both providers. Deferred here only because
+  it is a cross-device wire break, which `02`'s clean break already paid for.
+  The v1 read path keeps SHA-1. One correction to the note above: node-forge
+  **defaults `mgf1` to `md`** (`pkcs1.js`, `if(!mgf1Md) { mgf1Md = md }`), so
+  passing `md` alone would have matched node rather than silently diverging. The
+  real hazard is an _explicit_ mismatch, which round-trips inside forge and
+  fails only against node; `compare-node-browser.test.ts` asserts that case
+  specifically.
+- **node's `createKeys` double argon2** — gone. The keypair is now generated as
+  an unencrypted PKCS#8 PEM and the encrypted form derived from it, so there is
+  one argon2 call instead of two. Worth far more at the v2 parameters than the
+  ~134 ms quoted above.
+- **`validatePasswordStrength` before `createKeys`** — done, one line.
+
+Not taken: dropping the at-rest self-wrap. The Decision above stands.

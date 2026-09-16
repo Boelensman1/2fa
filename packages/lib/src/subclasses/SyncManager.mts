@@ -26,6 +26,11 @@ import {
   VaultStateSend,
 } from '../interfaces/SyncTypes.mjs'
 import { decodeInitiatorData, jsonToUint8Array } from '../utils/syncUtils.mjs'
+import {
+  buildCommandAad,
+  buildHandshakeAad,
+  buildVaultDataAad,
+} from '../utils/canonical.mjs'
 import type {
   Encrypted,
   EncryptedPublicKey,
@@ -707,13 +712,19 @@ class SyncManager {
       syncKey,
     }
 
+    const handshakeAad = buildHandshakeAad(
+      this.activeAddDeviceFlow.initiatorDeviceId,
+      this.activeAddDeviceFlow.responderDeviceId,
+    )
     const responderEncryptedPublicKey = await this.cryptoLib.encryptSymmetric(
       syncKey,
       this.publicKey,
+      handshakeAad,
     )
     const responderEncryptedDeviceInfo = await this.cryptoLib.encryptSymmetric(
       syncKey,
       JSON.stringify(this.deviceInfo),
+      handshakeAad,
     )
 
     // send our public key
@@ -744,11 +755,16 @@ class SyncManager {
     }
 
     const syncKey = this.activeAddDeviceFlow.syncKey
+    const handshakeAad = buildHandshakeAad(
+      this.activeAddDeviceFlow.initiatorDeviceId,
+      this.activeAddDeviceFlow.responderDeviceId,
+    )
 
     // Decrypt the received public key
     const decryptedPublicKey = await this.cryptoLib.decryptSymmetric(
       syncKey,
       responderEncryptedPublicKey,
+      handshakeAad,
     )
 
     // decrypt the received device info
@@ -756,6 +772,7 @@ class SyncManager {
       await this.cryptoLib.decryptSymmetric(
         syncKey,
         responderEncryptedDeviceInfo,
+        handshakeAad,
       ),
     ) as DeviceInfo
 
@@ -764,6 +781,10 @@ class SyncManager {
       await this.persistentStorageManager.getEncryptedVaultState(
         syncKey,
         this.activeAddDeviceFlow.responderDeviceId,
+        buildVaultDataAad(
+          this.deviceId,
+          this.activeAddDeviceFlow.responderDeviceId,
+        ),
       )
 
     // Send the encrypted vault data to the server
@@ -811,7 +832,15 @@ class SyncManager {
     expectedDeviceId: DeviceId,
   ) {
     const vaultState = JSON.parse(
-      await this.cryptoLib.decryptSymmetric(symmetricKey, encryptedVaultState),
+      await this.cryptoLib.decryptSymmetric(
+        symmetricKey,
+        encryptedVaultState,
+        // expectedDeviceId is the sender; we are always the recipient. The
+        // deviceId checks below are on plaintext INSIDE the ciphertext, so
+        // binding both ids here is what makes them mean anything to someone
+        // who did not hold the key.
+        buildVaultDataAad(expectedDeviceId, this.deviceId),
+      ),
     ) as VaultStateSend
 
     if (vaultState.deviceId !== expectedDeviceId) {
@@ -886,6 +915,7 @@ class SyncManager {
             id: undefined,
             padding: generateNonCryptographicRandomString(), // make it harder to guess the length
           }),
+          buildCommandAad(command.id, device.deviceId),
         )
 
         this.commandSendQueue.push({
@@ -1026,22 +1056,41 @@ class SyncManager {
   async receiveCommands(encryptedCommands: SyncCommandFromServer[]) {
     await Promise.all(
       encryptedCommands.map(async (data) => {
-        const symmetricKey = await this.cryptoLib.decrypt(
-          this.privateKey,
-          data.encryptedSymmetricKey,
-        )
+        // Per-command, deliberately. These run inside a Promise.all, so
+        // without this one undecryptable command -- a peer that has not
+        // upgraded past the v1 envelope, a row the server has held since
+        // before the upgrade, or an outright hostile one -- would reject the
+        // whole batch and take processRemoteCommands and the ready event down
+        // with it. Dropping one command loses nothing permanently: it is never
+        // reported in syncCommandsExecuted, so the server redelivers it.
+        try {
+          const symmetricKey = await this.cryptoLib.decrypt(
+            this.privateKey,
+            data.encryptedSymmetricKey,
+          )
 
-        const command = JSON.parse(
-          await this.cryptoLib.decryptSymmetric(
-            symmetricKey,
-            data.encryptedCommand,
-          ),
-        ) as Omit<SyncCommand, 'id'>
+          const command = JSON.parse(
+            await this.cryptoLib.decryptSymmetric(
+              symmetricKey,
+              data.encryptedCommand,
+              buildCommandAad(data.commandId, this.deviceId),
+            ),
+          ) as Omit<SyncCommand, 'id'>
 
-        this.commandManager.receiveRemoteCommand({
-          ...command,
-          id: data.commandId,
-        } as SyncCommand)
+          this.commandManager.receiveRemoteCommand({
+            ...command,
+            id: data.commandId,
+          } as SyncCommand)
+        } catch {
+          // No detail in the message: which of the several possible causes it
+          // was is exactly what an attacker probing the sync path wants told.
+          this.log(
+            'warning',
+            `Dropping remote command ${data.commandId}: it could not be ` +
+              `decrypted or was not valid. It will be retried if the sending ` +
+              `device is still on a compatible version.`,
+          )
+        }
       }),
     )
 
@@ -1080,6 +1129,7 @@ class SyncManager {
         await this.persistentStorageManager.getEncryptedVaultState(
           symmetricKey,
           device.deviceId,
+          buildVaultDataAad(this.deviceId, device.deviceId),
         )
 
       this.sendToServer('vault', {

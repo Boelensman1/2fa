@@ -1,12 +1,16 @@
+import { readFileSync } from 'node:fs'
 import { describe, it, expect, beforeAll, vi } from 'vitest'
 import {
   FavaLib,
   getFavaLibVaultCreationUtils,
   type DeviceId,
+  type MacKey,
   type Password,
+  LockedRepresentation,
   LockedRepresentationString,
   StorageVersionError,
 } from '../../src/main.mjs'
+import { buildEnvelopeMacMessage } from '../../src/utils/canonical.mjs'
 import {
   createFavaLibForTests,
   newTotpEntry,
@@ -17,9 +21,16 @@ import {
 } from '../testUtils.mjs'
 import { nodeProviders } from '../../src/platformProviders/node/index.mjs'
 
+const v1Fixture = readFileSync(
+  new URL('../fixtures/vault-v1.json', import.meta.url),
+  'utf8',
+) as LockedRepresentationString
+const V1_FIXTURE_PASSWORD = 'fixture!Vault7#Frozen$v1' as Password
+
 describe('creationUtils', () => {
   let creationUtils: ReturnType<typeof getFavaLibVaultCreationUtils>
   let lockedRepresentation: LockedRepresentationString
+  let macKey: MacKey
 
   beforeAll(async () => {
     const saveFunction = (
@@ -29,6 +40,7 @@ describe('creationUtils', () => {
     }
 
     const result = await createFavaLibForTests(saveFunction)
+    macKey = result.macKey
 
     await result.favaLib.storage.forceSave()
 
@@ -71,7 +83,7 @@ describe('creationUtils', () => {
           withStorageVersion(99),
           password,
         ),
-      ).rejects.toThrow(/storage version 99.*only supports up to 1/s)
+      ).rejects.toThrow(/storage version 99.*only supports up to 2/s)
     })
 
     it('refuses before attempting any decryption', async () => {
@@ -106,23 +118,44 @@ describe('creationUtils', () => {
     })
 
     it('treats an absent storageVersion as the legacy version', async () => {
-      const parsed = JSON.parse(lockedRepresentation) as Record<string, unknown>
+      // A REAL v1 blob with the field removed, not a current one: absent means
+      // "written before the field existed", and a v2 envelope with the field
+      // stripped is a different thing entirely. tests/fixtures/vault-v1.json
+      // is the only genuine v1 vault in the repo.
+      const parsed = JSON.parse(v1Fixture) as Record<string, unknown>
       delete parsed.storageVersion
-      const favaLib = await creationUtils.loadFavaLibFromLockedRepesentation(
+
+      const v1Utils = getFavaLibVaultCreationUtils(
+        nodeProviders,
+        deviceType,
+        passwordExtraDict,
+      )
+      const favaLib = await v1Utils.loadFavaLibFromLockedRepesentation(
         JSON.stringify(parsed) as LockedRepresentationString,
-        password,
+        V1_FIXTURE_PASSWORD,
         { connectToSyncServer: false },
       )
       await favaLib.ready
-      expect(favaLib.meta.deviceId).toBeTruthy()
+      expect(favaLib.meta.deviceId).toBe('91b8a8bf-3450-4e68-94db-4d6051901ffa')
       favaLib.sync?.closeServerConnection()
     })
 
-    it('ignores libVersion entirely', async () => {
+    it('does not let libVersion gate a load', async () => {
       // libVersion records which build wrote the vault; it must never decide
       // whether one opens, or a newer library would refuse its own vaults.
-      const parsed = JSON.parse(lockedRepresentation) as Record<string, unknown>
+      //
+      // It IS covered by the envelope MAC, though -- the rule there is
+      // "everything but the MAC" -- so changing it means re-issuing the MAC,
+      // which is what a legitimate writer would do. The tampering case, where
+      // the MAC is left stale, is asserted in envelope-mac.test.mts.
+      const parsed = JSON.parse(lockedRepresentation) as LockedRepresentation
       parsed.libVersion = '99.0.0'
+      const cryptoLib = new nodeProviders.CryptoLib()
+      parsed.envelopeMac = await cryptoLib.createEnvelopeMac(
+        macKey,
+        buildEnvelopeMacMessage(parsed),
+      )
+
       const favaLib = await creationUtils.loadFavaLibFromLockedRepesentation(
         JSON.stringify(parsed) as LockedRepresentationString,
         password,
@@ -149,10 +182,12 @@ describe('creationUtils', () => {
       result.encryptedPrivateKey,
       result.encryptedSymmetricKey,
       result.salt,
+      result.macKey,
+      result.kdf,
       result.publicKey,
       { deviceId },
       [],
-      (representation) => {
+      (representation: LockedRepresentationString) => {
         savedRepresentation = representation
       },
       {

@@ -1,7 +1,9 @@
+import type { KdfParameters } from './utils/canonical.mjs'
+
 /**
  * Version constants for the library.
  *
- * This module deliberately imports nothing: it is read from both
+ * This module deliberately imports nothing at runtime: it is read from both
  * `creationUtils` and `PersistentStorageManager`, which already sit on a
  * runtime import cycle with `FavaLib`. Keeping it a leaf makes it safe to read
  * at module scope from anywhere.
@@ -15,18 +17,32 @@
  * tell which build last wrote it. It must never decide whether a vault opens --
  * that is what STORAGE_VERSION is for.
  */
-export const LIB_VERSION = '0.0.21'
+export const LIB_VERSION = '0.0.22'
 
 /**
  * The version of the LockedRepresentation envelope that this build writes, and
  * the highest one it is able to read. A stored vault claiming a higher number
  * was written by a newer library and is refused rather than misread.
+ *
+ * Version 2 (key-hierarchy-review/01 and /02): argon2id at m=64 MiB/t=3/p=4,
+ * AES-256-GCM with additional authenticated data in place of AES-256-CBC,
+ * RSA-OAEP with MGF1-SHA-256 in place of MGF1-SHA-1, and an `envelopeMac`
+ * keyed from the password hash.
  */
-export const STORAGE_VERSION = 1
+export const STORAGE_VERSION = 2
 
 /**
  * The storage version assumed for a stored vault that carries no
  * storageVersion at all.
+ *
+ * TO BE REMOVED. Reading version 1 is a migration path, not a supported
+ * format: `loadFavaLibFromLockedRepesentation` re-wraps any v1 vault it opens
+ * to STORAGE_VERSION and logs a warning while doing so. Until that read path
+ * is gone, a v1 blob dropped over a v2 vault opens and is silently migrated --
+ * a downgrade window that is wider than plain rollback, because it needs no
+ * matching salt or kdf block (key-hierarchy-review/18-anti-rollback.md).
+ * Delete the v1 read path, and this constant with it, once installs have
+ * upgraded.
  */
 export const LEGACY_STORAGE_VERSION = 1
 
@@ -34,5 +50,42 @@ export const LEGACY_STORAGE_VERSION = 1
  * The sync command wire-protocol version this build speaks. Only the major
  * component is compared; a remote command with a higher major is dropped
  * rather than misapplied.
+ *
+ * Bumped to 2.0 with storage version 2, which moved the sync wire to the v2
+ * ciphertext envelope with no fallback. Note this is bookkeeping, not the
+ * gate: `commandVersionIsSupported` accepts OLDER majors, so a v1 peer's
+ * command fails earlier, in decryption.
  */
-export const COMMAND_VERSION = '1.0'
+export const COMMAND_VERSION = '2.0'
+
+/**
+ * The argon2id parameters used by storage version 1.
+ *
+ * These are hash-wasm's README example, copied verbatim; see
+ * key-hierarchy-review/01-kdf-parameters.md. They are kept because every vault
+ * written before storage version 2 needs them to open, and for nothing else.
+ * `memorySize` is in KiB, so this is 512 KiB.
+ */
+export const V1_KDF_PARAMETERS: KdfParameters = {
+  algorithm: 'argon2id',
+  memorySize: 512,
+  iterations: 256,
+  parallelism: 1,
+  hashLength: 64,
+}
+
+/**
+ * The argon2id parameters used by storage version 2 and written into every new
+ * vault.
+ *
+ * m = 64 MiB, t = 3, p = 4 -- Bitwarden's documented default, measured at
+ * ~259 ms in key-hierarchy-review/01-kdf-parameters.md, roughly 192x the
+ * attacker cost of the v1 parameters. `memorySize` is in KiB.
+ */
+export const V2_KDF_PARAMETERS: KdfParameters = {
+  algorithm: 'argon2id',
+  memorySize: 65536,
+  iterations: 3,
+  parallelism: 4,
+  hashLength: 64,
+}

@@ -7,6 +7,8 @@ import {
   EncryptedSymmetricKey,
   FavaLib,
   Salt,
+  MacKey,
+  KdfParameters,
   PrivateKey,
   SymmetricKey,
   PublicKey,
@@ -38,6 +40,8 @@ describe('2falib', () => {
   let encryptedPrivateKey: EncryptedPrivateKey
   let encryptedSymmetricKey: EncryptedSymmetricKey
   let salt: Salt
+  let macKey: MacKey
+  let kdf: KdfParameters
 
   beforeAll(async () => {
     const result = await createFavaLibForTests()
@@ -45,6 +49,8 @@ describe('2falib', () => {
     platformProviders = result.platformProviders
     encryptedPrivateKey = result.encryptedPrivateKey
     encryptedSymmetricKey = result.encryptedSymmetricKey
+    macKey = result.macKey
+    kdf = result.kdf
     privateKey = result.privateKey
     symmetricKey = result.symmetricKey
     publicKey = result.publicKey
@@ -75,6 +81,8 @@ describe('2falib', () => {
             encryptedPrivateKey,
             encryptedSymmetricKey,
             salt,
+            macKey,
+            kdf,
             publicKey,
             { deviceId },
             [],
@@ -95,6 +103,8 @@ describe('2falib', () => {
             encryptedPrivateKey,
             encryptedSymmetricKey,
             salt,
+            macKey,
+            kdf,
             publicKey,
             { deviceId },
             [],
@@ -115,6 +125,8 @@ describe('2falib', () => {
             encryptedPrivateKey,
             encryptedSymmetricKey,
             salt,
+            macKey,
+            kdf,
             publicKey,
             { deviceId },
             [],
@@ -135,6 +147,8 @@ describe('2falib', () => {
             encryptedPrivateKey,
             encryptedSymmetricKey,
             salt,
+            macKey,
+            kdf,
             publicKey,
             { deviceId },
             [],
@@ -152,6 +166,8 @@ describe('2falib', () => {
         encryptedPrivateKey,
         encryptedSymmetricKey,
         salt,
+        macKey,
+        kdf,
         publicKey,
         { deviceId },
         [],
@@ -177,6 +193,8 @@ describe('2falib', () => {
       encryptedPrivateKey,
       encryptedSymmetricKey,
       salt,
+      macKey,
+      kdf,
       publicKey,
       { deviceId },
       [],
@@ -209,6 +227,8 @@ describe('2falib', () => {
         encryptedPrivateKey,
         encryptedSymmetricKey,
         salt,
+        macKey,
+        kdf,
         publicKey,
         { deviceId: 'testDeviceId' as DeviceId },
         [],
@@ -271,6 +291,8 @@ describe('2falib', () => {
         encryptedPrivateKey,
         encryptedSymmetricKey,
         salt,
+        macKey,
+        kdf,
         publicKey,
         { deviceId: 'testDeviceId' as DeviceId },
         [],
@@ -306,6 +328,8 @@ describe('2falib', () => {
         encryptedPrivateKey,
         encryptedSymmetricKey,
         salt,
+        macKey,
+        kdf,
         publicKey,
         { deviceId: 'testDeviceId' as DeviceId },
         [],

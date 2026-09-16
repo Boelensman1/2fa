@@ -20,13 +20,14 @@ file as work lands, and change its `Status:` line and the row here to match.
 
 | #                                   | Finding                                       | Verdict                  | Priority | Status             |
 | ----------------------------------- | --------------------------------------------- | ------------------------ | -------- | ------------------ |
-| [01](01-kdf-parameters.md)          | Argon2id parameters                           | weak                     | P0       | open               |
-| [02](02-ciphertext-authenticity.md) | Vault ciphertext is unauthenticated           | broken                   | P0       | open               |
+| [01](01-kdf-parameters.md)          | Argon2id parameters                           | weak                     | P0       | done               |
+| [02](02-ciphertext-authenticity.md) | Vault ciphertext is unauthenticated           | broken                   | P0       | done               |
 | [03](03-storage-versioning.md)      | `storageVersion` is write-only                | weak                     | P0       | done               |
 | [04](04-key-rotation.md)            | No rotation; `changePassword` revokes nothing | weak                     | P1       | open               |
 | [05](05-load-path-validation.md)    | Load path skips the entry validators          | weak                     | P1       | open               |
 | [06](06-crypto-test-coverage.md)    | Nothing pins the KDF or the stored format     | weak                     | P1       | done               |
 | [07](07-session-key-api.md)         | Extension stores the raw master password      | untidy                   | P2       | open               |
+| [18](18-anti-rollback.md)           | Rollback to an earlier vault is undetectable  | weak                     | P1       | open               |
 | [08](08-whole-vault-blob.md)        | Whole-vault blob vs per-item                  | **sound**                | —        | closed — no action |
 | [09](09-iv-handling.md)             | IV handling                                   | **sound**                | —        | closed — no action |
 | [10](10-rsa-layer.md)               | Why the RSA layer exists                      | **sound but incidental** | —        | closed — no action |
@@ -57,54 +58,73 @@ every newly enrolled TOTP seed encrypted to them, silently.
 
 ## Order of work
 
-`03` is a prerequisite for `01` and `02` — without a version gate an older
-build opens a newer blob and re-saves it in the old shape. **That prerequisite
-is now satisfied**: the gate landed 2026-09-16, and it brought item 2 of `06`
-(the v1 fixture vault) with it. The format itself is still `storageVersion: 1`
-— `01` and `02` are what bump it to `2`, and they still ship together.
+`03` and `06` landed 2026-09-16 as the prerequisites, and **`01` and `02`
+shipped together the same day as `storageVersion: 2`**, carrying the three
+actionable items from `10` with them. The stored format is now v2: argon2id at
+m = 64 MiB / t = 3 / p = 4, AES-256-GCM with length-prefixed additional
+authenticated data, RSA-OAEP with MGF1-SHA-256, and an `envelopeMac` keyed from
+the password hash. A v1 vault is read through a named legacy path and
+transparently re-wrapped on unlock.
 
-**`06` is now also done** (2026-09-16): `tests/CryptoProviders/kdf-vectors.test.ts`
-pins the argon2id parameters against values independently reproduced with the
-reference implementation, and `PersistentStorageManager`'s identity mock of
-`encryptSymmetric` is gone, so the stored `base64(iv) + ":" + base64(ct)`
-encoding is asserted directly. Changing a KDF parameter or the envelope now
-reddens the suite.
+Two things came **out** of that work rather than into it, and both are open:
 
-Nothing blocks `01` any more. `01` and `02` ship together as
-`storageVersion: 2`, then `04`, `05`, `07`. Whoever lands `01` must move the
-policy assertion in `kdf-vectors.test.ts` to a v2 vector and leave the v1 anchor
-beside it — the v1 parameters still have to open every vault written before the
-change.
+- **`18`** — rollback. `02` claimed the AAD binding stopped the
+  `vault.json.backup` swap; it does not, and neither does the MAC, because both
+  are functions of an envelope that was valid when it was written. `18` also
+  owns the wider downgrade-then-migrate window that stays open while the v1 read
+  path exists.
+- **`10`'s amendment** — the at-rest RSA self-wrap has two costs this review did
+  not weigh: it is what made the vault ciphertext forgeable by anyone holding
+  the device's public key (the reason `02` needed a password-keyed MAC at all),
+  and it is why a PBES2/AES-CBC blob is still in the hierarchy. `10`'s Decision
+  to keep the RSA layer stands.
+
+Remaining, in order: `04`, `05`, `07`, `18`. Whoever raises the KDF parameters
+again must move the policy assertion in `kdf-vectors.test.ts` to a v3 vector and
+leave **both** existing anchors beside it; the v1 anchor survives until the v1
+read path itself is deleted (`18`, item 1).
 
 ## The verified hierarchy
 
+As of `storageVersion: 2`. The v1 chain is unchanged from what is described
+below it, and is still read by the named legacy path.
+
 ```
 master password
-  │   zxcvbn score ≥ 3 enforced (creationUtils.mts:81)
-  │   — but AFTER createKeys() runs, see 10-rsa-layer.md
+  │   zxcvbn score ≥ 3 enforced — now BEFORE createKeys() runs (10-rsa-layer.md)
   ▼
 argon2id (hash-wasm)
   salt = base64(16 CSPRNG bytes), used as a 24-byte UTF-8 string
-  m = 512 KiB, t = 256, p = 1, len = 64  →  passwordHash (128 hex chars)
-  browser/cryptoLib.mts:41-54 — node imports this same function (node/cryptoLib.mts:31)
-  ▼
-PBES2 (PBKDF2 + AES-256-CBC), passphrase = passwordHash
-  node: PKCS#8 export w/ cipher (node/cryptoLib.mts:65-70)
-  browser: forge.pki.encryptRsaPrivateKey (browser/cryptoLib.mts:255-261)
-  → RSA-4096 private key
-  ▼
-RSA-OAEP, MGF1 = SHA-1 (verified empirically, both providers)
-  unwraps encryptedSymmetricKey — wrapped to *this device's own* public key
-  (node/cryptoLib.mts:75-78, browser/cryptoLib.mts:82)
-  → symmetricKey (AES-256, base64)
-  ▼
-AES-256-CBC, fresh random 16-byte IV per encryption, no MAC / no tag
-  wire format: base64(iv) + ":" + base64(ct)
-  → encryptedVaultState = JSON.stringify(entire VaultState)
+  m = 64 MiB, t = 3, p = 4, len = 64  →  passwordHash (128 hex chars)
+  parameters recorded per vault in LockedRepresentation.kdf
+  ├────────────────────────────────────────────────┐
+  ▼                                                ▼
+PBES2 (PBKDF2 + AES-256-CBC), passphrase =    HKDF-SHA256(hex-DECODED
+  passwordHash                                  passwordHash, salt,
+  → RSA-4096 private key                        'favalib:envelope-mac:v2')
+  ▼                                              → macKey
+RSA-OAEP, MGF1 = SHA-256                         ▼
+  unwraps encryptedSymmetricKey — wrapped      HMAC-SHA256 over every other
+  to *this device's own* public key              LockedRepresentation field
+  → symmetricKey (AES-256, base64)             → envelopeMac
+  ▼                                              │
+AES-256-GCM, fresh 12-byte CSPRNG nonce,         │  this is the layer that
+  128-bit tag, bound to AAD                      │  authenticates the vault to
+  format: "v2:" base64(nonce) ":"                │  the PASSWORD holder rather
+          base64(ciphertext||tag)                │  than to whoever chose the
+  AAD = storageVersion, salt, kdf,               │  symmetric key above
+        SHA-256(encryptedPrivateKey)             │
+  → encryptedVaultState = JSON.stringify(VaultState)
 ```
 
-`LockedRepresentation` (`interfaces/Vault.mts:19-26`) = `{encryptedPrivateKey,
-encryptedSymmetricKey, salt, encryptedVaultState, libVersion, storageVersion}`.
+`LockedRepresentation` (`interfaces/Vault.mts`) = `{encryptedPrivateKey,
+encryptedSymmetricKey, salt, encryptedVaultState, libVersion, storageVersion,
+kdf, envelopeMac}`.
+
+**Not GCM everywhere**: `encryptedPrivateKey` is still PBES2/AES-256-CBC, and
+`decryptKeys` still distinguishes its failure modes. See
+[10](10-rsa-layer.md)'s amendment — that blob exists only because the DEK is
+routed through an RSA private key that must itself be stored encrypted.
 
 Five details that are easy to get wrong:
 
@@ -119,9 +139,14 @@ Five details that are easy to get wrong:
    `privateDecrypt` accepts a forge `'RSA-OAEP'` ciphertext, and forcing
    `oaepHash: 'sha256'` fails. Cross-provider interop locks this in.
 4. **The argon2 salt is the base64 _string_**, passed to hash-wasm as 24 UTF-8
-   bytes, not the 16 raw bytes. Harmless (128 bits of entropy either way).
-5. **`libVersion` is the hardcoded literal `'0.0.1'`** (`FavaLib.mts:55`), not
-   read from package.json. Every vault ever written carries `0.0.1`.
+   bytes, not the 16 raw bytes. Harmless (128 bits of entropy either way). Note
+   the MAC key derivation goes the other way: its input keying material is the
+   **hex-decoded** password hash, 64 raw bytes rather than 128 characters. Both
+   readings are plausible and diverge silently between providers, so
+   `tests/CryptoProviders/envelope-mac.test.ts` pins it.
+5. **`libVersion` was the hardcoded literal `'0.0.1'`** until
+   [03](03-storage-versioning.md); it now tracks package.json and is covered by
+   the envelope MAC, but still never gates a load.
 
 **`LockedRepresentation` never leaves the device.** No wire message carries one;
 the server persists only a queue of `{commandId, deviceId, encryptedCommand,

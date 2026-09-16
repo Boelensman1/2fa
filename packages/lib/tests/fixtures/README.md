@@ -56,7 +56,7 @@ moved. Changing either file means looking at the other.
 `undefined` — it was generated without a `serverUrl`, so no `SyncManager` was
 ever constructed and neither generating nor reopening it touches a socket.
 
-### Recipe
+### Recipe (v1)
 
 At the commit above, with a `saveFunction` that captures the string:
 
@@ -72,3 +72,41 @@ At the commit above, with a `saveFunction` that captures the string:
 
 The entry ids and `addedAt` values are random at generation time and frozen
 once checked in, which is why the table above lists the ids literally.
+
+## `vault-v2.json`
+
+- **Storage version:** 2
+- **Written by:** favalib 0.0.22, on the commit that introduced storage
+  version 2 (the child of `e0fe516`)
+- **Password:** `fixture!Vault7#Frozen$v2`
+- **Crypto it pins:** argon2id (m = 64 MiB, t = 3, p = 4, len = 64, salt used
+  as a 24-byte UTF-8 string) -> PBES2-wrapped RSA-4096 ->
+  RSA-OAEP/MGF1-**SHA-256** unwrap of the symmetric key -> AES-256-**GCM**
+  with a `v2:base64(nonce):base64(ciphertext||tag)` payload bound to the
+  at-rest AAD, plus an `envelopeMac` (HMAC-SHA256 keyed by
+  HKDF-SHA256 over the password hash).
+
+Contents -- the same two TOTP entries as v1, deliberately: the secrets are
+identical, so the expected OTPs are the ones already cross-checked against an
+independent RFC 6238 implementation, and the two fixtures differ only in the
+format under test.
+
+| Entry id                               | Name              | Issuer           | Secret             |
+| -------------------------------------- | ----------------- | ---------------- | ------------------ |
+| `9898f013-9e8c-412b-b892-a5eb8a583851` | Fixture Entry One | Fixture Issuer A | `JBSWY3DPEHPK3PXP` |
+| `09e3a359-3764-4a73-ba55-bc5ce2fec2d5` | Fixture Entry Two | Fixture Issuer B | `GEZDGNBVGY3TQOJQ` |
+
+`deviceId` is `9ad6d991-a1b0-45a2-8e3f-01de0a956272` and `sync.serverUrl` is
+`undefined`, so no `SyncManager` is ever constructed.
+
+Unlike v1, this fixture's password and salt are **not** reused as the argon2id
+test vector. `kdf-vectors.test.ts` keeps the v1 fixture's password and salt for
+both its v1 and v2 vectors, so that the only thing differing between the two
+vectors is the cost parameters. The chain this fixture pins end to end is
+asserted by `fixtures.test.mts` instead.
+
+### Recipe (v2)
+
+Identical to the v1 recipe above, at the commit named for this fixture. The
+only differences are the password and that `createNewFavaLibVault` now writes
+`storageVersion: 2`.

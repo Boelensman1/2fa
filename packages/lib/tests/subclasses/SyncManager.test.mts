@@ -19,6 +19,8 @@ import {
   EncryptedPrivateKey,
   EncryptedSymmetricKey,
   Salt,
+  MacKey,
+  KdfParameters,
   FavaLib,
   DeviceType,
   PrivateKey,
@@ -28,6 +30,9 @@ import {
   PlatformProviders,
   type EntryId,
 } from '../../src/main.mjs'
+import { base64ToUint8Array, uint8ArrayToBase64 } from 'uint8array-extras'
+import { nodeProviders } from '../../src/platformProviders/node/index.mjs'
+import { buildCommandAad } from '../../src/utils/canonical.mjs'
 import type { SyncCommand } from '../../src/interfaces/CommandTypes.mjs'
 
 import {
@@ -63,6 +68,8 @@ describe('SyncManager', () => {
   let encryptedPrivateKey: EncryptedPrivateKey
   let encryptedSymmetricKey: EncryptedSymmetricKey
   let salt: Salt
+  let macKey: MacKey
+  let kdf: KdfParameters
   let server: WS
   let senderFavaLib: FavaLib
   let receiverFavaLib: FavaLib
@@ -74,6 +81,8 @@ describe('SyncManager', () => {
     platformProviders = result.platformProviders
     encryptedPrivateKey = result.encryptedPrivateKey
     encryptedSymmetricKey = result.encryptedSymmetricKey
+    macKey = result.macKey
+    kdf = result.kdf
     privateKey = result.privateKey
     symmetricKey = result.symmetricKey
     publicKey = result.publicKey
@@ -105,6 +114,8 @@ describe('SyncManager', () => {
       encryptedPrivateKey,
       encryptedSymmetricKey,
       salt,
+      macKey,
+      kdf,
       publicKey,
       {
         deviceId: 'senderDeviceId' as DeviceId,
@@ -127,6 +138,8 @@ describe('SyncManager', () => {
       encryptedPrivateKey,
       encryptedSymmetricKey,
       salt,
+      macKey,
+      kdf,
       publicKey,
       {
         deviceId: 'receiverDeviceId' as DeviceId,
@@ -176,6 +189,8 @@ describe('SyncManager', () => {
       encryptedPrivateKey,
       encryptedSymmetricKey,
       salt,
+      macKey,
+      kdf,
       publicKey,
       { deviceId: 'disconnectedDeviceId' as DeviceId },
       [],
@@ -539,8 +554,9 @@ describe('SyncManager', () => {
   })
 
   it.each([
-    ['an explicit current version', '1.0'],
-    ['a newer minor version', '1.7'],
+    ['an explicit current version', '2.0'],
+    ['a newer minor version', '2.7'],
+    ['the previous major, now legacy', '1.0'],
     ['no version at all', undefined],
   ])('should apply a remote command with %s', async (_label, version) => {
     const entryId = `version-ok-${String(version)}` as EntryId
@@ -576,7 +592,7 @@ describe('SyncManager', () => {
       id: 'command-from-the-future',
       type: 'AddEntry',
       timestamp: Date.now(),
-      version: '2.0',
+      version: '3.0',
       data: makeRemoteEntry(entryId),
     } as unknown as SyncCommand)
 
@@ -584,7 +600,7 @@ describe('SyncManager', () => {
 
     expect(executedIds).not.toContain('command-from-the-future')
     expect(() => receiverFavaLib.vault.getEntryMeta(entryId)).toThrow()
-    expect(warnings.join('\n')).toMatch(/sync protocol version 2\.0/)
+    expect(warnings.join('\n')).toMatch(/sync protocol version 3\.0/)
   })
 
   it('should warn only once about the same unsupported command', () => {
@@ -601,7 +617,7 @@ describe('SyncManager', () => {
       id: 'repeatedly-redelivered',
       type: 'AddEntry',
       timestamp: Date.now(),
-      version: '2.0',
+      version: '3.0',
       data: makeRemoteEntry('version-repeat' as EntryId),
     } as unknown as SyncCommand
 
@@ -612,6 +628,72 @@ describe('SyncManager', () => {
     expect(
       warnings.filter((w) => w.includes('repeatedly-redelivered')),
     ).toHaveLength(1)
+  })
+
+  it('should apply the rest of a batch when one command cannot be decrypted', async () => {
+    // receiveCommands maps over the batch inside a Promise.all. Without a
+    // per-command catch, one undecryptable command -- a peer still on the v1
+    // envelope, a row the server has held since before the upgrade, or a
+    // hostile one -- would reject the whole promise and take
+    // processRemoteCommands and the ready event down with it.
+    const warnings: string[] = []
+    receiverFavaLib.addEventListener(FavaLibEvent.Log, (event) => {
+      if (event.detail.severity === 'warning')
+        warnings.push(event.detail.message)
+    })
+
+    const cryptoLib = new nodeProviders.CryptoLib()
+    /**
+     * Encrypts one command the way sendCommand does.
+     * @param commandId - The id the command travels under.
+     * @param entryId - The entry the command adds.
+     * @returns The wire representation of the command.
+     */
+    const encryptCommandFor = async (commandId: string, entryId: EntryId) => {
+      const commandKey = await cryptoLib.createSymmetricKey()
+      return {
+        commandId,
+        encryptedSymmetricKey: await cryptoLib.encrypt(publicKey, commandKey),
+        encryptedCommand: await cryptoLib.encryptSymmetric(
+          commandKey,
+          JSON.stringify({
+            type: 'AddEntry',
+            timestamp: Date.now(),
+            version: '2.0',
+            data: makeRemoteEntry(entryId),
+          }),
+          buildCommandAad(commandId, 'receiverDeviceId'),
+        ),
+      }
+    }
+
+    const good1 = await encryptCommandFor('batch-good-1', 'batch-1' as EntryId)
+    const good2 = await encryptCommandFor('batch-good-2', 'batch-2' as EntryId)
+    const intact = await encryptCommandFor('batch-bad', 'batch-bad' as EntryId)
+    // Corrupt the middle one only.
+    const badParts = intact.encryptedCommand.split(':')
+    const badBytes = base64ToUint8Array(badParts[2])
+    badBytes[0] ^= 0xff
+    badParts[2] = uint8ArrayToBase64(badBytes)
+    const bad = {
+      ...intact,
+      encryptedCommand: badParts.join(':') as typeof intact.encryptedCommand,
+    }
+
+    await expect(
+      receiverFavaLib.sync!.receiveCommands([good1, bad, good2]),
+    ).resolves.not.toThrow()
+
+    expect(
+      receiverFavaLib.vault.getEntryMeta('batch-1' as EntryId),
+    ).toBeTruthy()
+    expect(
+      receiverFavaLib.vault.getEntryMeta('batch-2' as EntryId),
+    ).toBeTruthy()
+    expect(() =>
+      receiverFavaLib.vault.getEntryMeta('batch-bad' as EntryId),
+    ).toThrow()
+    expect(warnings.filter((w) => w.includes('batch-bad'))).toHaveLength(1)
   })
 
   it('should emit ready event after receiving syncCommands message', async () => {
@@ -628,6 +710,8 @@ describe('SyncManager', () => {
       encryptedPrivateKey,
       encryptedSymmetricKey,
       salt,
+      macKey,
+      kdf,
       publicKey,
       { deviceId: 'newSenderDeviceId' as DeviceId },
       [],
@@ -816,6 +900,8 @@ describe('SyncManager', () => {
       encryptedPrivateKey,
       encryptedSymmetricKey,
       salt,
+      macKey,
+      kdf,
       publicKey,
       { deviceId: 'otherReceiverDeviceId' as DeviceId },
       [],

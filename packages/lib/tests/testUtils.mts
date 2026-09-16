@@ -96,6 +96,7 @@ export const createFavaLibForTests = async (saveFunction?: SaveFunction) => {
     result.encryptedSymmetricKey,
     result.salt,
     password,
+    result.kdf,
   )
 
   addTestLogEventListener(result.favaLib)

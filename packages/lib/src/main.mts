@@ -35,7 +35,10 @@ import type {
   SymmetricKey,
   PublicKey,
   Password,
+  PasswordHash,
   Salt,
+  MacKey,
+  KdfParameters,
 } from './interfaces/CryptoLib.mjs'
 import type {
   PublicSyncDevice,
@@ -60,7 +63,12 @@ import {
   TokenGenerationError,
   StorageVersionError,
 } from './FavaLibError.mjs'
-import { LIB_VERSION, STORAGE_VERSION } from './version.mjs'
+import {
+  LIB_VERSION,
+  STORAGE_VERSION,
+  V1_KDF_PARAMETERS,
+  V2_KDF_PARAMETERS,
+} from './version.mjs'
 import { FavaLibEvent } from './FavaLibEvent.mjs'
 import {
   getFavaLibVaultCreationUtils,
@@ -78,6 +86,8 @@ export {
   StorageVersionError,
   LIB_VERSION,
   STORAGE_VERSION,
+  V1_KDF_PARAMETERS,
+  V2_KDF_PARAMETERS,
   FavaLibEvent,
   URL_MATCHER_TYPES,
   validateUrlMatcher,
@@ -115,7 +125,10 @@ export type {
   SymmetricKey,
   PublicKey,
   Password,
+  PasswordHash,
   Salt,
+  MacKey,
+  KdfParameters,
   DeviceId,
   DeviceType,
   DeviceFriendlyName,

@@ -1,7 +1,15 @@
 import type { ZxcvbnResult } from '@zxcvbn-ts/core'
+import { uint8ArrayToBase64 } from 'uint8array-extras'
 
 import type { PlatformProviders } from '../interfaces/PlatformProviders.mjs'
-import type { Password } from '../interfaces/CryptoLib.mjs'
+import type {
+  MacKey,
+  Password,
+  PrivateKey,
+  PublicKey,
+  Salt,
+  SymmetricKey,
+} from '../interfaces/CryptoLib.mjs'
 import type { DeviceId, DeviceType } from '../interfaces/SyncTypes.mjs'
 
 import FavaLib from '../FavaLib.mjs'
@@ -9,8 +17,18 @@ import {
   InitializationError,
   FavaLibError,
   StorageVersionError,
+  CryptoError,
 } from '../FavaLibError.mjs'
-import { LEGACY_STORAGE_VERSION, STORAGE_VERSION } from '../version.mjs'
+import {
+  LEGACY_STORAGE_VERSION,
+  STORAGE_VERSION,
+  V2_KDF_PARAMETERS,
+} from '../version.mjs'
+import {
+  buildEnvelopeMacMessage,
+  buildVaultAad,
+  type KdfParameters,
+} from './canonical.mjs'
 
 import LibraryLoader from '../subclasses/LibraryLoader.mjs'
 import type {
@@ -108,6 +126,11 @@ const createNewFavaLibVault = async (
 ) => {
   const cryptoLib = libraryLoader.getCryptoLib()
   const platformProviders = libraryLoader.getPlatformProviders()
+  // Before createKeys, not after: createKeys runs a full RSA-4096 keygen plus
+  // argon2 at the v2 cost, and rejecting a weak password afterwards spends all
+  // of that for nothing. See key-hierarchy-review/10-rsa-layer.md.
+  await validatePasswordStrength(libraryLoader, passwordExtraDict, password)
+
   const {
     publicKey,
     privateKey,
@@ -115,9 +138,9 @@ const createNewFavaLibVault = async (
     encryptedPrivateKey,
     encryptedSymmetricKey,
     salt,
+    macKey,
+    kdf,
   } = await cryptoLib.createKeys(password)
-
-  await validatePasswordStrength(libraryLoader, passwordExtraDict, password)
 
   const deviceId = platformProviders.genUuidV4() as DeviceId
   const favaLib = new FavaLib(
@@ -129,6 +152,8 @@ const createNewFavaLibVault = async (
     encryptedPrivateKey,
     encryptedSymmetricKey,
     salt,
+    macKey,
+    kdf,
     publicKey,
     {
       deviceId,
@@ -148,6 +173,8 @@ const createNewFavaLibVault = async (
     encryptedPrivateKey,
     encryptedSymmetricKey,
     salt,
+    macKey,
+    kdf,
   }
 }
 
@@ -225,19 +252,135 @@ const loadFavaLibFromLockedRepesentation = async (
     )
   }
 
-  const { privateKey, symmetricKey, publicKey } = await cryptoLib.decryptKeys(
-    lockedRepresentation.encryptedPrivateKey,
-    lockedRepresentation.encryptedSymmetricKey,
-    lockedRepresentation.salt,
-    password,
-  )
+  // Storage version 1 is a MIGRATION PATH, not a supported format. It derives
+  // with the v1 argon2id parameters, unwraps with RSA-OAEP/MGF1-SHA-1, reads
+  // an unauthenticated AES-256-CBC envelope, and has no envelope MAC to check.
+  // This function is the only place in the library allowed to reach any of
+  // that; nothing on the sync path may. See version.mts on when it goes away.
+  const isLegacy = storageVersion < STORAGE_VERSION
 
-  const vaultState = JSON.parse(
-    await cryptoLib.decryptSymmetric(
+  let privateKey: PrivateKey
+  let symmetricKey: SymmetricKey
+  let publicKey: PublicKey
+  let macKey: MacKey
+  let kdf: KdfParameters
+  let vaultStateString: string
+  let encryptedPrivateKey = lockedRepresentation.encryptedPrivateKey
+  let encryptedSymmetricKey = lockedRepresentation.encryptedSymmetricKey
+  let salt = lockedRepresentation.salt
+
+  if (isLegacy) {
+    const legacyKeys = await cryptoLib.decryptKeysV1(
+      encryptedPrivateKey,
+      encryptedSymmetricKey,
+      salt,
+      password,
+    )
+    privateKey = legacyKeys.privateKey
+    symmetricKey = legacyKeys.symmetricKey
+    publicKey = legacyKeys.publicKey
+    vaultStateString = await cryptoLib.decryptSymmetricV1(
       symmetricKey,
       lockedRepresentation.encryptedVaultState,
-    ),
-  ) as VaultState
+    )
+
+    // The re-wrap, done here rather than after the FavaLib is built, so that
+    // the salt, both encrypted keys, the MAC key and the kdf block that reach
+    // PersistentStorageManager are consistent BY CONSTRUCTION. The salt feeds
+    // both the at-rest AAD and the envelope MAC, so a half-applied swap would
+    // produce a vault that saves successfully and never opens again; deriving
+    // the new material up front makes that state unrepresentable rather than
+    // merely avoided.
+    //
+    // The RSA keypair is deliberately NOT rotated: peers hold this device's
+    // public key, and rotation is key-hierarchy-review/04-key-rotation.md.
+    salt = uint8ArrayToBase64(await cryptoLib.getRandomBytes(16)) as Salt
+    kdf = V2_KDF_PARAMETERS
+    const rewrapped = await cryptoLib.encryptKeys(
+      privateKey,
+      symmetricKey,
+      salt,
+      password,
+      kdf,
+    )
+    encryptedPrivateKey = rewrapped.encryptedPrivateKey
+    encryptedSymmetricKey = rewrapped.encryptedSymmetricKey
+    macKey = rewrapped.macKey
+  } else {
+    // kdf and envelopeMac are absent from a v1 blob and required from v2.
+    // Checked here rather than with the fields above, so that the message
+    // names the real problem instead of calling a v2 vault "incomplete".
+    const storedKdf = lockedRepresentation.kdf
+    const storedEnvelopeMac = lockedRepresentation.envelopeMac
+    if (!storedKdf || !storedEnvelopeMac) {
+      throw new InitializationError(
+        `lockedRepresentation claims storage version ${storageVersion} but ` +
+          `is missing its kdf parameters or its envelopeMac`,
+      )
+    }
+    kdf = storedKdf
+
+    const keys = await cryptoLib.decryptKeys(
+      encryptedPrivateKey,
+      encryptedSymmetricKey,
+      salt,
+      password,
+      kdf,
+    )
+    privateKey = keys.privateKey
+    symmetricKey = keys.symmetricKey
+    publicKey = keys.publicKey
+    macKey = keys.macKey
+
+    // The envelope MAC is verified AFTER decryptKeys and BEFORE anything is
+    // decrypted, parsed or used.
+    //
+    // After, because a wrong password also produces a wrong MAC key, so
+    // checking first would replace the existing 'Invalid password' with an
+    // indistinguishable integrity error -- and both the CLI and the browser
+    // surface that message to the user.
+    //
+    // Before anything is used, because this is what authenticates the vault to
+    // the holder of the PASSWORD. The AES-GCM tag below proves only that
+    // whoever wrote the blob held the data encryption key, and that key
+    // arrives wrapped to this device's OWN public key: anyone who has seen
+    // that public key can choose their own key, wrap it, re-encrypt an
+    // arbitrary vault state, and build a matching AAD out of the cleartext
+    // they are writing. See
+    // key-hierarchy-review/02-ciphertext-authenticity.md.
+    const macIsValid = await cryptoLib.verifyEnvelopeMac(
+      macKey,
+      buildEnvelopeMacMessage({
+        libVersion: lockedRepresentation.libVersion ?? '',
+        storageVersion,
+        salt,
+        kdf,
+        encryptedPrivateKey,
+        encryptedSymmetricKey,
+        encryptedVaultState: lockedRepresentation.encryptedVaultState,
+      }),
+      storedEnvelopeMac,
+    )
+    if (!macIsValid) {
+      throw new CryptoError(
+        'The stored vault failed its integrity check: it has been modified ' +
+          'since this device last wrote it. Nothing has been loaded.',
+      )
+    }
+
+    vaultStateString = await cryptoLib.decryptSymmetric(
+      symmetricKey,
+      lockedRepresentation.encryptedVaultState,
+      buildVaultAad(
+        storageVersion,
+        salt,
+        kdf,
+        await cryptoLib.sha256(encryptedPrivateKey),
+      ),
+    )
+  }
+
+  const vaultState = JSON.parse(vaultStateString) as VaultState
 
   if (
     !vaultState?.deviceId ||
@@ -249,15 +392,26 @@ const loadFavaLibFromLockedRepesentation = async (
     )
   }
 
-  return new FavaLib(
+  // The queued commands of a v1 vault are v1-CBC payloads with MGF1-SHA-1 key
+  // wraps, and every upgraded peer rejects those. Carrying them across would
+  // have a freshly migrated device ship undeliverable traffic on its first
+  // connection. They are dropped whether or not this load is able to save,
+  // because they are equally undeliverable either way.
+  if (isLegacy) {
+    vaultState.sync.commandSendQueue = []
+  }
+
+  const favaLib = new FavaLib(
     deviceType,
     platformProviders,
     passwordExtraDict,
     privateKey,
     symmetricKey,
-    lockedRepresentation.encryptedPrivateKey,
-    lockedRepresentation.encryptedSymmetricKey,
-    lockedRepresentation.salt,
+    encryptedPrivateKey,
+    encryptedSymmetricKey,
+    salt,
+    macKey,
+    kdf,
     publicKey,
     {
       deviceId: vaultState.deviceId,
@@ -268,6 +422,16 @@ const loadFavaLibFromLockedRepesentation = async (
     vaultState.sync,
     options.connectToSyncServer ?? true,
   )
+
+  if (isLegacy) {
+    // save() is a no-op without a saveFunction, which is exactly the property
+    // tests/fixtures.test.mts relies on so that a test run can never rewrite
+    // the checked-in v1 fixture.
+    await favaLib.storage.forceSave()
+    favaLib.reportStorageUpgrade(storageVersion)
+  }
+
+  return favaLib
 }
 
 /**

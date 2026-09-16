@@ -21,6 +21,9 @@ import { browserProviders } from '../../src/platformProviders/browser/index.mjs'
 //   printf '%s' 'fixture!Vault7#Frozen$v1' | nix shell nixpkgs#libargon2 -c \
 //     argon2 'O454a0A723g+U3MYcYoCFA==' -id -t 256 -m 9 -p 1 -l 64 -r
 //
+//   printf '%s' 'fixture!Vault7#Frozen$v1' | nix shell nixpkgs#libargon2 -c \
+//     argon2 'O454a0A723g+U3MYcYoCFA==' -id -t 3 -m 16 -p 4 -l 64 -r
+//
 //   printf '\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f\x20' \
 //     | nix shell nixpkgs#libargon2 -c \
 //     argon2 '91b8a8bf-3450-4e68-94db-4d6051901ffa' -id -t 256 -m 9 -p 1 -l 32 -r
@@ -39,13 +42,27 @@ const V1_PARAMETERS = {
   memorySize: 512,
 } as const
 
+/**
+ * The storage-version-2 parameters, likewise spelled out. m = 64 MiB, t = 3,
+ * p = 4 -- key-hierarchy-review/01-kdf-parameters.md. memorySize is in KiB.
+ */
+const V2_PARAMETERS = {
+  parallelism: 4,
+  iterations: 3,
+  memorySize: 65536,
+} as const
+
 // Deliberately the password and salt of tests/fixtures/vault-v1.json, so this
 // vector isolates the argon2 step of the fixture vault the suite already opens:
 // when both go red, this one says which layer moved.
 const FIXTURE_PASSWORD = 'fixture!Vault7#Frozen$v1' as Password
 const FIXTURE_SALT = 'O454a0A723g+U3MYcYoCFA==' as Salt
-const EXPECTED_PASSWORD_HASH =
+const EXPECTED_V1_PASSWORD_HASH =
   'bd9c01dab08f03a906c7fd2c155bf14e8e2706d04f0afe8e7afa54508b7526447feb04fb14cf98dc6810e443bf8674d17cc65bf2d65ed7498ec2b9ec4974a0bd'
+// Same password and salt as the v1 vector, so the only thing that differs
+// between the two is the cost parameters.
+const EXPECTED_V2_PASSWORD_HASH =
+  '7b6da4164545def5fabbf2e0ed003074b9d692877a3a6de7d92531e20dd2606be63be1c2354d7e1d763b2f0e1e8b0c26de829ef47593e71c056dd071aa999f79'
 
 // createSyncKey is handed a device id as its salt (SyncManager.mts:664,696) and
 // a jpake-derived shared secret as its password, so the vector uses that shape.
@@ -55,10 +72,12 @@ const EXPECTED_SYNC_KEY = 'gqxjkuuaiZSdrIoaNUJ3QiDoNPsqkg8mVBglfvkBm2s='
 
 describe('argon2id test vectors', () => {
   describe('password hash (generatePasswordHash)', () => {
-    // The permanent anchor. Even after 01-kdf-parameters.md moves new vaults to
-    // stronger parameters, THESE parameters must keep producing THIS hash, or
-    // no vault written before that change can be opened again. It also catches
-    // a hash-wasm upgrade that changes behaviour under fixed inputs.
+    // The permanent anchor. 01-kdf-parameters.md has since moved new vaults to
+    // the stronger v2 parameters, and THESE parameters must still produce THIS
+    // hash, or no vault written before that change can be opened again. It
+    // also catches a hash-wasm upgrade that changes behaviour under fixed
+    // inputs. Do not delete it until the v1 read path itself goes (see
+    // src/version.mts on LEGACY_STORAGE_VERSION).
     test('v1 parameters produce the known hash', async () => {
       const hash = await argon2id({
         password: FIXTURE_PASSWORD,
@@ -68,22 +87,50 @@ describe('argon2id test vectors', () => {
         outputType: 'hex',
       })
 
-      expect(hash).toBe(EXPECTED_PASSWORD_HASH)
+      expect(hash).toBe(EXPECTED_V1_PASSWORD_HASH)
     })
 
-    // The policy assertion: the parameters we actually ship are still the v1
-    // ones. This is the test that goes red the moment someone edits
+    // The v2 anchor, on the same footing: an absolute value, reproduced
+    // independently, that the migration path depends on.
+    test('v2 parameters produce the known hash', async () => {
+      const hash = await argon2id({
+        password: FIXTURE_PASSWORD,
+        salt: FIXTURE_SALT,
+        ...V2_PARAMETERS,
+        hashLength: 64,
+        outputType: 'hex',
+      })
+
+      expect(hash).toBe(EXPECTED_V2_PASSWORD_HASH)
+    })
+
+    // The policy assertion, moved from v1 to v2 when 01-kdf-parameters.md
+    // landed. This is the test that goes red the moment someone edits
     // `iterations`, `memorySize` or `parallelism` in browser/cryptoLib.mts --
     // which is the entire point of the finding.
     //
-    // Whoever lands 01-kdf-parameters.md must move THIS assertion consciously,
-    // to a v2 vector, and leave the v1 anchor above in place for the migration
-    // path. Both providers run this exact function: node/cryptoLib.mts:31
-    // imports it from the browser one, so there is only one implementation.
-    test('the shipped parameters are still the v1 parameters', async () => {
+    // Whoever raises the parameters again must move THIS assertion
+    // consciously, to a v3 vector, and leave both anchors above in place for
+    // the migration path. Both providers run this exact function:
+    // node/cryptoLib.mts imports it from the browser one, so there is only one
+    // implementation.
+    test('the shipped parameters are the v2 parameters', async () => {
       const hash = await generatePasswordHash(FIXTURE_SALT, FIXTURE_PASSWORD)
 
-      expect(hash).toBe(EXPECTED_PASSWORD_HASH)
+      expect(hash).toBe(EXPECTED_V2_PASSWORD_HASH)
+    })
+
+    // ...and the v1 parameters are still reachable, explicitly, for the
+    // migration path. generatePasswordHash defaults to v2; decryptKeysV1 is
+    // what passes the v1 block.
+    test('the v1 parameters are still reachable explicitly', async () => {
+      const hash = await generatePasswordHash(FIXTURE_SALT, FIXTURE_PASSWORD, {
+        algorithm: 'argon2id',
+        ...V1_PARAMETERS,
+        hashLength: 64,
+      })
+
+      expect(hash).toBe(EXPECTED_V1_PASSWORD_HASH)
     })
   })
 

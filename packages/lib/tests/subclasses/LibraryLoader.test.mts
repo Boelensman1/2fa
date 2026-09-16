@@ -23,13 +23,19 @@ describe('LibraryLoader', () => {
   beforeEach(() => {
     urlParser = vi.fn(() => null)
     cryptoLib = {
+      sha256: vi.fn(),
       createKeys: vi.fn(),
       decryptKeys: vi.fn(),
+      decryptKeysV1: vi.fn(),
       encryptKeys: vi.fn(),
+      deriveEnvelopeMacKey: vi.fn(),
+      createEnvelopeMac: vi.fn(),
+      verifyEnvelopeMac: vi.fn(),
       encrypt: vi.fn(),
       decrypt: vi.fn(),
       encryptSymmetric: vi.fn(),
       decryptSymmetric: vi.fn(),
+      decryptSymmetricV1: vi.fn(),
       getRandomBytes: vi.fn(),
       createSyncKey: vi.fn(),
       createSymmetricKey: vi.fn(),

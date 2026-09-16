@@ -20,6 +20,6 @@ describe('version constants', () => {
     // Changing this is changing the at-rest format. If this assertion fails,
     // the change also needs a fixture for the new version (see
     // tests/fixtures/README.md) and a read path for the old one.
-    expect(STORAGE_VERSION).toBe(1)
+    expect(STORAGE_VERSION).toBe(2)
   })
 })

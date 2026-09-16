@@ -9,7 +9,9 @@ import {
   SymmetricKey,
   Password,
   Salt,
+  V2_KDF_PARAMETERS,
 } from '../../src/main.mjs'
+import forge from 'node-forge'
 
 import { nodeProviders } from '../../src/platformProviders/node/index.mjs'
 import { browserProviders } from '../../src/platformProviders/browser/index.mjs'
@@ -22,6 +24,11 @@ describe('Crypto Provider Comparison', () => {
   const browserCrypto = new browserProviders.CryptoLib()
   const testPassword = 'testPassword123' as Password
   const testMessage = 'Hello, World!'
+  // Every symmetric operation is bound to additional authenticated data now,
+  // so the tests have to carry one too. A constant is enough here: what the
+  // cross-provider tests pin is that both providers agree on how the AAD is
+  // fed to AES-GCM, not what goes into it -- that is canonical.mts's job.
+  const testAad = 'favalib:test:v2'
 
   const runTests = (crypto: CryptoLib, name: string) => {
     let encryptedPrivateKey: EncryptedPrivateKey
@@ -49,6 +56,7 @@ describe('Crypto Provider Comparison', () => {
         encryptedSymmetricKey,
         salt,
         testPassword,
+        V2_KDF_PARAMETERS,
       )
       privateKey = decryptResult.privateKey
       symmetricKey = decryptResult.symmetricKey
@@ -62,6 +70,7 @@ describe('Crypto Provider Comparison', () => {
         symmetricKey,
         salt,
         testPassword,
+        V2_KDF_PARAMETERS,
       )
       expect(reEncrypted.encryptedPrivateKey).toBeTruthy()
       expect(reEncrypted.encryptedSymmetricKey).toBeTruthy()
@@ -80,6 +89,7 @@ describe('Crypto Provider Comparison', () => {
       const symmetricEncrypted = await crypto.encryptSymmetric(
         symmetricKey,
         testMessage,
+        testAad,
       )
       expect(symmetricEncrypted).toBeTruthy()
       expect(symmetricEncrypted).not.toEqual(testMessage)
@@ -87,8 +97,14 @@ describe('Crypto Provider Comparison', () => {
       const symmetricDecrypted = await crypto.decryptSymmetric(
         symmetricKey,
         symmetricEncrypted,
+        testAad,
       )
       expect(symmetricDecrypted).toEqual(testMessage)
+
+      // A different AAD must not open the same ciphertext.
+      await expect(
+        crypto.decryptSymmetric(symmetricKey, symmetricEncrypted, 'other'),
+      ).rejects.toThrow('Could not decrypt data')
     })
 
     return {
@@ -159,6 +175,7 @@ describe('Crypto Provider Comparison', () => {
         browserEncryptedSymmetricKey,
         browserSalt,
         testPassword,
+        V2_KDF_PARAMETERS,
       )
       expect(result.privateKey).toBeTruthy()
       expect(result.symmetricKey).toBeTruthy()
@@ -177,6 +194,7 @@ describe('Crypto Provider Comparison', () => {
         nodeEncryptedSymmetricKey,
         nodeSalt,
         testPassword,
+        V2_KDF_PARAMETERS,
       )
       expect(result.privateKey).toBeTruthy()
       expect(result.symmetricKey).toBeTruthy()
@@ -207,10 +225,12 @@ describe('Crypto Provider Comparison', () => {
       const encrypted = await nodeCrypto.encryptSymmetric(
         nodeSymmetricKey,
         testMessage,
+        testAad,
       )
       const decrypted = await browserCrypto.decryptSymmetric(
         nodeSymmetricKey,
         encrypted,
+        testAad,
       )
       expect(decrypted).toEqual(testMessage)
     })
@@ -220,12 +240,49 @@ describe('Crypto Provider Comparison', () => {
       const encrypted = await browserCrypto.encryptSymmetric(
         browserSymmetricKey,
         testMessage,
+        testAad,
       )
       const decrypted = await nodeCrypto.decryptSymmetric(
         browserSymmetricKey,
         encrypted,
+        testAad,
       )
       expect(decrypted).toEqual(testMessage)
+    })
+
+    test('OAEP is MGF1-SHA-256 on both sides, not just SHA-256 labels', async () => {
+      // node's `oaepHash: 'sha256'` sets the label digest AND MGF1 together;
+      // node-forge takes them as separate options. It does default mgf1 to md
+      // when mgf1 is omitted, so the hazard is not a forgotten option but an
+      // EXPLICIT mismatch -- which round-trips perfectly inside forge and
+      // fails only against node, i.e. only on a user's second device.
+      const { publicKey: nodePublicKey, privateKey: nodePrivateKey } =
+        nodeTest.getKeys()
+
+      const publicKeyObj = forge.pki.publicKeyFromPem(nodePublicKey)
+      const mismatched = btoa(
+        publicKeyObj.encrypt(testMessage, 'RSA-OAEP', {
+          md: forge.md.sha256.create(),
+          mgf1: { md: forge.md.sha1.create() },
+        }),
+      )
+
+      await expect(
+        nodeCrypto.decrypt(nodePrivateKey, mismatched as never),
+      ).rejects.toThrow()
+
+      // ...while what the provider actually does round-trips both ways.
+      const fromBrowser = await browserCrypto.encrypt(
+        nodePublicKey,
+        testMessage,
+      )
+      expect(await nodeCrypto.decrypt(nodePrivateKey, fromBrowser)).toBe(
+        testMessage,
+      )
+      const fromNode = await nodeCrypto.encrypt(nodePublicKey, testMessage)
+      expect(await browserCrypto.decrypt(nodePrivateKey, fromNode)).toBe(
+        testMessage,
+      )
     })
 
     test('Node and Browser createSyncKey produce the same result', async () => {

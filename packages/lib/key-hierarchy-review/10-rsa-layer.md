@@ -33,7 +33,7 @@ routing is historical, not motivated.
 - Replacing RSA-4096/OAEP with X25519/HPKE is **"would be nicer", not "is
   weak"**. It is also expensive: peer public keys are already distributed with
   no re-keying story (see [04](04-key-rotation.md) and
-  [12](12-out-of-scope-sync-findings.md)). Not recommended now.
+  [12](12-sync-findings-index.md)). Not recommended now.
 - **OAEP uses SHA-1** on both providers — verified empirically: node's
   default-padding `privateDecrypt` accepts a forge `'RSA-OAEP'` ciphertext, and
   forcing `oaepHash: 'sha256'` fails. This is an **audit flag, not a break**:

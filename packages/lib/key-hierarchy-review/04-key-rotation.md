@@ -28,7 +28,7 @@ reuses `this.salt`, which is never reassigned anywhere in the class.
   devices are simply not a constraint here.
 - **Rotating the RSA keypair _is_ expensive.** Peers hold the public key and the
   only distribution channel is an unauthenticated `AddSyncDeviceCommand` (see
-  [12](12-out-of-scope-sync-findings.md)), so full revocation still means
+  [12](12-sync-findings-index.md)), so full revocation still means
   re-pairing devices.
 
 **Remediation story today: none**, short of creating a new vault. Note that
@@ -53,7 +53,7 @@ Also clear the extension's session password on a password change.
 
 Rotating the RSA keypair is deliberately **not** proposed here — it needs an
 authenticated public-key distribution path first, which is
-[12](12-out-of-scope-sync-findings.md) territory.
+[12](12-sync-findings-index.md) territory.
 
 ## How to verify
 

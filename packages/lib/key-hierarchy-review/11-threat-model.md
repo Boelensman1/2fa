@@ -41,7 +41,7 @@ Reference, not an action item. What each layer does and does not defend against.
   revokes nothing ([04](04-key-rotation.md)).
 
 - **Sync-layer forgery and replay.** Undefended — see
-  [12](12-out-of-scope-sync-findings.md).
+  [12](12-sync-findings-index.md).
 
 ## Assumptions this model rests on
 

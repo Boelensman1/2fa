@@ -31,12 +31,26 @@ file as work lands, and change its `Status:` line and the row here to match.
 | [09](09-iv-handling.md)             | IV handling                                   | **sound**                | —        | closed — no action |
 | [10](10-rsa-layer.md)               | Why the RSA layer exists                      | **sound but incidental** | —        | closed — no action |
 
-Reference, not action items:
+[11 — threat model](11-threat-model.md) is reference, not an action item: what
+each layer does and does not defend against.
 
-- [11 — threat model](11-threat-model.md) — what each layer does and does not defend.
-- [12 — out-of-scope sync findings](12-out-of-scope-sync-findings.md) — three
-  sync-layer findings hit while verifying the above. Two are individually more
-  severe than anything in the table. They need their own review.
+## Out of scope — sync layer
+
+Hit while verifying the above, verified first-hand, and left **unranked against
+the table above on purpose** — ranking them would imply a plan that has not been
+made. [12](12-sync-findings-index.md) is the group index and explains what this
+review did and did not do with them.
+
+| #                                       | Finding                                         | Verdict                             | Status |
+| --------------------------------------- | ----------------------------------------------- | ----------------------------------- | ------ |
+| [13](13-sync-command-authentication.md) | Sync commands have no sender authentication     | broken                              | open   |
+| [14](14-sync-device-injection.md)       | Unvalidated sync-device injection               | broken — most severe found anywhere | open   |
+| [15](15-sync-replay-protection.md)      | Replay protection is bypassable by construction | broken                              | open   |
+| [16](16-server-authentication.md)       | The sync server authenticates nothing           | weak by design, one real hijack     | open   |
+| [17](17-synckey-salt.md)                | `createSyncKey`'s salt is a public device id    | untidy                              | open   |
+
+`14` is the one to read first: combined with `13` it means an attacker can have
+every newly enrolled TOTP seed encrypted to them, silently.
 
 **Status vocabulary:** `open` · `in progress` · `done` · `closed — no action`
 (reviewed, deliberately nothing to do).

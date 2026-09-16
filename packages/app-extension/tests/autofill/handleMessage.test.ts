@@ -85,6 +85,8 @@ const fakeVault = (entries: EntryMetaForUrl[], otp = '123456') => ({
     size: entries.length,
     findEntryMetasForUrl: (url: string) =>
       url.startsWith('https://github.com') ? entries : [],
+    listEntriesMetas: () => entries,
+    searchEntriesMetas: () => entries,
     generateTokenForEntry: () => Promise.resolve({ otp }),
   },
 })
@@ -289,7 +291,8 @@ describe('FILL_OTP_FIELD', () => {
     unlockWith([entryMeta('a')])
     const { token } = await openMenu()
 
-    await send({ type: BG_ACTION_KEYS.LOCK_VAULT }, { tab: { id: 7 } })
+    // From the popup: locking is not something a tab context may ask for.
+    await send({ type: BG_ACTION_KEYS.LOCK_VAULT }, {})
 
     // Locking drops every offer, so the token is gone before the entry check
     // is ever reached -- the fill fails closed either way.
@@ -382,5 +385,98 @@ describe('REPORT_OTP_FIELDS', () => {
     )
 
     expect(response).toEqual({ inputSelectors: [] })
+  })
+})
+
+/**
+ * The trust boundary the rest of this file's guarantees rest on.
+ *
+ * `menu.html` is web-accessible, so any site can frame it, and that frame is
+ * an extension context with `runtime.sendMessage` and a `sender.tab`. Before
+ * the allowlist, it could ask for the entry list and then a code for every id
+ * in it. These tests are the pin: the popup's actions are reachable only from
+ * a sender with no tab at all.
+ */
+describe('who may send what', () => {
+  /** The popup: an extension page in its own context, so no `tab`. */
+  const popupSender = { url: 'popup.html' }
+
+  const tabOnly = [
+    { type: BG_ACTION_KEYS.LIST_ENTRIES, data: { query: '', url: null } },
+    { type: BG_ACTION_KEYS.GET_TOKEN, data: { entryId: 'a' } },
+    { type: BG_ACTION_KEYS.GET_VAULT_STATE },
+    { type: BG_ACTION_KEYS.GET_STATE },
+    { type: BG_ACTION_KEYS.GET_CONFIG },
+    { type: BG_ACTION_KEYS.LOCK_VAULT },
+    { type: BG_ACTION_KEYS.RESET_VAULT },
+    { type: BG_ACTION_KEYS.UNLOCK_VAULT, data: { password: 'hunter2' } },
+  ]
+
+  it.each(tabOnly)('refuses $type from the menu iframe', async (action) => {
+    unlockWith([entryMeta('a')])
+
+    expect(await send(action, menuSender)).toBeNull()
+  })
+
+  it.each(tabOnly)('refuses $type from a content script', async (action) => {
+    unlockWith([entryMeta('a')])
+
+    expect(await send(action, contentSender)).toBeNull()
+  })
+
+  /**
+   * The headline: the two calls that together read the whole vault.
+   *
+   * Asserted as a pair rather than separately, because it is the sequence that
+   * is the attack -- ids from the first, a live code per id from the second.
+   */
+  it('does not let a framed menu page read the vault', async () => {
+    unlockWith([entryMeta('a'), entryMeta('b')])
+
+    const entries = await send(
+      { type: BG_ACTION_KEYS.LIST_ENTRIES, data: { query: '', url: null } },
+      menuSender,
+    )
+    const otp = await send(
+      { type: BG_ACTION_KEYS.GET_TOKEN, data: { entryId: 'a' } },
+      menuSender,
+    )
+
+    expect(entries).toBeNull()
+    expect(otp).toBeNull()
+  })
+
+  it('still answers the popup', async () => {
+    unlockWith([entryMeta('a')])
+
+    const entries = await send(
+      { type: BG_ACTION_KEYS.LIST_ENTRIES, data: { query: '', url: null } },
+      popupSender,
+    )
+
+    expect(entries).toEqual({
+      forSite: [],
+      all: [expect.objectContaining({ id: 'a' })],
+    })
+  })
+
+  /** The over-eager-gate counterpart: the tab contexts that must keep working. */
+  it('still answers a content script reporting fields', async () => {
+    unlockWith([entryMeta('a', { inputSelector: '#code' })])
+
+    const response = await send(
+      {
+        type: BG_ACTION_KEYS.REPORT_OTP_FIELDS,
+        data: {
+          fields: [],
+          overrideMissed: false,
+          scannedAt: 0,
+          usedInputSelectors: [],
+        },
+      },
+      contentSender,
+    )
+
+    expect(response).toEqual({ inputSelectors: ['#code'] })
   })
 })

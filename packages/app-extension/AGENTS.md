@@ -208,12 +208,39 @@ is on shares a tab with a legitimate open offer. Gating on "is the sender an
 extension page" does nothing, because it is one. Only an unguessable handle
 separates our menu from theirs.
 
+That is true about telling _our menu_ from _theirs_. It is not true about
+telling a tab context from the popup, which is a different question with a
+usable answer -- see below.
+
 One offer per tab, no expiry sweeper: a tab has one focused field, so a second
 offer means the first is stale, which also settles the out-of-order race when
 focus moves between frames. `tabs.onRemoved`, an explicit close and a vault
 lock cover the rest. Fills additionally check that the named entry was one the
 offer listed — the menu is one postMessage from the page, so its request is a
 suggestion, not an authority.
+
+### Who may send what
+
+A hostile frame of `menu.html` is the reason `lib/background/handleMessage.ts`
+opens with an allowlist, `actionsReachableFromATab`. Six actions are on it: the
+content script's `REPORT_OTP_FIELDS` and `SEND_LOG`, the two menu open/close
+actions, and the menu iframe's `GET_MENU_ENTRIES` and `FILL_OTP_FIELD`, which
+carry an offer token of their own. Everything else is refused when
+`sender.tab` is set.
+
+`sender.tab` is filled in by the browser for anything running in a tab and is
+absent for an extension page in its own context, which is what the popup is. It
+is not part of the message and cannot be forged. That is the whole check.
+
+It closed a real hole rather than tightening a theoretical one: before it, a
+site that framed `chrome-extension://<id>/menu.html` could call `LIST_ENTRIES`
+for the entry ids and then `GET_TOKEN` for each one -- every code in the vault,
+from any page, with no interaction -- or `RESET_VAULT` to destroy it. The offer
+token was protecting the menu's own two actions and nothing else.
+
+An allowlist and not a list of popup-only actions, because a denylist fails
+open on precisely the commit that adds an action and forgets it. The
+tab-reachable set is also the smaller half, and the one that changes least.
 
 ### Known limit: the menu is clipped to its frame
 

@@ -42,6 +42,45 @@ const actionsThatMustNotWaitForInit: BgActionObject['type'][] = [
   BG_ACTION_KEYS.SEND_DEBUG_COMMAND,
 ]
 
+/**
+ * The only actions a context running inside a tab may send.
+ *
+ * `sender.tab` is filled in by the browser for anything living in a tab and is
+ * absent for an extension page in its own context -- which is the popup. It is
+ * not part of the message and cannot be forged.
+ *
+ * This is not a theoretical hardening. `menu.html` is in
+ * `web_accessible_resources`, so any site can frame it, and a frame loaded
+ * from that url *is* an extension context: it has `runtime.sendMessage`, and
+ * `sender.tab.id` is the tab it sits in. Until this list existed, such a frame
+ * could call `LIST_ENTRIES` for the ids and `GET_TOKEN` for each one and read
+ * every code in the vault -- and `RESET_VAULT` to destroy it. The offer token
+ * protects the menu's own actions; it never protected these.
+ *
+ * An allowlist rather than a list of popup-only actions, deliberately. A
+ * denylist fails open on exactly the commit that adds an action and forgets to
+ * update it; this way a new action is unreachable from a page until someone
+ * says otherwise. It is also the smaller and far more stable half.
+ *
+ * Why each member is here:
+ * - `REPORT_OTP_FIELDS`, `SEND_LOG` -- the content script's whole job
+ * - `OPEN_`/`CLOSE_AUTOFILL_MENU` -- sent by the content script on focus
+ * - `GET_MENU_ENTRIES`, `FILL_OTP_FIELD` -- sent by the menu iframe, and
+ *   already gated on an unguessable per-tab offer token
+ *
+ * Note that an extension page opened as an ordinary *tab* is refused too: it
+ * has a `sender.tab` like anything else. That only reaches someone typing a
+ * `chrome-extension://.../popup.html` url by hand; `make dev` does not.
+ */
+const actionsReachableFromATab: BgActionObject['type'][] = [
+  BG_ACTION_KEYS.REPORT_OTP_FIELDS,
+  BG_ACTION_KEYS.SEND_LOG,
+  BG_ACTION_KEYS.OPEN_AUTOFILL_MENU,
+  BG_ACTION_KEYS.CLOSE_AUTOFILL_MENU,
+  BG_ACTION_KEYS.GET_MENU_ENTRIES,
+  BG_ACTION_KEYS.FILL_OTP_FIELD,
+]
+
 async function unboundHandleMessage(
   [
     stateManager,
@@ -60,6 +99,23 @@ async function unboundHandleMessage(
   sender: Browser.runtime.MessageSender,
 ) {
   log.trace('Incoming message', { action, sender })
+
+  // Before init, and before anything reads the payload: a refusal must not
+  // depend on how far the worker has got.
+  if (
+    sender.tab !== undefined &&
+    !actionsReachableFromATab.includes(action.type)
+  ) {
+    // Warn rather than refusing silently. A silent null here is
+    // indistinguishable from a bug in the caller, and this is the first thing
+    // to look at when the popup works and something else does not.
+    log.warn(
+      `Refusing ${action.type} from a tab context (frame ${String(
+        sender.frameId ?? 0,
+      )}, ${sender.url ?? 'unknown url'})`,
+    )
+    return null
+  }
 
   if (!actionsThatMustNotWaitForInit.includes(action.type)) {
     await whenInitFinished()

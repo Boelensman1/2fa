@@ -12,7 +12,7 @@ const toSyncServerUrl = (value: string) =>
 export const syncServerUrl = toSyncServerUrl(
   import.meta.env.VITE_SYNCSERVERURL ?? '/api/sync',
 )
-export const deviceType = 'browser' as DeviceType
+export const deviceType = 'web' as DeviceType
 
 export const version = import.meta.env.VITE_COMMIT_HASH ?? 'unknown'
-export const passwordExtraDict = ['browser'] as const
+export const passwordExtraDict = ['browser', 'web'] as const

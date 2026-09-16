@@ -50,6 +50,16 @@ export interface AutofillMenu {
   /** Call when the field's frame should stop offering: lock, navigation, teardown. */
   close: () => void
   /**
+   * Call after a rescan, with everything the frame now holds.
+   *
+   * A rescan replaces every handle object, so an open menu is left pointing at
+   * one that nothing else refers to any more. Closing was the cheap answer and
+   * it is wrong on any page that re-renders while the menu is up: the list
+   * appears and vanishes again before it can be read, and the pages that
+   * re-render on focus are exactly the ones that show an otp field.
+   */
+  retarget: (found: readonly DetectedOtpFieldHandle[]) => void
+  /**
    * Swallows the next `focusin`, if one comes.
    *
    * A fill driven from the popup ends by focusing the field so the user can
@@ -211,6 +221,45 @@ export const createAutofillMenu = (
     track()
   }
 
+  /**
+   * Follows the open menu's field through a rescan.
+   *
+   * Ids survive a rescan -- they are held in a `WeakMap` keyed on the field's
+   * first element, so an element that is still in the page keeps its id -- but
+   * the handle *objects* around them are all new. Swapping to the new one is
+   * what keeps the menu up, and it is also what keeps `onFocusOut`'s identity
+   * check (`handleForElement(active) === openFor`) true, since `handleForElement`
+   * now answers with the new handle.
+   *
+   * No id means the element the menu is anchored to is gone -- replaced by a
+   * re-render, not merely re-reported -- and there is nothing left to anchor
+   * to, so it closes.
+   *
+   * A rescan that lands while an offer is still in flight is left alone:
+   * `host` is null until the menu mounts, and closing then would cancel an
+   * open that the page's own churn provoked -- which is how a busy page could
+   * stop the menu ever appearing.
+   * @param found - Everything the rescan detected in this frame.
+   */
+  const retarget = (found: readonly DetectedOtpFieldHandle[]) => {
+    const open = openFor
+    if (!host || !open) return
+
+    const replacement = found.find(
+      (handle) => handle.field.id === open.field.id,
+    )
+    if (!replacement) {
+      close()
+      return
+    }
+    if (replacement === open) return
+
+    openFor = replacement
+    // The new handle may hold different elements -- a segmented row can gain
+    // or lose a box -- so the cached geometry key has to go with it.
+    lastKey = ''
+  }
+
   const focused = (target: EventTarget | null) => {
     if (ignoreNextFocus) {
       ignoreNextFocus = false
@@ -275,6 +324,7 @@ export const createAutofillMenu = (
 
   return {
     focused,
+    retarget,
     close,
     ignoreFocusOnce: () => {
       ignoreNextFocus = true

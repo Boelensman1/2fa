@@ -130,11 +130,11 @@ export const load = (ctx: ContentScriptContext): void => {
     onChange: (result) => {
       remember(result.handles)
       // The handles the open menu is anchored to have just been replaced, so
-      // it is pointing at elements that may no longer be on the page.
-      // Guarded rather than unconditional: close() also cancels an offer
-      // request still in flight, and a busy page must not be able to stop the
-      // menu ever opening.
-      if (menu?.isOpen() === true) menu.close()
+      // it has to be pointed at the new one -- or closed, if the field it was
+      // anchored to did not survive the rescan. Closing unconditionally, which
+      // is what this did, takes the menu away again on any page that
+      // re-renders while it is up.
+      menu?.retarget(result.handles)
       void report(result)
     },
   })

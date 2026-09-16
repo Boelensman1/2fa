@@ -531,6 +531,14 @@ and are referenced as `"typescript": "catalog:"`.
   cannot use when its registry is empty, which is what `scanNow()` is for — and
   it goes through the observer rather than calling `detectOtpFields` beside it,
   so the selectors and the fingerprint keep one owner.
+- **A rescan replaces every handle object, so an open menu has to be pointed
+  at the new one** (`AutofillMenu.retarget`) rather than closed. Ids survive —
+  they live in a `WeakMap` keyed on the field's first element, so an element
+  still in the page keeps its id — which is what makes following it possible,
+  and an id that has gone means the element was replaced rather than
+  re-reported. Re-anchoring also keeps `onFocusOut`'s identity check
+  (`handleForElement(active) === openFor`) true; without it a rescan while the
+  menu is up makes the next focus event look like focus leaving the field.
 - **`web_accessible_resources` must be written in the mv3 object form.** wxt
   flattens it to mv2's plain string array for the Firefox build and throws
   outright if you write the string form yourself. `use_dynamic_url` is

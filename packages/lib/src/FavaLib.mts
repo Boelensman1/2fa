@@ -44,6 +44,7 @@ import VaultDataManager from './subclasses/VaultDataManager.mjs'
 import VaultOperationsManager from './subclasses/VaultOperationsManager.mjs'
 import CommandManager from './subclasses/CommandManager.mjs'
 import StorageOperationsManager from './subclasses/StorageOperationsManager.mjs'
+import { LIB_VERSION } from './version.mjs'
 import ChangeDeviceInfoCommand from './Command/commands/ChangeDeviceInfoCommand.mjs'
 import RemoveSyncDeviceCommand from './Command/commands/RemoveSyncDeviceCommand.mjs'
 
@@ -51,8 +52,7 @@ import RemoveSyncDeviceCommand from './Command/commands/RemoveSyncDeviceCommand.
  * The Two-Factor Library, this is the main entry point.
  */
 class FavaLib extends TypedEventTarget<FavaLibEventMapEvents> {
-  // TOOD: load this from package.json
-  public static readonly version = '0.0.1'
+  public static readonly version = LIB_VERSION
 
   private readonly favaMeta: FavaMeta
   public readonly deviceType: DeviceType

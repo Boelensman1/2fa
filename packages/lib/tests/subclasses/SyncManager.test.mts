@@ -464,12 +464,8 @@ describe('SyncManager', () => {
     ).toEqual([entryId])
   })
 
-  it('should repair, not drop, a remote entry carrying an unusable matcher', async () => {
-    // processRemoteCommands drops a command that throws and never retries it,
-    // so an entry arriving with a bad matcher has to land sanitised instead.
-    const entryId = 'remote-entry' as EntryId
-
-    const receiverCommandManager = (
+  const getReceiverCommandManager = () =>
+    (
       receiverFavaLib as unknown as {
         mediator: {
           getComponent: (name: 'commandManager') => {
@@ -479,6 +475,31 @@ describe('SyncManager', () => {
         }
       }
     ).mediator.getComponent('commandManager')
+
+  const makeRemoteEntry = (entryId: EntryId) => ({
+    id: entryId,
+    name: 'Remote TOTP',
+    issuer: 'Remote Issuer',
+    type: 'TOTP',
+    matchers: [],
+    url: null,
+    inputSelector: null,
+    addedAt: Date.now(),
+    updatedAt: null,
+    payload: {
+      secret: 'REMOTESECRET',
+      period: 30,
+      algorithm: 'SHA-1',
+      digits: 6,
+    },
+  })
+
+  it('should repair, not drop, a remote entry carrying an unusable matcher', async () => {
+    // processRemoteCommands drops a command that throws and never retries it,
+    // so an entry arriving with a bad matcher has to land sanitised instead.
+    const entryId = 'remote-entry' as EntryId
+
+    const receiverCommandManager = getReceiverCommandManager()
 
     receiverCommandManager.receiveRemoteCommand({
       id: 'remote-command',
@@ -515,6 +536,82 @@ describe('SyncManager', () => {
     expect(received.url).toBeNull()
     expect(received.inputSelector).toBeNull()
     expect(received.name).toBe('Remote TOTP')
+  })
+
+  it.each([
+    ['an explicit current version', '1.0'],
+    ['a newer minor version', '1.7'],
+    ['no version at all', undefined],
+  ])('should apply a remote command with %s', async (_label, version) => {
+    const entryId = `version-ok-${String(version)}` as EntryId
+    const receiverCommandManager = getReceiverCommandManager()
+
+    receiverCommandManager.receiveRemoteCommand({
+      id: `command-${String(version)}`,
+      type: 'AddEntry',
+      timestamp: Date.now(),
+      ...(version === undefined ? {} : { version }),
+      data: makeRemoteEntry(entryId),
+    } as unknown as SyncCommand)
+
+    await receiverCommandManager.processRemoteCommands()
+
+    expect(receiverFavaLib.vault.getEntryMeta(entryId).name).toBe('Remote TOTP')
+  })
+
+  it('should drop, not misapply, a remote command from a newer protocol', async () => {
+    // receiveCommands calls receiveRemoteCommand inside a Promise.all, so
+    // throwing here would abort the whole batch. Dropping is also lossless:
+    // the command is never reported as executed, so the server keeps it
+    // queued and redelivers it once this device is upgraded.
+    const entryId = 'version-too-new' as EntryId
+    const receiverCommandManager = getReceiverCommandManager()
+    const warnings: string[] = []
+    receiverFavaLib.addEventListener(FavaLibEvent.Log, (event) => {
+      if (event.detail.severity === 'warning')
+        warnings.push(event.detail.message)
+    })
+
+    receiverCommandManager.receiveRemoteCommand({
+      id: 'command-from-the-future',
+      type: 'AddEntry',
+      timestamp: Date.now(),
+      version: '2.0',
+      data: makeRemoteEntry(entryId),
+    } as unknown as SyncCommand)
+
+    const executedIds = await receiverCommandManager.processRemoteCommands()
+
+    expect(executedIds).not.toContain('command-from-the-future')
+    expect(() => receiverFavaLib.vault.getEntryMeta(entryId)).toThrow()
+    expect(warnings.join('\n')).toMatch(/sync protocol version 2\.0/)
+  })
+
+  it('should warn only once about the same unsupported command', () => {
+    // The server redelivers unexecuted commands on every reconnect, so
+    // without deduplication this would warn forever.
+    const receiverCommandManager = getReceiverCommandManager()
+    const warnings: string[] = []
+    receiverFavaLib.addEventListener(FavaLibEvent.Log, (event) => {
+      if (event.detail.severity === 'warning')
+        warnings.push(event.detail.message)
+    })
+
+    const command = {
+      id: 'repeatedly-redelivered',
+      type: 'AddEntry',
+      timestamp: Date.now(),
+      version: '2.0',
+      data: makeRemoteEntry('version-repeat' as EntryId),
+    } as unknown as SyncCommand
+
+    receiverCommandManager.receiveRemoteCommand(command)
+    receiverCommandManager.receiveRemoteCommand(command)
+    receiverCommandManager.receiveRemoteCommand(command)
+
+    expect(
+      warnings.filter((w) => w.includes('repeatedly-redelivered')),
+    ).toHaveLength(1)
   })
 
   it('should emit ready event after receiving syncCommands message', async () => {

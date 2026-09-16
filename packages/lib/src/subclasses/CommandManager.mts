@@ -5,6 +5,12 @@ import commandConstructors from '../Command/commandConstructors.mjs'
 import type Command from '../Command/BaseCommand.mjs'
 import CommandQueue from '../Command/CommandQueue.mjs'
 import { type SyncCommand } from '../interfaces/CommandTypes.mjs'
+import { COMMAND_VERSION } from '../version.mjs'
+
+const currentCommandMajorVersion = Number.parseInt(
+  COMMAND_VERSION.split('.')[0],
+  10,
+)
 
 interface CommandConstructor {
   fromJSON(input: unknown): Command
@@ -18,6 +24,12 @@ class CommandManager {
   private undoneCommands: Command[] = []
   private remoteCommandQueue = new CommandQueue()
   private processedCommandIds = new Set<string>()
+  // Commands dropped for speaking a newer protocol. Kept separate from
+  // processedCommandIds, which also gates execute() and would permanently
+  // suppress the command even after this device upgrades. The server re-sends
+  // anything it has not been told was executed, so without this set the same
+  // warning would be logged on every reconnect.
+  private unsupportedCommandIds = new Set<string>()
 
   /**
    * Constructs a new CommandManager instance.
@@ -117,10 +129,19 @@ class CommandManager {
 
   /**
    * Receives a remote command and enqueues it for processing.
+   *
+   * A command whose major version is newer than this build understands is
+   * dropped with a warning rather than thrown on: receiveCommands calls this
+   * inside a Promise.all, so throwing would abort the whole batch. Dropping is
+   * safe because the command is never reported as executed, so the server
+   * keeps it queued and redelivers it once this device is upgraded.
    * @param remoteCommand - The remote command to process.
    * @throws {InvalidCommandError} If the command type is unknown or data is invalid.
    */
   receiveRemoteCommand(remoteCommand: SyncCommand): void {
+    if (remoteCommand && !this.commandVersionIsSupported(remoteCommand)) {
+      return
+    }
     if (remoteCommand && typeof remoteCommand.type === 'string') {
       const CommandClass = commandConstructors[
         remoteCommand.type
@@ -136,6 +157,36 @@ class CommandManager {
     } else {
       throw new InvalidCommandError('Invalid command data received')
     }
+  }
+
+  /**
+   * Checks whether a remote command's protocol version is one this build can
+   * apply, logging a warning the first time a command is dropped.
+   * @param remoteCommand - The remote command to check.
+   * @returns True when the command should be processed.
+   */
+  private commandVersionIsSupported(remoteCommand: SyncCommand): boolean {
+    const major = Number.parseInt(
+      (remoteCommand.version ?? COMMAND_VERSION).split('.')[0],
+      10,
+    )
+    // An absent or unparseable version means a peer that predates versioning;
+    // treat it the way the storage path treats a missing storageVersion.
+    if (Number.isNaN(major) || major <= currentCommandMajorVersion) {
+      return true
+    }
+    if (!this.unsupportedCommandIds.has(remoteCommand.id)) {
+      this.unsupportedCommandIds.add(remoteCommand.id)
+      this.log(
+        'warning',
+        `Dropping remote command ${remoteCommand.id} of type ` +
+          `${remoteCommand.type}: it uses sync protocol version ` +
+          `${String(remoteCommand.version)}, but this version of the library ` +
+          `only supports up to ${COMMAND_VERSION}. It will be applied after ` +
+          `this device is upgraded.`,
+      )
+    }
+    return false
   }
 
   private async sendCommandToOtherInstances(command: Command): Promise<void> {

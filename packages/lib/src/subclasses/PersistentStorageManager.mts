@@ -22,14 +22,13 @@ import type { PasswordExtraDict } from '../interfaces/PasswordExtraDict.js'
 import type { SaveFunction } from '../interfaces/SaveFunction.mjs'
 import type { DeviceId, VaultStateSend } from '../interfaces/SyncTypes.mjs'
 
-import FavaLib from '../FavaLib.mjs'
 import { validatePasswordStrength } from '../utils/creationUtils.mjs'
+import { LIB_VERSION, STORAGE_VERSION } from '../version.mjs'
 
 /**
  * Manages all storage of data that should be persistent.
  */
 class PersistentStorageManager {
-  public static readonly storageVersion = 1
   private savePromise: Promise<void> | null = null
 
   /**
@@ -112,8 +111,8 @@ class PersistentStorageManager {
     const encryptedVaultState = await this.getEncryptedVaultState()
 
     const lockedRepresentation: LockedRepresentation = {
-      libVersion: FavaLib.version,
-      storageVersion: PersistentStorageManager.storageVersion,
+      libVersion: LIB_VERSION,
+      storageVersion: STORAGE_VERSION,
       encryptedPrivateKey: this.encryptedPrivateKey,
       encryptedSymmetricKey: this.encryptedSymmetricKey,
       salt: this.salt,

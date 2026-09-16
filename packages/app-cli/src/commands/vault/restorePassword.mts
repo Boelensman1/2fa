@@ -2,7 +2,12 @@ import keytar from 'keytar'
 
 import BaseCommand from '../../BaseCommand.mjs'
 
-import { DeviceType, getFavaLibVaultCreationUtils, Password } from 'favalib'
+import {
+  DeviceType,
+  getFavaLibVaultCreationUtils,
+  Password,
+  StorageVersionError,
+} from 'favalib'
 import NodePlatformProvider from 'favalib/platformProviders/node'
 import { password as passwordInput } from '@inquirer/prompts'
 
@@ -58,6 +63,13 @@ class VaultRestorePasswordCommand extends BaseCommand {
           { connectToSyncServer: false },
         )
     } catch (err) {
+      if (err instanceof StorageVersionError) {
+        throw new Error(
+          `This vault was saved by a newer version of favacli than the one you ` +
+            `are running, so the password cannot be verified against it. Upgrade ` +
+            `favacli and try again — nothing was stored, and your data is intact.`,
+        )
+      }
       if (err instanceof Error && err.message === 'Invalid password') {
         throw new Error('Incorrect password — nothing was stored.')
       }

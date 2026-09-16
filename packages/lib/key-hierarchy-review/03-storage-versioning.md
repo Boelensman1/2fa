@@ -1,7 +1,7 @@
 # 03 — `storageVersion` is write-only
 
 **Verdict:** weak — silent downgrade path
-**Status:** open
+**Status:** done
 **Priority:** P0 — prerequisite for [01](01-kdf-parameters.md) and
 [02](02-ciphertext-authenticity.md)
 **Touches:** `src/utils/creationUtils.mts:172`,
@@ -59,4 +59,63 @@ re-save.
 
 ## Resolution
 
-_Not started._
+Done 2026-09-16. The load path now reads `storageVersion` before anything else
+and refuses a vault it cannot read, so the gate that [01](01-kdf-parameters.md)
+and [02](02-ciphertext-authenticity.md) need is in place. This change does
+**not** bump the format — the blob is still `storageVersion: 1`.
+
+What landed:
+
+- `src/version.mts` (new) holds `LIB_VERSION`, `STORAGE_VERSION`,
+  `LEGACY_STORAGE_VERSION` and `COMMAND_VERSION` as plain constants in a module
+  that imports nothing. Two divergences from "What to do" above are deliberate:
+  the comparison is against `STORAGE_VERSION`, not
+  `PersistentStorageManager.storageVersion`, and that static is **deleted**. A
+  leaf module can be read from `creationUtils` without adding another edge to
+  the `FavaLib → PersistentStorageManager → creationUtils` runtime import cycle
+  that already exists, and it let `PersistentStorageManager` drop its runtime
+  `FavaLib` import, removing one.
+- `StorageVersionError extends InitializationError` in `FavaLibError.mts`,
+  exported from `main.mts` along with `STORAGE_VERSION`, `LIB_VERSION` and the
+  `LockedRepresentation` type.
+- The guard in `creationUtils.mts`, placed **before** the envelope completeness
+  check as well as before any decryption: a future v2 blob would otherwise
+  report as "incomplete or corrupted" to a v1 build, telling the user their
+  vault is broken when it is merely newer. Absent → treated as 1; an explicit
+  `null`, a non-integer, `< 1`, or a numeric _string_ are all refused. The
+  string case matters: reading the field through the existing
+  `Partial<LockedRepresentation>` cast would coerce it, making `'2' > 1` true
+  and `'0.5' > 1` false — right answers for the wrong reason.
+- `libVersion` is now `LIB_VERSION` (`0.0.21`) rather than the literal
+  `'0.0.1'`, and `FavaLib.version` reads the same constant. It is kept
+  deliberately, as the **informational** record of which build last wrote a
+  blob; `tests/utils/creationUtils.test.mts` pins that it never gates a load.
+  `tests/version.test.mts` fails if `package.json` is bumped without it.
+- The sync side: `SyncCommand` now declares the `version` and `timestamp` it has
+  always carried on the wire, and `CommandManager.receiveRemoteCommand` drops a
+  command whose major version is newer than `COMMAND_VERSION`. It **drops with a
+  warning rather than throwing** — `SyncManager.receiveCommands` calls it inside
+  a `Promise.all`, so a throw would abort the whole batch. This is lossless: the
+  command is never reported in `syncCommandsExecuted`, so the server redelivers
+  it after an upgrade (`server.mts:42-50`). A `droppedCommandIds` set keeps the
+  warning to once per command per session, since redelivery happens on every
+  reconnect. Note this changes no behaviour today: every command in existence
+  carries the literal `'1.0'`, because all six concrete commands forward a
+  `version?: string` they are never given. It is a forward-compat hook only.
+- `tests/fixtures/vault-v1.json` — a frozen, real v1 vault, the regression gate
+  item 2 of [06](06-crypto-test-coverage.md) asks for. Its expected OTPs were
+  cross-checked against an independent RFC 6238 implementation, so it pins
+  argon2id → RSA-OAEP → AES-CBC → TOTP as genuinely correct rather than merely
+  self-consistent, on both the node and browser providers. No generator script
+  is checked in, on purpose — see `tests/fixtures/README.md`.
+
+Verified by mutation: disabling the version comparison reddens three tests in
+`creationUtils.test.mts`, disabling the command gate reddens two in
+`SyncManager.test.mts`, and changing `iterations` from 256 to 255 reddens the
+fixture.
+
+**Left open deliberately:** the bare `JSON.parse` at the top of
+`loadFavaLibFromLockedRepesentation` still throws a raw `SyntaxError` on a
+truncated file rather than an `InitializationError`. That belongs to
+[05](05-load-path-validation.md), which owns the envelope validation, and is
+untouched here.

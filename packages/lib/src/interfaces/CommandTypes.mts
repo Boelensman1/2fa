@@ -12,7 +12,14 @@ export type SyncCommand = (
   | { type: 'AddSyncDevice'; data: AddSyncDeviceData }
   | { type: 'ChangeDeviceInfo'; data: ChangeDeviceInfoData }
   | { type: 'RemoveSyncDevice'; data: RemoveSyncDeviceData }
-) & { id: string }
+) & {
+  id: string
+  // Serialised by BaseCommand.toJSON and read back by fromJSON, so these are
+  // genuinely on the wire. Optional because a peer on an older build may omit
+  // them, and because the type predates them.
+  version?: string
+  timestamp?: number
+}
 export type CommandData =
   | AddEntryData
   | DeleteEntryData

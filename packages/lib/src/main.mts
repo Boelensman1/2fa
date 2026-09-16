@@ -46,6 +46,7 @@ import type {
 } from './interfaces/SyncTypes.mjs'
 import type {
   EncryptedVaultStateString,
+  LockedRepresentation,
   LockedRepresentationString,
 } from './interfaces/Vault.mjs'
 import type { SaveFunction } from './interfaces/SaveFunction.mjs'
@@ -57,7 +58,9 @@ import {
   AuthenticationError,
   EntryNotFoundError,
   TokenGenerationError,
+  StorageVersionError,
 } from './FavaLibError.mjs'
+import { LIB_VERSION, STORAGE_VERSION } from './version.mjs'
 import { FavaLibEvent } from './FavaLibEvent.mjs'
 import {
   getFavaLibVaultCreationUtils,
@@ -72,6 +75,9 @@ export {
   AuthenticationError,
   EntryNotFoundError,
   TokenGenerationError,
+  StorageVersionError,
+  LIB_VERSION,
+  STORAGE_VERSION,
   FavaLibEvent,
   URL_MATCHER_TYPES,
   validateUrlMatcher,
@@ -98,6 +104,7 @@ export type {
   TotpPayload,
   Token,
   EncryptedVaultStateString,
+  LockedRepresentation,
   LockedRepresentationString,
   CryptoLib,
   Encrypted,

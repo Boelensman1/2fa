@@ -1,6 +1,7 @@
-import { type Component, createSignal } from 'solid-js'
+import { type Component, createSignal, Show } from 'solid-js'
 import {
   FavaLibEvent,
+  StorageVersionError,
   type LockedRepresentationString,
   type Password,
 } from 'favalib'
@@ -14,6 +15,12 @@ import creationUtils from '../utils/creationUtils'
 const Login: Component = () => {
   const [, dispatch] = useStore()
   const [password, setPassword] = createSignal('')
+  const [errorMessage, setErrorMessage] = createSignal<string | null>(null)
+  // A vault we cannot read is still a vault. Resetting wipes localStorage, and
+  // unlike the CLI this app keeps no backup, so offering Reset next to a
+  // "needs a newer version" message would invite people to destroy recoverable
+  // data.
+  const [vaultIsUnreadable, setVaultIsUnreadable] = createSignal(false)
   const syncStoreWithLib = useSyncStoreWithLib()
 
   const login = async (enteredPassword: Password) => {
@@ -49,7 +56,21 @@ const Login: Component = () => {
 
   const onSubmit = (e: Event) => {
     e.preventDefault()
-    void login(password() as Password)
+    setErrorMessage(null)
+    login(password() as Password).catch((err: unknown) => {
+      if (err instanceof StorageVersionError) {
+        setVaultIsUnreadable(true)
+        setErrorMessage(
+          'This vault was saved by a newer version of the app, so this version ' +
+            'cannot read it safely. Reload the page to pick up the latest ' +
+            'version. Your data is intact — do not reset.',
+        )
+        return
+      }
+      setErrorMessage(
+        err instanceof Error ? err.message : 'Could not unlock the vault.',
+      )
+    })
   }
 
   const onReset = () => {
@@ -90,13 +111,18 @@ const Login: Component = () => {
         >
           Log In
         </button>
-        <button
-          type="button"
-          onClick={onReset}
-          class="w-full bg-gray-500 text-white py-2 px-4 rounded-md hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-opacity-50 transition duration-200 mt-2"
-        >
-          Reset
-        </button>
+        <Show when={errorMessage()}>
+          <p class="text-red-500 mt-2">{errorMessage()}</p>
+        </Show>
+        <Show when={!vaultIsUnreadable()}>
+          <button
+            type="button"
+            onClick={onReset}
+            class="w-full bg-gray-500 text-white py-2 px-4 rounded-md hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-opacity-50 transition duration-200 mt-2"
+          >
+            Reset
+          </button>
+        </Show>
       </form>
       <div class="fixed bottom-2 right-2 text-xs text-gray-500">
         version {version}

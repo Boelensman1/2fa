@@ -94,3 +94,10 @@ export class SyncNoServerConnectionError extends SyncError {
  * Error thrown when an invalid command is being executed.
  */
 export class InvalidCommandError extends FavaLibError {}
+
+/**
+ * Error thrown when a stored vault's storageVersion is not one this build can
+ * read -- either higher than this library supports, or not a valid version at
+ * all.
+ */
+export class StorageVersionError extends InitializationError {}

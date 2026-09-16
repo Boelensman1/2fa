@@ -15,6 +15,7 @@ import {
   type Salt,
   EncryptedPrivateKey,
   EncryptedSymmetricKey,
+  STORAGE_VERSION,
 } from '../../src/main.mjs'
 import { nodeProviders } from '../../src/platformProviders/node/index.mjs'
 import {
@@ -97,7 +98,7 @@ describe('PersistentStorageManager', () => {
 
     expect(parsed).toEqual({
       libVersion: FavaLib.version,
-      storageVersion: expect.any(Number) as number,
+      storageVersion: STORAGE_VERSION,
       encryptedPrivateKey,
       encryptedSymmetricKey,
       salt,

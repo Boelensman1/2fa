@@ -5,7 +5,12 @@ import type { Password } from '../interfaces/CryptoLib.mjs'
 import type { DeviceId, DeviceType } from '../interfaces/SyncTypes.mjs'
 
 import FavaLib from '../FavaLib.mjs'
-import { InitializationError, FavaLibError } from '../FavaLibError.mjs'
+import {
+  InitializationError,
+  FavaLibError,
+  StorageVersionError,
+} from '../FavaLibError.mjs'
+import { LEGACY_STORAGE_VERSION, STORAGE_VERSION } from '../version.mjs'
 
 import LibraryLoader from '../subclasses/LibraryLoader.mjs'
 import type {
@@ -156,6 +161,7 @@ const createNewFavaLibVault = async (
  * @param password - The password for decrypting the keys.
  * @param options - Options controlling how the vault is loaded.
  * @returns A promise that resolves when loading is complete.
+ * @throws {StorageVersionError} If the vault was saved by a newer library, or its storageVersion is invalid.
  * @throws {InitializationError} If loading fails due to invalid or corrupted data.
  */
 const loadFavaLibFromLockedRepesentation = async (
@@ -171,6 +177,42 @@ const loadFavaLibFromLockedRepesentation = async (
   const platformProviders = libraryLoader.getPlatformProviders()
   const lockedRepresentation = JSON.parse(lockedRepresentationString) as
     Partial<LockedRepresentation> | undefined
+
+  // Read the version before anything else, and deliberately not through the
+  // Partial<LockedRepresentation> cast above: that cast claims the field is a
+  // number, which is not true of a hand-crafted or tampered blob. Coercion
+  // would then make '2' > 1 true and '0.5' > 1 false, so the cast gives right
+  // answers for the wrong reason on some inputs and wrong ones on others.
+  //
+  // This also runs before the completeness check below, because a future
+  // format will legitimately look "incomplete" to this build -- the user
+  // should be told to upgrade, not that their vault is corrupt.
+  const rawStorageVersion = (
+    lockedRepresentation as { storageVersion?: unknown } | undefined
+  )?.storageVersion
+  // Absent means a vault written before the field existed. An explicit null is
+  // not the same thing -- that is a malformed blob, and falls through to the
+  // integer check below.
+  const storageVersion =
+    rawStorageVersion === undefined ? LEGACY_STORAGE_VERSION : rawStorageVersion
+  if (typeof storageVersion !== 'number' || !Number.isInteger(storageVersion)) {
+    throw new StorageVersionError(
+      `lockedRepresentation has a storageVersion that is not an integer: ${JSON.stringify(storageVersion)}`,
+    )
+  }
+  if (storageVersion < 1) {
+    throw new StorageVersionError(
+      `lockedRepresentation has an out of range storageVersion: ${storageVersion}`,
+    )
+  }
+  if (storageVersion > STORAGE_VERSION) {
+    throw new StorageVersionError(
+      `This vault was saved with storage version ${storageVersion}, but this ` +
+        `version of the library only supports up to ${STORAGE_VERSION}. ` +
+        `Upgrade to a newer version to open it. Do not reset or delete the ` +
+        `vault, its data is intact.`,
+    )
+  }
 
   if (
     !lockedRepresentation?.encryptedPrivateKey ||

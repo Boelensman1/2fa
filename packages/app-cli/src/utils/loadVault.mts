@@ -8,6 +8,7 @@ import {
   Password,
   SaveFunction,
   FavaLibEvent,
+  StorageVersionError,
 } from 'favalib'
 import NodePlatformProvider from 'favalib/platformProviders/node'
 import { Settings } from './init.mjs'
@@ -77,12 +78,25 @@ const loadVault = async (
 
   const password = storedPassword as Password
 
-  const favaLib =
-    await favaLibVaultCreationUtils.loadFavaLibFromLockedRepesentation(
-      vaultData,
-      password,
-      { connectToSyncServer },
-    )
+  let favaLib
+  try {
+    favaLib =
+      await favaLibVaultCreationUtils.loadFavaLibFromLockedRepesentation(
+        vaultData,
+        password,
+        { connectToSyncServer },
+      )
+  } catch (err) {
+    if (err instanceof StorageVersionError) {
+      throw new Error(
+        `The vault at "${settings.vaultLocation}" was saved by a newer version of ` +
+          `favacli than the one you are running, so this version cannot read it ` +
+          `safely. Upgrade favacli and try again. Your data is intact — do not ` +
+          `delete the vault or its backup. (${err.message})`,
+      )
+    }
+    throw err
+  }
   favaLib.addEventListener(FavaLibEvent.Log, (ev) => {
     if (ev.detail.severity === 'warning') {
       addError(new Error(ev.detail.message))

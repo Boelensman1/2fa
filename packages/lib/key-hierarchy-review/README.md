@@ -22,7 +22,7 @@ file as work lands, and change its `Status:` line and the row here to match.
 | ----------------------------------- | --------------------------------------------- | ------------------------ | -------- | ------------------ |
 | [01](01-kdf-parameters.md)          | Argon2id parameters                           | weak                     | P0       | open               |
 | [02](02-ciphertext-authenticity.md) | Vault ciphertext is unauthenticated           | broken                   | P0       | open               |
-| [03](03-storage-versioning.md)      | `storageVersion` is write-only                | weak                     | P0       | open               |
+| [03](03-storage-versioning.md)      | `storageVersion` is write-only                | weak                     | P0       | done               |
 | [04](04-key-rotation.md)            | No rotation; `changePassword` revokes nothing | weak                     | P1       | open               |
 | [05](05-load-path-validation.md)    | Load path skips the entry validators          | weak                     | P1       | open               |
 | [06](06-crypto-test-coverage.md)    | Nothing pins the KDF or the stored format     | weak                     | P1       | open               |
@@ -58,10 +58,14 @@ every newly enrolled TOTP seed encrypted to them, silently.
 ## Order of work
 
 `03` is a prerequisite for `01` and `02` — without a version gate an older
-build opens a newer blob and re-saves it in the old shape. `06` should land
-before `01`, because today a KDF parameter change breaks every existing vault
-with a fully green `make test`. After that: `01` + `02` + `03` ship together as
-`storageVersion: 2`, then `04`, `05`, `07`.
+build opens a newer blob and re-saves it in the old shape. **That prerequisite
+is now satisfied**: the gate landed 2026-09-16, and it brought item 2 of `06`
+(the v1 fixture vault) with it. The format itself is still `storageVersion: 1`
+— `01` and `02` are what bump it to `2`, and they still ship together.
+
+`06`'s remaining items (a KDF test vector, and unmocking `encryptSymmetric` in a
+`PersistentStorageManager` test) should still land before `01`. After that,
+`01` and `02` ship together as `storageVersion: 2`, then `04`, `05`, `07`.
 
 ## The verified hierarchy
 

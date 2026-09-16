@@ -234,3 +234,13 @@ and are referenced as `"typescript": "catalog:"`.
 - The content script runs with `allFrames: true`. That is a content-script
   option, not a permission — a statically declared script takes its host
   access from `matches`, and `permissions` is still just `['storage']`.
+- **Do not call `browser.permissions.request` from `onInstalled`.** The
+  starter did, asking for `<all_urls>` on Firefox, and it threw
+  "permissions.request may only be called from a user input handler" on every
+  install; `onInstalled` is not a user gesture. It would have failed a second
+  time regardless, since a permission must appear in `optional_permissions`
+  (mv2) / `optional_host_permissions` (mv3) to be requestable, and this
+  manifest declares neither. Nothing needs it: Firefox is built as mv2, where
+  the content script's `matches: ['<all_urls>']` is granted at install. A move
+  to Firefox mv3 would make host access opt-in and need a real request — from
+  a click in the popup.

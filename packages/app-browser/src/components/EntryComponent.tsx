@@ -9,7 +9,10 @@ import {
   Show,
 } from 'solid-js'
 import {
+  MAX_INPUT_SELECTOR_LENGTH,
+  MAX_MATCHER_VALUE_LENGTH,
   MAX_MATCHERS_PER_ENTRY,
+  MAX_URL_LENGTH,
   URL_MATCHER_TYPES,
   validateUrlMatcher,
 } from 'favalib'
@@ -26,11 +29,12 @@ const EntryComponent = (props: {
   const favaLib = state.favaLib!
   const [copyStatus, setCopyStatus] = createSignal('')
   const [menuOpen, setMenuOpen] = createSignal(false)
-  const [renameMode, setRenameMode] = createSignal(false)
-  const [renameIssuer, setRenameIssuer] = createSignal('')
-  const [renameName, setRenameName] = createSignal('')
+  const [editMode, setEditMode] = createSignal(false)
+  const [editIssuer, setEditIssuer] = createSignal('')
+  const [editName, setEditName] = createSignal('')
   const [editUrl, setEditUrl] = createSignal('')
   const [editMatchers, setEditMatchers] = createSignal<UrlMatcher[]>([])
+  const [editInputSelector, setEditInputSelector] = createSignal('')
   const [editError, setEditError] = createSignal<string | null>(null)
   const [qrCode, setQrCode] = createSignal('')
 
@@ -102,15 +106,16 @@ const EntryComponent = (props: {
     setQrCode('')
   }
 
-  const handleStartRename = (event: MouseEvent) => {
+  const handleStartEdit = (event: MouseEvent) => {
     event.stopPropagation()
     setMenuOpen(false)
-    setRenameIssuer(props.entry.issuer)
-    setRenameName(props.entry.name)
+    setEditIssuer(props.entry.issuer)
+    setEditName(props.entry.name)
     setEditUrl(props.entry.url ?? '')
     setEditMatchers(props.entry.matchers.map((matcher) => ({ ...matcher })))
+    setEditInputSelector(props.entry.inputSelector ?? '')
     setEditError(null)
-    setRenameMode(true)
+    setEditMode(true)
   }
 
   const updateMatcher = (index: number, patch: Partial<UrlMatcher>) => {
@@ -134,11 +139,14 @@ const EntryComponent = (props: {
     setEditMatchers((matchers) => matchers.filter((_, i) => i !== index))
   }
 
-  const handleRenameSave = (event: MouseEvent) => {
+  const handleEditSave = (event: MouseEvent) => {
     event.stopPropagation()
-    const issuer = renameIssuer().trim()
-    const name = renameName().trim()
-    if (!issuer && !name) return
+    const issuer = editIssuer().trim()
+    const name = editName().trim()
+    if (!issuer && !name) {
+      setEditError('An entry needs an issuer or a name')
+      return
+    }
 
     // Drop the blank rows the "Add matcher" button leaves behind, then hold
     // the rest to exactly the rules the lib enforces.
@@ -155,6 +163,7 @@ const EntryComponent = (props: {
     }
 
     const url = editUrl().trim()
+    const inputSelector = editInputSelector().trim()
 
     void favaLib.vault
       .updateEntry(props.entry.id, {
@@ -162,21 +171,22 @@ const EntryComponent = (props: {
         name,
         matchers,
         url: url.length > 0 ? url : null,
+        inputSelector: inputSelector.length > 0 ? inputSelector : null,
       })
       .then(() => {
         syncStoreWithLib(favaLib)
         setEditError(null)
-        setRenameMode(false)
+        setEditMode(false)
       })
       .catch((err: unknown) => {
         setEditError(err instanceof Error ? err.message : 'Could not save')
       })
   }
 
-  const handleRenameCancel = (event: MouseEvent) => {
+  const handleEditCancel = (event: MouseEvent) => {
     event.stopPropagation()
     setEditError(null)
-    setRenameMode(false)
+    setEditMode(false)
   }
 
   const copyToClipboard = () => {
@@ -202,31 +212,49 @@ const EntryComponent = (props: {
     >
       <div class="flex flex-col mb-2">
         <Show
-          when={!renameMode()}
+          when={!editMode()}
           fallback={
             <div on:click={(e) => e.stopPropagation()}>
               <div class="flex flex-col gap-2">
-                <input
-                  type="text"
-                  value={renameIssuer()}
-                  onInput={(e) => setRenameIssuer(e.currentTarget.value)}
-                  placeholder="Issuer"
-                  class="border border-gray-300 rounded px-2 py-1 text-sm w-full"
-                />
-                <input
-                  type="text"
-                  value={renameName()}
-                  onInput={(e) => setRenameName(e.currentTarget.value)}
-                  placeholder="Name"
-                  class="border border-gray-300 rounded px-2 py-1 text-sm w-full"
-                />
-                <input
-                  type="text"
-                  value={editUrl()}
-                  onInput={(e) => setEditUrl(e.currentTarget.value)}
-                  placeholder="Website url (optional)"
-                  class="border border-gray-300 rounded px-2 py-1 text-sm w-full"
-                />
+                <label class="flex flex-col gap-1">
+                  <span class="text-xs font-semibold text-gray-600">
+                    Issuer
+                  </span>
+                  <input
+                    type="text"
+                    value={editIssuer()}
+                    onInput={(e) => setEditIssuer(e.currentTarget.value)}
+                    placeholder="GitHub"
+                    class="border border-gray-300 rounded px-2 py-1 text-sm w-full"
+                  />
+                </label>
+                <label class="flex flex-col gap-1">
+                  <span class="text-xs font-semibold text-gray-600">Name</span>
+                  <input
+                    type="text"
+                    value={editName()}
+                    onInput={(e) => setEditName(e.currentTarget.value)}
+                    placeholder="you@example.com"
+                    class="border border-gray-300 rounded px-2 py-1 text-sm w-full"
+                  />
+                </label>
+                <label class="flex flex-col gap-1">
+                  <span class="text-xs font-semibold text-gray-600">
+                    Website url
+                  </span>
+                  <input
+                    type="text"
+                    value={editUrl()}
+                    onInput={(e) => setEditUrl(e.currentTarget.value)}
+                    placeholder="https://github.com/login"
+                    maxlength={MAX_URL_LENGTH}
+                    class="border border-gray-300 rounded px-2 py-1 text-sm w-full"
+                  />
+                  <span class="text-xs text-gray-500">
+                    Shown to you only, never used to decide where this entry
+                    fits.
+                  </span>
+                </label>
                 <div class="flex flex-col gap-1">
                   <span class="text-xs font-semibold text-gray-600">
                     Site matchers
@@ -263,6 +291,7 @@ const EntryComponent = (props: {
                             })
                           }
                           placeholder="github.com"
+                          maxlength={MAX_MATCHER_VALUE_LENGTH}
                           class="border border-gray-300 rounded px-2 py-1 text-xs flex-1 min-w-0"
                         />
                         <button
@@ -283,18 +312,35 @@ const EntryComponent = (props: {
                     Add matcher
                   </button>
                 </div>
+                <label class="flex flex-col gap-1">
+                  <span class="text-xs font-semibold text-gray-600">
+                    One-time-code input
+                  </span>
+                  <input
+                    type="text"
+                    value={editInputSelector()}
+                    onInput={(e) => setEditInputSelector(e.currentTarget.value)}
+                    placeholder="input#otp-code"
+                    maxlength={MAX_INPUT_SELECTOR_LENGTH}
+                    class="border border-gray-300 rounded px-2 py-1 text-sm w-full"
+                  />
+                  <span class="text-xs text-gray-500">
+                    A css selector overriding the extension's guess at the code
+                    field.
+                  </span>
+                </label>
                 <Show when={editError()}>
                   <span class="text-xs text-red-600">{editError()}</span>
                 </Show>
                 <div class="flex gap-2">
                   <button
-                    on:click={handleRenameSave}
+                    on:click={handleEditSave}
                     class="bg-blue-500 text-white px-3 py-1 rounded text-sm hover:bg-blue-600 transition-colors"
                   >
                     Save
                   </button>
                   <button
-                    on:click={handleRenameCancel}
+                    on:click={handleEditCancel}
                     class="bg-gray-300 text-gray-700 px-3 py-1 rounded text-sm hover:bg-gray-400 transition-colors"
                   >
                     Cancel
@@ -330,10 +376,10 @@ const EntryComponent = (props: {
                 <Show when={menuOpen()}>
                   <div class="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded shadow-lg z-20 min-w-[120px]">
                     <button
-                      on:click={handleStartRename}
+                      on:click={handleStartEdit}
                       class="block w-full text-left px-4 py-2 text-sm hover:bg-gray-100 transition-colors"
                     >
-                      Rename
+                      Edit
                     </button>
                     <button
                       on:click={handleShare}
@@ -355,13 +401,6 @@ const EntryComponent = (props: {
           <span class="text-sm text-gray-600 break-words">
             {props.entry.name}
           </span>
-          <Show when={props.entry.matchers.length > 0}>
-            <span class="text-xs text-gray-500 break-words">
-              {props.entry.matchers
-                .map((matcher) => `${matcher.type}:${matcher.value}`)
-                .join(', ')}
-            </span>
-          </Show>
         </Show>
       </div>
       <div class="w-full bg-gray-200 rounded-full h-2.5">

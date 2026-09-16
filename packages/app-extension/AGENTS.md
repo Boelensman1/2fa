@@ -56,10 +56,14 @@ mv3 evicts the worker after ~30s idle, which would otherwise mean retyping the
 master password almost every time the popup opens. `init.ts` calls
 `vaultContainer.restoreSession()` on every boot to rebuild the instance.
 
-Only Chrome is affected. wxt builds Firefox as **mv2**, whose background is a
-persistent page rather than a service worker, so nothing is evicted and the
-instance simply stays in memory — the same code runs, `restoreSession()` finds
-the vault already open and returns. Check the built manifest when changing
+Only Chrome is affected, and only Chrome pays for it. wxt builds Firefox as
+**mv2**, whose background is a persistent page rather than a service worker, so
+nothing is evicted and `restoreSession()` would never have a reader —
+`backgroundCanBeEvicted()` therefore skips the write there entirely, rather
+than storing a master password for nobody. It keys on the manifest version,
+not the browser, because a Firefox _mv3_ build gets an event page that **is**
+terminated and does need it; vite folds the check to a constant per target
+(`()=>!0` for chrome-mv3, `()=>!1` for firefox-mv2). Check the built manifest when changing
 anything manifest-shaped, because the two targets differ more than usual here:
 wxt rewrites `content_security_policy` from the mv3 object form to mv2's single
 string, and the background from `service_worker` to `scripts`.

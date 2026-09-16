@@ -47,6 +47,27 @@ const VAULT_KEY = 'lockedRepresentation'
  */
 const SESSION_PASSWORD_KEY = 'vaultPassword'
 
+/**
+ * Whether the browser keeps the background alive on its own.
+ *
+ * Only an mv3 background is a service worker the browser terminates when idle.
+ * wxt builds firefox as mv2, whose background is a persistent page -- nothing
+ * evicts it, so `restoreSession` there has never once had work to do. Writing
+ * the password on every unlock for a reader that never comes is exposure
+ * bought for nothing, so don't.
+ *
+ * Keyed on the manifest version rather than the browser, because that is the
+ * thing that actually decides it: a firefox *mv3* build gets an event page,
+ * which is terminated and does need this. `!== 2` rather than `=== 3` so an
+ * unknown value (vitest, where wxt defines no globals) falls to the working
+ * side -- getting this wrong the other way would silently stop the vault
+ * surviving eviction, which no test would catch.
+ *
+ * If the mv2 background ever becomes non-persistent, this has to change with it.
+ */
+const backgroundCanBeEvicted = () =>
+  Number(import.meta.env.MANIFEST_VERSION) !== 2
+
 /** favalib reports a bad password as a CryptoError, which it does not export. */
 const isWrongPassword = (error: unknown): boolean =>
   error instanceof Error && /invalid password/i.test(error.message)
@@ -145,7 +166,10 @@ class VaultContainer {
     })
 
     this.favaLib = favaLib
-    await this.db.setSessionValue(SESSION_PASSWORD_KEY, password)
+
+    if (backgroundCanBeEvicted()) {
+      await this.db.setSessionValue(SESSION_PASSWORD_KEY, password)
+    }
   }
 
   /**
@@ -228,6 +252,9 @@ class VaultContainer {
    */
   async restoreSession() {
     if (this.favaLib) return
+    // Nothing is ever stored where the background cannot be evicted, so there
+    // is nothing to look for.
+    if (!backgroundCanBeEvicted()) return
 
     const password = await this.db.getSessionValue(SESSION_PASSWORD_KEY)
     if (!password) return

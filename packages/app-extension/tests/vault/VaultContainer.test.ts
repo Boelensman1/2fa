@@ -249,6 +249,46 @@ describe('unlock and lock', () => {
     expect(store.has('session:vaultPassword')).toBe(false)
   })
 
+  it('does not store the password where the background is persistent', async () => {
+    // Firefox is built as mv2, whose background page is never evicted, so
+    // restoreSession has no reader there. Writing the master password for
+    // nobody is exposure bought for nothing.
+    vi.stubEnv('MANIFEST_VERSION', '2')
+    try {
+      const { favaLib } = makeFavaLib()
+      loadFavaLibFromLockedRepesentation.mockResolvedValue(favaLib)
+      const db = new Db()
+      await db.upsertMetaKV('lockedRepresentation', 'blob')
+      const container = new VaultContainer(db)
+
+      await container.unlock('pw' as never)
+
+      await expect(container.getStatus()).resolves.toBe('unlocked')
+      expect(store.has('session:vaultPassword')).toBe(false)
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
+  it('does not try to restore where the background is persistent', async () => {
+    vi.stubEnv('MANIFEST_VERSION', '2')
+    try {
+      const db = new Db()
+      await db.upsertMetaKV('lockedRepresentation', 'blob')
+      // Even with a password left behind by an earlier mv3 build, mv2 must not
+      // reach for it.
+      await db.setSessionValue('vaultPassword', 'pw')
+      const container = new VaultContainer(db)
+
+      await container.restoreSession()
+
+      await expect(container.getStatus()).resolves.toBe('locked')
+      expect(loadFavaLibFromLockedRepesentation).not.toHaveBeenCalled()
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
   it('reset forgets the vault but keeps the config', async () => {
     const db = new Db()
     await db.upsertMetaKV('lockedRepresentation', 'blob')

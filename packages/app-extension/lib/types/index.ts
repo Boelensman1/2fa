@@ -5,4 +5,10 @@ export type { default as LogEntryPayload } from './LogEntryPayload'
 export * from './BgActionObject'
 export * from './CtActionObject'
 
-export type { ConfigContainer, StateManager, Db } from '../ioc/entities'
+export type {
+  ConfigContainer,
+  StateManager,
+  Db,
+  OtpFieldRegistry,
+  OtpFieldReport,
+} from '../ioc/entities'

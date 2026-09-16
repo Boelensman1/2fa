@@ -6,5 +6,8 @@
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true
   },
-  "include": ["./**/*", "./.wxt/wxt.d.ts", "postcss.config.mjs"]
+  "include": ["./**/*", "./.wxt/wxt.d.ts", "postcss.config.mjs"],
+  // repeats the excludes inherited from .wxt/tsconfig.json, because setting
+  // `exclude` here replaces the inherited list rather than extending it
+  "exclude": ["**/node_modules", ".output", "dev-output", "artifacts"]
 }

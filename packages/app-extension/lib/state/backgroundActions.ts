@@ -10,7 +10,9 @@ import type {
   SendLogActionObject,
   LogEntryPayload,
   SendDebugCommandActionObject,
+  ReportOtpFieldsActionObject,
 } from '../types'
+import type { DetectedOtpField } from '../detect'
 
 export const BG_ACTION_KEYS = {
   GET_STATE: 'GET_STATE' as const,
@@ -20,6 +22,8 @@ export const BG_ACTION_KEYS = {
 
   SEND_LOG: 'SEND_LOG' as const,
   SEND_DEBUG_COMMAND: 'SEND_DEBUG_COMMAND' as const,
+
+  REPORT_OTP_FIELDS: 'REPORT_OTP_FIELDS' as const,
 }
 
 const send = <T extends BgActionObject, U = void>(arg: T): Promise<U | null> =>
@@ -57,6 +61,14 @@ const actions = {
       type: BG_ACTION_KEYS.SEND_DEBUG_COMMAND,
       data: command,
       extraData,
+    }),
+  // sendAlways: the first report arrives at document_idle, while the service
+  // worker may still be booting. Gated behind the loaded check it would be
+  // dropped and never retried.
+  reportOtpFields: (fields: DetectedOtpField[], overrideMissed: boolean) =>
+    sendAlways<ReportOtpFieldsActionObject>({
+      type: BG_ACTION_KEYS.REPORT_OTP_FIELDS,
+      data: { fields, overrideMissed, scannedAt: Date.now() },
     }),
 }
 

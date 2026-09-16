@@ -1,12 +1,15 @@
 import { browser } from 'wxt/browser'
 import type {
   CtActionObject,
+  DetectOtpFieldsCTActionObject,
+  DetectOtpFieldsResponse,
   EventNotificationCTActionObject,
   CTEvent,
 } from '../types'
 
 export const CT_ACTION_KEYS = {
   EVENT_NOTIFICATION: 'EVENT_NOTIFICATION' as const,
+  DETECT_OTP_FIELDS: 'DETECT_OTP_FIELDS' as const,
 }
 
 type TabIdOpt = number | undefined
@@ -32,6 +35,11 @@ const actions = {
     send<EventNotificationCTActionObject>(tabId, {
       type: CT_ACTION_KEYS.EVENT_NOTIFICATION,
       data: { event },
+    }),
+  detectOtpFields: (tabId: TabIdOpt, inputSelectors: string[]) =>
+    send<DetectOtpFieldsCTActionObject, DetectOtpFieldsResponse>(tabId, {
+      type: CT_ACTION_KEYS.DETECT_OTP_FIELDS,
+      data: { inputSelectors },
     }),
 }
 

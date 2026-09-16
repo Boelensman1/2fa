@@ -17,7 +17,9 @@ class ConfigContainer {
   async init() {
     const configFromDb = await this.db.getMetaValue('config')
     if (!configFromDb) {
-      this.config = defaultConfig
+      // copy: set() mutates this.config in place, and defaultConfig is a
+      // shared module constant
+      this.config = { ...defaultConfig }
     } else {
       this.config = JSON.parse(configFromDb) as Config
     }
@@ -59,7 +61,7 @@ class ConfigContainer {
       )
     }
 
-    this.config = defaultConfig
+    this.config = { ...defaultConfig }
     await this.db.upsertMetaKV('config', JSON.stringify(this.config))
   }
 }

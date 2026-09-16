@@ -4,13 +4,50 @@ The browser extension (MV3) client of the `2fa` pnpm monorepo. WXT 0.21 +
 React 19, inversify IoC, Tailwind. Private, never published.
 
 Copied in from the `extension` project of
-`https://github.com/wtflegal/base-projects` and integrated into the workspace;
-apart from the workspace wiring the code is still the upstream starter — the
-popup, background and content entrypoints do not do any 2FA yet.
+`https://github.com/wtflegal/base-projects` and integrated into the workspace.
+The popup and the ioc/config/logging plumbing are still the upstream starter;
+`lib/detect/` and the content script are ours.
 
 `favalib` (`../lib`) is linked as `workspace:*` and is where all vault, crypto,
 TOTP and sync logic belongs; prefer extending it over reimplementing that logic
-here.
+here. Note that nothing in this package imports it yet — there is no vault, no
+unlock flow and no sync url. Detection is step 1; reading the vault is step 2.
+
+## `lib/detect/` — the otp field heuristic
+
+Finds the second-factor input on a page. Self-contained on purpose: nothing in
+the directory imports from `lib/`'s other modules or from `wxt/*`, so the
+scoring is testable as plain data and the extension's logging and ioc stay out
+of a hot dom path. That also means moving it into `favalib` later, if a second
+client ever needs it, is a directory move plus an export-map entry.
+
+The seam is `signals.ts`. Above it (`collectSignals`, `walkDom`,
+`groupSegments`, `visibility`, `selector`) is dom work; below it
+(`scoreField`, `patterns`) is arithmetic over a plain `FieldSignals` object.
+
+- `patterns.ts` — **read the header before touching it.** Chromium's
+  `kOneTimePwdRe` and `kSocialSecurityRe` are reproduced verbatim under a
+  BSD-3-Clause notice; `CARD_CVC_RE` is a deliberately narrowed subset of
+  Chromium's; `OTP_FIELD_EXTRA_RE` and the other exclusions are ours. Keep
+  that boundary legible. **Bitwarden's autofill code is GPL-3.0 and must not
+  be copied into this repo** — publishing to a web store is distribution, and
+  this package is ISC/MIT-compatible.
+- `scoreField.ts` — tiers plus a capped score. `autocomplete="one-time-code"`
+  and an `inputSelector` override are decisive at 100; heuristic scores are
+  clamped to 99 so `definite` always means "the page said so". The three
+  signal families are capped separately because their members are correlated.
+- `detectOtpFields.ts` — the orchestrator. `observe.ts` wraps it in a
+  debounced `MutationObserver`, one per root.
+
+`EntryMeta.inputSelector` (favalib) is the escape hatch for pages the
+heuristic gets wrong; it suppresses the heuristic rather than merging with it.
+Set it from the cli with `favacli entries edit <id> --input-selector`.
+
+`tests/fixtures/otpFields/*.html` is the real specification — twenty snippets,
+half of which must detect nothing. It is in `.prettierignore`, because
+whitespace between inputs is exactly what a dom walk can be sensitive to. The
+snippets are hand-written and therefore too clean; the corpus only really earns
+its keep once fixtures are captured from real second-factor screens.
 
 Workspace dependency graph:
 
@@ -30,15 +67,21 @@ first and delegates installs to the repo root.
 
 - `make lint` — `prettier --check`, `eslint`, `tsc --noEmit`. The feedback loop
   to use for checking your work.
-- `make test` — prints "no tests defined". This package has no tests.
+- `make test` / `make test-watch` — vitest, in a `happy-dom` environment
+  (`vitest.config.ts`). Tests live in `tests/`.
 - `make build` — alias for `make dist/chrome`; `wxt build` into `.output/`.
 - `make dist/firefox` / `make dist/chrome` — per-browser builds.
-- `make dev` (= `dev-firefox`) / `make dev-chrome` — WXT dev server. There is no
-  milly dev service for this package; start it by hand when you need it.
+- `make dev` (= `dev-firefox`) / `make dev-chrome` — WXT dev server, writing to
+  `dev-output/` rather than `.output/`: browsers hide dot-directories in their
+  "load unpacked extension" picker. The Makefile sets `WXT_OUT_DIR`, which
+  `wxt.config.ts` reads. Production builds and zips are never loaded unpacked
+  and stay in `.output/`. There is no milly dev service for this package; start
+  it by hand when you need it.
 - `make artifacts/favabrowserext.chrome.zip`,
   `…/favabrowserext.firefox.zip`, `…/favabrowserext.firefox.source.zip` —
   distributable zips.
-- `make clean` — removes `.output`, `.wxt`, `artifacts`, `web-ext-artifacts`.
+- `make clean` — removes `.output`, `dev-output`, `.wxt`, `artifacts`,
+  `web-ext-artifacts`.
 - Never run `pnpm install` by hand; the `node_modules` target delegates to the
   repo root, which runs `pnpm install --frozen-lockfile`.
 
@@ -71,4 +114,39 @@ and are referenced as `"typescript": "catalog:"`.
   `lib/styles/globals.css` uses `@import 'tailwindcss'` plus `@source`
   directives, and `tailwind.config.ts` is gone — matching `../app-browser`.
 - `artifacts/favabrowserext.firefox.source.zip` clones `../..`, so the Mozilla
-  source upload contains the whole monorepo, not just this package.
+  source upload contains the whole monorepo, not just this package. That is
+  also why `zip.zipSources` is off in `wxt.config.ts`: wxt's own sources zip
+  holds this package alone, which cannot build — it is a pnpm workspace member
+  and needs the root lockfile, workspace file and `packages/lib`. Uploading it
+  would hand a reviewer something that fails to build. The target needs the
+  `zip` binary, which the Milly container does not ship.
+- `zip.artifactTemplate` and `sourcesTemplate` are pinned so the Makefile can
+  move the zips by exact name. The default names carry the package version,
+  and a `.output/*.zip` glob also picked up the sources zip and whatever the
+  previous browser's build left behind — with two matches, `mv` fails with
+  "is not a directory".
+- `browser_specific_settings.gecko.id` is `fava@appeal.nl` and is
+  **permanent** — it is the add-on's identity on addons.mozilla.org, and
+  changing it after publishing makes it a different add-on that existing users
+  never receive as an update. Chrome derives its own id from the signing key
+  and ignores this.
+- `browser_specific_settings` is added only for the Firefox build.
+  `data_collection_permissions: { required: ['none'] }` is the explicit "this
+  extension collects nothing", required for new Firefox extensions from
+  2025-11-03. Chrome does not know the key, so it is omitted there.
+- happy-dom does no layout: `offsetParent` is `undefined`, `offsetWidth` is 0
+  and `getBoundingClientRect()` returns a zero rect for visible and hidden
+  elements alike. Visibility is therefore built on `checkVisibility()`, which
+  it does implement faithfully. `tests/environment.test.ts` pins both facts.
+- Under `environment: 'happy-dom'`, `import.meta.url` resolves against the
+  document's `http://localhost/`, so `new URL(..., import.meta.url)` reads
+  from the filesystem root. Fixtures load from vitest's cwd instead.
+- All log level filtering happens in the _receiving_ context: a content
+  script's `Logger` forwards every entry to the background through `sendLog`
+  regardless of level, and the background filters on receipt. The popup runs at
+  a `-extension:` origin, so `inBackgroundScript()` is true for it and it logs
+  to its own console. That is why `setVerboseLogging` is called from the
+  background and from `useConfig`, and from nowhere else.
+- The content script runs with `allFrames: true`. That is a content-script
+  option, not a permission — a statically declared script takes its host
+  access from `matches`, and `permissions` is still just `['storage']`.

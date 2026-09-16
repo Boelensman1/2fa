@@ -4,7 +4,7 @@ import type { ValueOf } from 'type-fest'
 
 import IOC_TYPES from './types'
 
-import { ConfigContainer, StateManager, Db } from './entities'
+import { ConfigContainer, StateManager, Db, OtpFieldRegistry } from './entities'
 
 const container = new Container({ defaultScope: 'Singleton' })
 
@@ -24,6 +24,7 @@ export const initContainer = (
 
   // Independent bindings
   bindIfNotSkipped(IOC_TYPES.DB, Db)
+  bindIfNotSkipped(IOC_TYPES.OtpFieldRegistry, OtpFieldRegistry)
 
   // Depends on Db
   bindIfNotSkipped(IOC_TYPES.StateManager, StateManager)

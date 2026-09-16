@@ -1,12 +1,7 @@
+import type { DetectedOtpField } from '../detect'
+
 import type { BG_ACTION_KEYS } from '../state'
 import type { Config, LogEntryPayload } from './'
-
-export interface ElementPickerData {
-  selector: string
-  html: string
-  pageUrl: string
-  promptResult: string
-}
 
 export interface GetStateActionObject {
   type: typeof BG_ACTION_KEYS.GET_STATE
@@ -36,6 +31,24 @@ export interface SendDebugCommandActionObject {
   extraData?: string
 }
 
+/**
+ * A content script telling the background what it found on its page.
+ *
+ * Deliberately carries no tab, frame or url: `handleMessage` is already given
+ * a `MessageSender` whose `tabId`, `frameId` and `url` are supplied by the
+ * browser and are trustworthy. A content script must not be trusted to name
+ * its own origin, and putting those in the payload invites exactly that.
+ */
+export interface ReportOtpFieldsActionObject {
+  type: typeof BG_ACTION_KEYS.REPORT_OTP_FIELDS
+  data: {
+    fields: DetectedOtpField[]
+    /** An entry supplied an `inputSelector` and it matched nothing. */
+    overrideMissed: boolean
+    scannedAt: number
+  }
+}
+
 export type BgActionObject =
   | GetStateActionObject
   | GetConfigActionObject
@@ -43,3 +56,4 @@ export type BgActionObject =
   | SaveConfigActionObject
   | SendLogActionObject
   | SendDebugCommandActionObject
+  | ReportOtpFieldsActionObject

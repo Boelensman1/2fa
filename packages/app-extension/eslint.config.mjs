@@ -3,7 +3,18 @@ import globals from 'globals'
 
 export default [
   {
-    ignores: ['.output/**', '.wxt/**', 'postcss.config.mjs'],
+    // `artifacts` holds build output, including -- while the source-zip
+    // target is running, or after it fails partway -- a clone of the whole
+    // monorepo, which eslint would otherwise try to lint against this
+    // package's tsconfig.
+    ignores: [
+      '.output/**',
+      'dev-output/**',
+      '.wxt/**',
+      'artifacts/**',
+      'web-ext-artifacts/**',
+      'postcss.config.mjs',
+    ],
   },
   // dev-configs currently does not have types yet
   // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment

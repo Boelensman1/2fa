@@ -67,6 +67,9 @@ export enum ConnectionStatus {
   FAILED,
 }
 
+/** How long `flushCommandSendQueue` waits for the server to acknowledge. */
+const COMMAND_FLUSH_TIMEOUT = IN_TESTING ? 500 : 10_000
+
 const generateNonCryptographicRandomString = () => {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
   const length = Math.floor(Math.random() * 64) + 1
@@ -89,6 +92,7 @@ class SyncManager {
   private readyEventEmitted = false
 
   private commandSendQueue: SyncCommandFromClient[] = []
+  private commandSendQueueDrainedResolvers: (() => void)[] = []
 
   private reconnectTimeout?: NodeJS.Timeout
   private terminateTimeout?: NodeJS.Timeout
@@ -893,17 +897,75 @@ class SyncManager {
       }),
     )
 
-    if (!this.connectionEnabled) {
+    // A command that cannot leave now has to survive until it can. The vault
+    // was already saved, before this command reached the queue, so nothing
+    // else will persist it - and a short-lived consumer like the cli exits
+    // before the connection ever comes back.
+    if (!this.webSocketConnected) {
       await this.persistentStorageManager.save()
     }
 
     await this.processCommandSendQueue()
   }
 
+  /**
+   * Waits until the server has acknowledged every queued outgoing command.
+   *
+   * Sending is otherwise fire-and-forget: `sendCommand` hands the commands to
+   * the socket and returns, and the acknowledgement arrives later as a
+   * `syncCommandsReceived` message. That is fine for a long-lived app, but a
+   * process that exits right after a mutation - the cli - would take the
+   * queue down with it.
+   *
+   * This never re-sends: the server keys stored commands on
+   * (commandId, deviceId), so a second send of the same command fails and
+   * takes the acknowledgement of its whole batch with it.
+   * @param timeoutMs - How long to wait for the acknowledgement.
+   * @returns True when the queue is empty, false when it could not be
+   * flushed. In the false case the queue has been persisted, so the commands
+   * go out the next time this device connects.
+   */
+  async flushCommandSendQueue(
+    timeoutMs = COMMAND_FLUSH_TIMEOUT,
+  ): Promise<boolean> {
+    if (this.commandSendQueue.length === 0) {
+      return true
+    }
+
+    if (!this.webSocketConnected) {
+      // `sendCommand` already persisted the queue in this case
+      return false
+    }
+
+    const flushed = await new Promise<boolean>((resolve) => {
+      const timeout = setTimeout(() => {
+        this.commandSendQueueDrainedResolvers =
+          this.commandSendQueueDrainedResolvers.filter(
+            (waiter) => waiter !== onDrained,
+          )
+        resolve(false)
+      }, timeoutMs)
+
+      const onDrained = () => {
+        clearTimeout(timeout)
+        resolve(true)
+      }
+
+      this.commandSendQueueDrainedResolvers.push(onDrained)
+    })
+
+    if (!flushed) {
+      await this.persistentStorageManager.save()
+    }
+
+    return flushed
+  }
+
   private async processCommandSendQueue() {
     if (this.syncDevices.length === 0) {
       // no devices to sync with, no need to send anything
       this.commandSendQueue = []
+      this.resolveCommandSendQueueDrained()
       return
     }
 
@@ -938,6 +1000,21 @@ class SyncManager {
     this.commandSendQueue = this.commandSendQueue.filter(
       (command) => !commandIds.includes(command.commandId),
     )
+
+    if (this.commandSendQueue.length === 0) {
+      this.resolveCommandSendQueueDrained()
+    }
+  }
+
+  /**
+   * Wakes everyone waiting in `flushCommandSendQueue`.
+   */
+  private resolveCommandSendQueueDrained() {
+    const waiters = this.commandSendQueueDrainedResolvers
+    this.commandSendQueueDrainedResolvers = []
+    for (const waiter of waiters) {
+      waiter()
+    }
   }
 
   /**

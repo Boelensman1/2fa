@@ -36,6 +36,7 @@ class EntriesAddCommand extends BaseCommand {
   })
 
   requireFavaLib = true
+  override mutatesVault = true
 
   name = Option.String('--name', { required: true })
   issuer = Option.String('--issuer', { required: true })

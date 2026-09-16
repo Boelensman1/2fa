@@ -627,6 +627,80 @@ describe('SyncManager', () => {
     expect(receiverFavaLib.vault.getEntryMeta(addedEntryId)).toBeTruthy()
   }, 10000) // long running test, the re-connect itself takes 5 seconds
 
+  describe('flushCommandSendQueue', () => {
+    let wsInstancesMap: Map<DeviceId, WsClient>
+
+    beforeEach(async () => {
+      wsInstancesMap = new Map([
+        [senderFavaLib.meta.deviceId, senderWsInstance],
+        [receiverFavaLib.meta.deviceId, receiverWsInstance],
+      ])
+      await connectDevices({
+        senderFavaLib,
+        receiverFavaLib,
+        server,
+        wsInstancesMap,
+      })
+    })
+
+    it('should resolve immediately when nothing is queued', async () => {
+      await expect(senderFavaLib.sync?.flushCommandSendQueue()).resolves.toBe(
+        true,
+      )
+    })
+
+    it('should wait for the server to acknowledge a queued command', async () => {
+      await senderFavaLib.vault.addEntry(newTotpEntry)
+      expect(senderFavaLib.sync?.getCommandSendQueue()).toHaveLength(1)
+
+      let settled = false
+      const flushed = senderFavaLib.sync
+        ?.flushCommandSendQueue()
+        .then((result) => {
+          settled = true
+          return result
+        })
+
+      // the command is on the wire, but unacknowledged
+      await vi.waitFor(() =>
+        expect(server.messagesToConsume.pendingItems).not.toHaveLength(0),
+      )
+      expect(settled).toBe(false)
+
+      await handleSyncCommands(
+        server,
+        senderFavaLib.meta.deviceId,
+        wsInstancesMap,
+      )
+
+      await expect(flushed).resolves.toBe(true)
+      expect(senderFavaLib.sync?.getCommandSendQueue()).toHaveLength(0)
+    })
+
+    it('should give up, keeping the command queued, when the server stays silent', async () => {
+      await senderFavaLib.vault.addEntry(newTotpEntry)
+
+      await expect(senderFavaLib.sync?.flushCommandSendQueue(50)).resolves.toBe(
+        false,
+      )
+      expect(senderFavaLib.sync?.getCommandSendQueue()).toHaveLength(1)
+    })
+
+    it('should not wait when there is no connection to flush over', async () => {
+      senderWsInstance.close()
+      await vi.waitUntil(() => !senderFavaLib.sync?.webSocketConnected)
+
+      await senderFavaLib.vault.addEntry(newTotpEntry)
+
+      const before = Date.now()
+      await expect(senderFavaLib.sync?.flushCommandSendQueue()).resolves.toBe(
+        false,
+      )
+      expect(Date.now() - before).toBeLessThan(200)
+      expect(senderFavaLib.sync?.getCommandSendQueue()).toHaveLength(1)
+    })
+  })
+
   it('should work with >2 devices', async () => {
     let otherReceiverWsInstance: WsClient
     const connectionPromise = new Promise<void>((resolve) => {

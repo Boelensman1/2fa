@@ -85,6 +85,27 @@ describe('shouldConnectToSyncServer', () => {
     ).toThrow('--force-sync and --no-sync cannot be used together')
   })
 
+  it('connects for a vault mutation however recent the last sync was', () => {
+    expect(
+      shouldConnectToSyncServer({
+        now,
+        mutatesVault: true,
+        lastSyncedAt: now,
+      }),
+    ).toBe(true)
+  })
+
+  it('lets no-sync opt a mutation out of connecting', () => {
+    expect(
+      shouldConnectToSyncServer({
+        now,
+        mutatesVault: true,
+        noSync: true,
+        lastSyncedAt: now,
+      }),
+    ).toBe(false)
+  })
+
   it('always connects for sync commands and rejects no-sync', () => {
     expect(
       shouldConnectToSyncServer({

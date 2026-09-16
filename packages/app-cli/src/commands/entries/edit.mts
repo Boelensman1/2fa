@@ -34,6 +34,7 @@ class EntriesEditCommand extends BaseCommand {
   })
 
   requireFavaLib = true
+  override mutatesVault = true
 
   id = Option.String({ required: true })
 

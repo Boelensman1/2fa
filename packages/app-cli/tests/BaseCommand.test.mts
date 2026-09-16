@@ -24,10 +24,11 @@ class TestCommand extends BaseCommand {
 
 const now = 1_750_000_000_000
 
-const makeFavaLib = (connected: boolean) => ({
+const makeFavaLib = (connected: boolean, flushed = true) => ({
   sync: {
     webSocketConnected: connected,
     closeServerConnection: vi.fn(),
+    flushCommandSendQueue: vi.fn().mockResolvedValue(flushed),
   },
 })
 
@@ -113,6 +114,78 @@ describe('BaseCommand sync lifecycle', () => {
     await makeCommand().execute()
 
     expect(mocks.saveSettings).not.toHaveBeenCalled()
+  })
+
+  it('waits for queued commands to reach the server before closing', async () => {
+    const settings = {
+      vaultLocation: '/tmp/vault.json',
+      syncIntervalMinutes: 5,
+    }
+    mocks.init.mockResolvedValue({
+      lockedRepresentationString: 'vault-data',
+      settings,
+    })
+    const favaLib = makeFavaLib(true)
+    mocks.loadVault.mockResolvedValue(favaLib)
+
+    await makeCommand().execute()
+
+    expect(favaLib.sync.flushCommandSendQueue).toHaveBeenCalled()
+    expect(
+      favaLib.sync.flushCommandSendQueue.mock.invocationCallOrder[0],
+    ).toBeLessThan(
+      favaLib.sync.closeServerConnection.mock.invocationCallOrder[0],
+    )
+  })
+
+  it('does not wait when the command never connected', async () => {
+    const settings = {
+      vaultLocation: '/tmp/vault.json',
+      lastSyncedAt: now - 1,
+      syncIntervalMinutes: 5,
+    }
+    mocks.init.mockResolvedValue({
+      lockedRepresentationString: 'vault-data',
+      settings,
+    })
+    const favaLib = makeFavaLib(false)
+    mocks.loadVault.mockResolvedValue(favaLib)
+
+    await makeCommand().execute()
+
+    expect(favaLib.sync.flushCommandSendQueue).not.toHaveBeenCalled()
+  })
+
+  it('reports an unflushed queue as an error in machine output', async () => {
+    const settings = {
+      vaultLocation: '/tmp/vault.json',
+      syncIntervalMinutes: 5,
+    }
+    mocks.init.mockResolvedValue({
+      lockedRepresentationString: 'vault-data',
+      settings,
+    })
+    mocks.loadVault.mockResolvedValue(makeFavaLib(false, false))
+
+    const command = makeCommand()
+    command.format = 'json'
+    const stdout: string[] = []
+    // minimal stub of clipanion's context, only stdout is used here
+    command.context = {
+      stdout: {
+        write: (chunk: string) => {
+          stdout.push(chunk)
+          return true
+        },
+      },
+    } as unknown as typeof command.context
+
+    await command.execute()
+
+    expect(command.errors).toHaveLength(1)
+    expect(command.errors[0].message).toMatch(/will be sent the next time/)
+    const printed = JSON.parse(stdout.join('')) as { errors: unknown[] }
+    expect(printed.errors).toHaveLength(1)
   })
 
   it('rejects no-sync for commands that require a connection', async () => {

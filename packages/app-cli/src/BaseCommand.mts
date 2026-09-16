@@ -39,6 +39,10 @@ abstract class BaseCommand extends Command {
 
   requiresSyncConnection = false
 
+  // when true the command writes to the vault, so it connects regardless of
+  // the sync interval and waits for the server to take its commands
+  mutatesVault = false
+
   lockedRepresentationString!: LockedRepresentationString
   settings!: Settings
   favaLib!: FavaLib
@@ -79,6 +83,7 @@ abstract class BaseCommand extends Command {
       forceSync: this.forceSync,
       noSync: this.noSync,
       requiresSyncConnection: this.requiresSyncConnection,
+      mutatesVault: this.mutatesVault,
       lastSyncedAt: settings.lastSyncedAt,
       syncIntervalMs: settings.syncIntervalMinutes * 60 * 1000,
     })
@@ -101,6 +106,7 @@ abstract class BaseCommand extends Command {
     }
 
     const result = await this.exec()
+    await this.flushSync(connectToSyncServer)
     if (!syncRecorded) {
       await this.recordSuccessfulSync(connectToSyncServer)
     }
@@ -125,6 +131,32 @@ abstract class BaseCommand extends Command {
     }
 
     return 0
+  }
+
+  /**
+   * Waits for the server to take whatever exec() queued, before the process
+   * exits and takes the queue with it.
+   * @param connectToSyncServer - Whether this command connected to the server.
+   */
+  private async flushSync(connectToSyncServer: boolean) {
+    const sync = this.favaLib?.sync
+    if (!sync || !connectToSyncServer) {
+      // nothing was meant to leave this process, so nothing to wait for
+      return
+    }
+
+    if (await sync.flushCommandSendQueue()) {
+      return
+    }
+
+    const message =
+      'Changes could not be sent to the sync server. They are stored in the ' +
+      'vault and will be sent the next time this device connects.'
+    if (this.machineOutput) {
+      this.errors.push({ timestamp: Date.now(), message })
+    } else {
+      this.context.stderr.write(`${message}\n`)
+    }
   }
 
   private async recordSuccessfulSync(connectToSyncServer: boolean) {

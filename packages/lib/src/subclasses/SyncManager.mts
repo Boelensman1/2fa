@@ -917,9 +917,10 @@ class SyncManager {
    * process that exits right after a mutation - the cli - would take the
    * queue down with it.
    *
-   * This never re-sends: the server keys stored commands on
-   * (commandId, deviceId), so a second send of the same command fails and
-   * takes the acknowledgement of its whole batch with it.
+   * This only waits, it never re-sends: the queue is sent again in full on
+   * the next connection anyway. A command the server already has is no
+   * longer a problem for it - it recognises the repeat by
+   * (commandId, deviceId) and acknowledges it again.
    * @param timeoutMs - How long to wait for the acknowledgement.
    * @returns True when the queue is empty, false when it could not be
    * flushed. In the false case the queue has been persisted, so the commands

@@ -1,5 +1,5 @@
 import { WebSocketServer, WebSocket } from 'ws'
-import { Model } from 'objection'
+import { Model, UniqueViolationError } from 'objection'
 import createKnex from 'knex'
 
 import UnExecutedSyncCommand from './models/UnExecutedSyncCommand.mjs'
@@ -8,7 +8,10 @@ import knexConfig from '../knexfile.js'
 import ConnectedDevicesManager from './ConnectedDevicesManager.mjs'
 
 import type ClientMessage from 'favalib/protocol/ClientMessage'
-import type { AddSyncDeviceInitialiseDataClientMessage } from 'favalib/protocol/ClientMessage'
+import type {
+  AddSyncDeviceInitialiseDataClientMessage,
+  SyncCommandFromClient,
+} from 'favalib/protocol/ClientMessage'
 import type OutgoingMessage from 'favalib/protocol/ServerMessage'
 
 const knex = createKnex(knexConfig)
@@ -32,6 +35,59 @@ const send = <T extends OutgoingMessage['type']>(
   ws.send(JSON.stringify({ type, data }))
 }
 
+/**
+ * Stores a sync command, tolerating one the server already has.
+ *
+ * A client re-sends everything still in its send queue every time it connects,
+ * so a command whose acknowledgement never made it back arrives a second time
+ * and collides with the row that is already waiting for the device. That is a
+ * repeat of a command the server accepted, not a failure, so it counts as
+ * stored: the client may drop it from its queue.
+ *
+ * Nothing here is allowed to reject. The caller runs these unawaited, and an
+ * unhandled rejection takes the whole server down - and with it every other
+ * device's connection - over one client's duplicate.
+ * @param command - The command as the client sent it.
+ * @returns True when the command is stored, by this call or an earlier one.
+ */
+const storeSyncCommand = async (command: SyncCommandFromClient) => {
+  const { commandId, deviceId, encryptedCommand, encryptedSymmetricKey } =
+    command
+
+  try {
+    await UnExecutedSyncCommand.query().insert({
+      commandId,
+      deviceId,
+      encryptedCommand,
+      encryptedSymmetricKey,
+    })
+    return true
+  } catch (error) {
+    if (!(error instanceof UniqueViolationError)) {
+      console.error('Could not store sync command', error)
+      return false
+    }
+
+    // Make sure the collision really is this command, and not some other row
+    // that happens to occupy one of the unique columns.
+    try {
+      const existing = await UnExecutedSyncCommand.query().findOne({
+        commandId,
+        deviceId,
+      })
+      if (!existing) {
+        console.error('Could not store sync command', error)
+        return false
+      }
+    } catch (lookupError) {
+      console.error('Could not look up existing sync command', lookupError)
+      return false
+    }
+
+    return true
+  }
+}
+
 const handleMessage = (ws: WebSocket, message: ClientMessage) => {
   switch (message.type) {
     case 'connect': {
@@ -46,6 +102,9 @@ const handleMessage = (ws: WebSocket, message: ClientMessage) => {
         })
         .then((unExecutedSyncCommands) => {
           send(ws, 'syncCommands', unExecutedSyncCommands)
+        })
+        .catch((error: unknown) => {
+          console.error('Could not load unexecuted sync commands', error)
         })
       break
     }
@@ -163,39 +222,40 @@ const handleMessage = (ws: WebSocket, message: ClientMessage) => {
     }
     case 'syncCommands': {
       void Promise.all(
-        message.data.commands.map(async (data) => {
+        message.data.commands.map(async (command) => {
           const {
             commandId,
             deviceId,
             encryptedCommand,
             encryptedSymmetricKey,
-          } = data
+          } = command
 
-          const unExecutedSyncCommand =
-            await UnExecutedSyncCommand.query().insert({
-              commandId,
-              deviceId,
-              encryptedCommand,
-              encryptedSymmetricKey,
-            })
+          const stored = await storeSyncCommand(command)
+          if (!stored) {
+            // leave it out of the acknowledgement, so the client keeps it in
+            // its send queue and tries again later
+            return undefined
+          }
 
           // find matching connection
           const deviceWs = connectedDevices.getWs(deviceId)
           if (!deviceWs) {
+            // device is offline, it picks the command up when it connects
             console.error('Connection not found')
-            return
+            return commandId
           }
           send(deviceWs, 'syncCommands', [
             {
-              commandId: unExecutedSyncCommand.commandId,
+              commandId,
               encryptedSymmetricKey,
               encryptedCommand,
             },
           ])
+          return commandId
         }),
-      ).then(() => {
+      ).then((commandIds) => {
         send(ws, 'syncCommandsReceived', {
-          commandIds: message.data.commands.map((command) => command.commandId),
+          commandIds: commandIds.filter((commandId) => commandId !== undefined),
         })
       })
       return
@@ -209,6 +269,9 @@ const handleMessage = (ws: WebSocket, message: ClientMessage) => {
         .whereIn('commandId', commandIds)
         .del()
         .execute()
+        .catch((error: unknown) => {
+          console.error('Could not remove executed sync commands', error)
+        })
       return
     }
     case 'startResilver': {

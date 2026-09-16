@@ -3,6 +3,7 @@ import { browser } from 'wxt/browser'
 import { container, Logger, IOC_TYPES } from '../'
 import { setVerboseLogging } from '../classes/Logger'
 import type {
+  AutofillOfferRegistry,
   ConfigContainer,
   Db,
   OtpFieldRegistry,
@@ -26,11 +27,15 @@ const runInit = async () => {
     await config.init()
     setVerboseLogging(config.get('debug'))
 
-    // Reports are keyed by tab and frame, so a closed tab's would otherwise
-    // sit in the registry until the service worker is killed.
+    // Reports and offers are keyed by tab, so a closed tab's would otherwise
+    // sit in the registries until the service worker is killed.
     const registry = container.get<OtpFieldRegistry>(IOC_TYPES.OtpFieldRegistry)
+    const offers = container.get<AutofillOfferRegistry>(
+      IOC_TYPES.AutofillOfferRegistry,
+    )
     browser.tabs.onRemoved.addListener((tabId) => {
       registry.forgetTab(tabId)
+      offers.forgetTab(tabId)
     })
 
     // mv3 evicts this worker after ~30s idle, so a popup opening a minute

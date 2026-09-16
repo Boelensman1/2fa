@@ -7,7 +7,14 @@ import Logger from '../classes/Logger'
 import { bgActions, CT_ACTION_KEYS } from '../state'
 import { detectOtpFields, observeOtpFields } from '../detect'
 import type { DetectedOtpFieldHandle, OtpFieldObserver } from '../detect'
-import type { CtActionObject, DetectOtpFieldsResponse } from '../types'
+import { createAutofillMenu } from './autofillMenu'
+import type { AutofillMenu } from './autofillMenu'
+import { fillOtpField } from './fillField'
+import type {
+  CtActionObject,
+  DetectOtpFieldsResponse,
+  FillOtpFieldResponse,
+} from '../types'
 import type { ContentScriptContext } from 'wxt/utils/content-script-context'
 
 declare global {
@@ -22,16 +29,71 @@ const log = new Logger('content-script')
  * The live elements behind the fields reported to the background.
  *
  * The background is sent `DetectedOtpField`s, which are serialisable and hold
- * no dom references; this is the other half. A later step's "fill field otp-1"
- * resolves through here, which is why the report carries an id at all.
+ * no dom references; this is the other half. "Fill field otp-1" resolves
+ * through here, which is why the report carries an id at all.
  */
 const handles = new Map<string, DetectedOtpFieldHandle>()
 
+/**
+ * Every element back to the field it belongs to.
+ *
+ * A segmented row is six inputs and one field, and focus lands on whichever
+ * box the user clicked, so the menu needs to get from any of them to the whole.
+ */
+let owners = new WeakMap<Element, DetectedOtpFieldHandle>()
+
 let observer: OtpFieldObserver | null = null
+let menu: AutofillMenu | null = null
+
+/** The overrides this frame has already scanned with, so it rescans only on a change. */
+let usedInputSelectors: string[] = []
 
 const remember = (found: readonly DetectedOtpFieldHandle[]): void => {
   handles.clear()
-  for (const handle of found) handles.set(handle.field.id, handle)
+  owners = new WeakMap()
+  for (const handle of found) {
+    handles.set(handle.field.id, handle)
+    for (const element of handle.elements) owners.set(element, handle)
+  }
+}
+
+const sameSelectors = (a: readonly string[], b: readonly string[]): boolean =>
+  a.length === b.length && a.every((value, index) => value === b[index])
+
+/**
+ * Sends a report and applies whatever the background sends back.
+ *
+ * The response carries the `inputSelector` overrides for this frame's url.
+ * They can only come from there -- knowing them means reading the vault -- and
+ * until this existed the detector was never given any, so `EntryMeta.inputSelector`
+ * did nothing however carefully a user set it.
+ * @param result - The scan to report.
+ */
+const report = async (result: {
+  handles: readonly DetectedOtpFieldHandle[]
+  overrideMissed: boolean
+}): Promise<void> => {
+  let selectors: string[] = []
+  try {
+    const response = await bgActions.reportOtpFields(
+      result.handles.map((handle) => handle.field),
+      result.overrideMissed,
+      usedInputSelectors,
+    )
+    selectors = response?.inputSelectors ?? []
+  } catch {
+    // The background may be mid-restart, or the extension may have been
+    // reloaded out from under this frame. Either way there is nothing to do
+    // but leave the overrides as they are and report again on the next change.
+    return
+  }
+
+  if (sameSelectors(selectors, usedInputSelectors)) return
+
+  usedInputSelectors = selectors
+  // Rescanning re-enters this function through onChange, but with the
+  // selectors now equal it stops there rather than looping.
+  observer?.setInputSelectors(selectors)
 }
 
 /**
@@ -50,6 +112,10 @@ export const load = (ctx: ContentScriptContext): void => {
   }
   window.favaExtLoaded = true
 
+  menu = createAutofillMenu({
+    handleForElement: (element) => owners.get(element),
+  })
+
   observer = observeOtpFields({
     // ctx.setTimeout returns an ordinary timer id and is cleared with the
     // ordinary clearTimeout; what it adds is that the timer dies with the
@@ -63,24 +129,31 @@ export const load = (ctx: ContentScriptContext): void => {
     },
     onChange: (result) => {
       remember(result.handles)
-      void bgActions.reportOtpFields(
-        result.handles.map((handle) => handle.field),
-        result.overrideMissed,
-      )
+      // The handles the open menu is anchored to have just been replaced, so
+      // it is pointing at elements that may no longer be on the page.
+      // Guarded rather than unconditional: close() also cancels an offer
+      // request still in flight, and a busy page must not be able to stop the
+      // menu ever opening.
+      if (menu?.isOpen() === true) menu.close()
+      void report(result)
     },
   })
 
   // Cheap, and it is where a user revealing a field actually ends up -- which
   // covers the one case the attributeFilter deliberately gives up on, a field
   // shown purely by a class change.
-  ctx.addEventListener(window, 'focusin', () => {
+  ctx.addEventListener(window, 'focusin', (event) => {
     observer?.rescan()
+    menu?.focused(event.target)
   })
 
   ctx.onInvalidated(() => {
+    menu?.stop()
+    menu = null
     observer?.stop()
     observer = null
     handles.clear()
+    owners = new WeakMap()
   })
 
   log.info('Watching for otp fields.')
@@ -90,12 +163,55 @@ export const load = (ctx: ContentScriptContext): void => {
 export const handleFor = (id: string): DetectedOtpFieldHandle | undefined =>
   handles.get(id)
 
-export const handleMessage = (
+/**
+ * Handles a message from the background.
+ *
+ * Async, and therefore answered through `sendResponse` by the caller rather
+ * than by returning a promise: `@wxt-dev/browser` is a shim, not a polyfill,
+ * so on Chrome this is `chrome.runtime.onMessage`, which ignores a returned
+ * promise and closes the channel.
+ * @param msg - The action.
+ * @returns The action's response, if it has one.
+ */
+export const handleMessage = async (
   msg: CtActionObject,
-): DetectOtpFieldsResponse | undefined => {
-  if (msg.type !== CT_ACTION_KEYS.DETECT_OTP_FIELDS) return undefined
+): Promise<DetectOtpFieldsResponse | FillOtpFieldResponse | undefined> => {
+  switch (msg.type) {
+    case CT_ACTION_KEYS.DETECT_OTP_FIELDS: {
+      const result = detectOtpFields({
+        inputSelectors: msg.data.inputSelectors,
+      })
+      remember(result.handles)
+      return result.handles.map((handle) => handle.field)
+    }
 
-  const result = detectOtpFields({ inputSelectors: msg.data.inputSelectors })
-  remember(result.handles)
-  return result.handles.map((handle) => handle.field)
+    case CT_ACTION_KEYS.FILL_OTP_FIELD: {
+      // Never log this payload: it carries a live code, and a content script's
+      // logger forwards every entry to the background whatever its level.
+      const handle = handles.get(msg.data.fieldId)
+      if (!handle) return { filled: false, reason: 'gone' }
+
+      const result = await fillOtpField(handle.elements, msg.data.otp)
+
+      // Taking the menu down removes the iframe focus is currently inside, so
+      // focus would otherwise fall back to the body and the user would have to
+      // click the page again before they could submit. The last box of a
+      // segmented row is where typing the code by hand would have left them.
+      menu?.close()
+      if (result.filled) {
+        handle.elements[handle.elements.length - 1]?.focus()
+      }
+      return result
+    }
+
+    case CT_ACTION_KEYS.CLOSE_AUTOFILL_MENU: {
+      menu?.close()
+      return undefined
+    }
+
+    case CT_ACTION_KEYS.EVENT_NOTIFICATION: {
+      if (msg.data.event === 'vaultStateChanged') menu?.close()
+      return undefined
+    }
+  }
 }

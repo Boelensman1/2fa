@@ -1,12 +1,16 @@
 import type { Browser } from 'wxt/browser'
 
 import { BG_ACTION_KEYS, Logger, bindDependencies, IOC_TYPES } from '../'
+import { ctActions } from '../state'
 import { notifyConnectors } from '../util'
 
 import type {
+  AutofillOfferRegistry,
+  AutofillOfferSummary,
   BgActionObject,
   Config,
   ConfigContainer,
+  FillResult,
   OtpFieldRegistry,
   OtpFieldReport,
   StateManager,
@@ -39,10 +43,17 @@ const actionsThatMustNotWaitForInit: BgActionObject['type'][] = [
 ]
 
 async function unboundHandleMessage(
-  [stateManager, configContainer, otpFieldRegistry, vaultContainer]: [
+  [
+    stateManager,
+    configContainer,
+    otpFieldRegistry,
+    autofillOfferRegistry,
+    vaultContainer,
+  ]: [
     StateManager,
     ConfigContainer,
     OtpFieldRegistry,
+    AutofillOfferRegistry,
     VaultContainer,
   ],
   action: BgActionObject,
@@ -55,6 +66,18 @@ async function unboundHandleMessage(
   }
 
   const state = stateManager.getState()
+
+  /**
+   * Takes every open menu down.
+   *
+   * Both halves matter: dropping the offers makes an in-flight fill fail
+   * closed, and the broadcast is what makes the menu already on screen
+   * disappear rather than sitting there listing entries from a locked vault.
+   */
+  const forgetOffers = async () => {
+    autofillOfferRegistry.forgetAll()
+    await notifyConnectors('vaultStateChanged')
+  }
 
   switch (action.type) {
     case BG_ACTION_KEYS.SEND_DEBUG_COMMAND: {
@@ -112,10 +135,103 @@ async function unboundHandleMessage(
         `Detected ${String(action.data.fields.length)} otp field(s)`,
         action.data.fields,
       )
-      // Until there is a vault to fill from, the debug view is the only way to
-      // see what the heuristic did. The popup already renders debugString.
+      // The debug view is still the only way to see what the heuristic did on
+      // a real page; the fixture suite cannot answer that. The popup renders it.
       state.debugString = describeReport(otpFieldRegistry.forTab(tab.id))
+
+      // The frame scanned without knowing the user's overrides, because only
+      // the vault knows them. Handing them back lets it rescan with them --
+      // which is what finally makes `EntryMeta.inputSelector` work end to end.
+      return { inputSelectors: vaultContainer.inputSelectorsForUrl(url ?? '') }
+    }
+
+    case BG_ACTION_KEYS.OPEN_AUTOFILL_MENU: {
+      const { tab, frameId, documentId, url } = sender
+      const nothing: AutofillOfferSummary = {
+        state: 'off',
+        token: null,
+        count: 0,
+      }
+      if (tab?.id === undefined || url === undefined) return nothing
+      if (!configContainer.get('inlineMenu')) return nothing
+
+      const status = await vaultContainer.getStatus()
+      // Nothing to unlock and nothing to offer, so say nothing at all rather
+      // than advertising the extension to the page.
+      if (status === 'no-vault' || status === 'pairing') return nothing
+      if (status === 'locked') {
+        return { state: 'locked', token: null, count: 0 }
+      }
+
+      // The *frame's* url, from the browser. A field on an embedded
+      // third-party origin must not be offered the outer page's entries.
+      const entries = vaultContainer.entriesForUrl(url)
+      if (entries.length === 0) {
+        return { state: 'no-match', token: null, count: 0 }
+      }
+
+      const offer = autofillOfferRegistry.open({
+        tabId: tab.id,
+        frameId: frameId ?? 0,
+        documentId,
+        url,
+        fieldId: action.data.fieldId,
+        entries,
+      })
+
+      return { state: 'ready', token: offer.token, count: entries.length }
+    }
+
+    case BG_ACTION_KEYS.CLOSE_AUTOFILL_MENU: {
+      const tabId = sender.tab?.id
+      if (tabId !== undefined) {
+        autofillOfferRegistry.close(action.data.token, tabId)
+      }
       return null
+    }
+
+    case BG_ACTION_KEYS.GET_MENU_ENTRIES: {
+      const tabId = sender.tab?.id
+      if (tabId === undefined) return null
+      // `resolve` checks the tab as well as the token. The menu page is
+      // web-accessible, so a hostile site can frame it and ask -- an
+      // unguessable token is the only thing that separates our menu from
+      // theirs, since theirs is an extension page too.
+      const offer = autofillOfferRegistry.resolve(action.data.token, tabId)
+      return offer?.entries ?? null
+    }
+
+    case BG_ACTION_KEYS.FILL_OTP_FIELD: {
+      const tabId = sender.tab?.id
+      if (tabId === undefined) return failed('no-offer')
+
+      const offer = autofillOfferRegistry.resolve(action.data.token, tabId)
+      if (!offer) return failed('no-offer')
+      if (!vaultContainer.isUnlocked) return failed('locked')
+      // The menu may only fill what this offer listed. It is one postMessage
+      // away from the page, so its request is a suggestion, not an authority.
+      if (!offer.entries.some((entry) => entry.id === action.data.entryId)) {
+        return failed('unknown-entry')
+      }
+
+      let otp: string
+      try {
+        otp = await vaultContainer.generateToken(action.data.entryId)
+      } catch (error) {
+        log.warn(`Could not generate a code: ${describeVaultError(error)}`)
+        return failed('gone')
+      }
+
+      // One frame, never a broadcast: the payload is a live code, and every
+      // frame on the page has its own isolated world to read it in.
+      const result = await ctActions.fillOtpField(
+        tabId,
+        { frameId: offer.frameId, documentId: offer.documentId },
+        { fieldId: offer.fieldId, otp },
+      )
+
+      autofillOfferRegistry.close(offer.token, tabId)
+      return result ?? failed('no-frame')
     }
 
     case BG_ACTION_KEYS.GET_VAULT_STATE: {
@@ -143,11 +259,13 @@ async function unboundHandleMessage(
 
     case BG_ACTION_KEYS.LOCK_VAULT: {
       await vaultContainer.lock()
+      await forgetOffers()
       return null
     }
 
     case BG_ACTION_KEYS.RESET_VAULT: {
       await vaultContainer.reset()
+      await forgetOffers()
       return null
     }
 
@@ -164,6 +282,11 @@ async function unboundHandleMessage(
     }
   }
 }
+
+const failed = (reason: FillResult['reason']): FillResult => ({
+  filled: false,
+  reason,
+})
 
 /**
  * Runs a vault action and reports its outcome instead of throwing.
@@ -244,6 +367,7 @@ const handleMessage = bindDependencies(unboundHandleMessage, [
   IOC_TYPES.StateManager,
   IOC_TYPES.ConfigContainer,
   IOC_TYPES.OtpFieldRegistry,
+  IOC_TYPES.AutofillOfferRegistry,
   IOC_TYPES.VaultContainer,
 ])
 

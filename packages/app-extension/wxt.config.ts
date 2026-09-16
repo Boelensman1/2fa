@@ -29,6 +29,32 @@ export default defineConfig({
         "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'",
     },
     //host_permissions: ['https://www.google.com/*'],
+    // The inline autofill menu. The content script iframes this page into a
+    // closed shadow root on the page, which needs the page to be allowed to
+    // load it -- that is what web_accessible_resources grants.
+    //
+    // Must be the mv3 object form. wxt flattens it to mv2's plain string array
+    // for the Firefox build, and throws outright if you write the string form
+    // yourself. The path is the *output* name: `entrypoints/menu/index.html`
+    // is emitted as `menu.html` at the extension root.
+    //
+    // Deliberately *without* `use_dynamic_url`. It would rotate the url per
+    // session on Chrome, where the extension id is fixed and public, so a page
+    // could otherwise probe `chrome-extension://<id>/menu.html` to detect that
+    // Fava is installed. Two reasons not to: its interaction with
+    // `runtime.getURL` and with `runtime.sendMessage` from the resulting
+    // document has to be confirmed in a real Chrome before it can be relied
+    // on, and getting it wrong means the menu never loads at all. And there is
+    // nothing yet to protect -- `window.favaExtLoaded`, set by the content
+    // script on every page, already announces the extension to anyone looking.
+    // Worth revisiting together with that global, not before.
+    //
+    // Framing the page is not itself an attack: the menu renders nothing
+    // without an offer token, which is unguessable and scoped to one tab. See
+    // `AutofillOfferRegistry`.
+    web_accessible_resources: [
+      { resources: ['menu.html'], matches: ['<all_urls>'] },
+    ],
     // Firefox only. Chrome treats browser_specific_settings as an
     // unrecognised key, and a manifest that ships keys the target browser does
     // not know is noise a web store reviewer has to ask about.

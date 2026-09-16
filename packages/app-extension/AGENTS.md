@@ -10,10 +10,11 @@ The popup and the ioc/config/logging plumbing are still the upstream starter;
 
 `favalib` (`../lib`) is linked as `workspace:*` and is where all vault, crypto,
 TOTP and sync logic belongs; prefer extending it over reimplementing that logic
-here. Detection was step 1 and reading the vault is step 2, which is done:
-there is an unlock flow, device pairing and an entry list. Filling a detected
-field from the vault is step 3 and is **not** built — `ctActions.detectOtpFields`
-/ `DETECT_OTP_FIELDS` is still the unused seam for it.
+here. Detection was step 1, reading the vault was step 2 — an unlock flow,
+device pairing and an entry list — and filling a detected field from the vault
+is step 3, which is now done: focusing a detected field offers the entries that
+match that frame, and picking one types the code in. See
+[The inline autofill menu](#the-inline-autofill-menu).
 
 ## The vault
 
@@ -108,6 +109,16 @@ The seam is `signals.ts`. Above it (`collectSignals`, `walkDom`,
 heuristic gets wrong; it suppresses the heuristic rather than merging with it.
 Set it from the cli with `favacli entries edit <id> --input-selector`.
 
+Only the background can know those selectors, because knowing them means
+reading the vault — so a frame's first scan is always heuristic-only, and the
+overrides arrive a round trip later on the `REPORT_OTP_FIELDS` **response**.
+The content script compares them against what it last scanned with and calls
+`observer.setInputSelectors()` only on a change, which is what stops the
+rescan-report-rescan loop. Before that existed, `observeOtpFields` was called
+with no selectors at all and the whole override path was dead code: the branch
+at `detectOtpFields.ts` never ran, `matchedInputSelectors` was always empty and
+`overrideMissed` was always false, however carefully a user set the field.
+
 `tests/fixtures/otpFields/*.html` is the real specification — twenty snippets,
 half of which must detect nothing. It is in `.prettierignore`, because
 whitespace between inputs is exactly what a dom walk can be sensitive to. The
@@ -123,6 +134,128 @@ favalib  ←  favacli
    │└─── favabrowserext   (this package)
    └──── favaserver
 ```
+
+## The inline autofill menu
+
+Focusing a detected otp field asks the background whether there is anything to
+offer; if there is, the content script mounts an **iframe of an extension page,
+inside a closed shadow root**, under the field. Picking a row makes the
+background generate a code and deliver it to that one frame.
+
+It never fills on its own, and that is not a default — there is no other mode.
+The user's click is the authorisation, and it has to happen somewhere the page
+cannot draw over, read or click for them.
+
+Bitwarden's inline menu has the same shape, and the mechanics were derived from
+MDN and the fixtures rather than from their source on purpose: **their autofill
+code is GPL-3.0 and must not be read while working on this** (see the note on
+`patterns.ts`). Publishing to a web store is distribution.
+
+### What each context is allowed to know
+
+```
+  page realm (isolated world)              extension realm
+┌──────────────────────────────┐
+│ content.js                   │
+│  detect                      │
+│  closed shadow root          │        ┌──────────────────────────┐
+│   ┌─ iframe ──────────────┐  │        │ background               │
+│   │ entrypoints/menu      │──┼───────▶│  AutofillOfferRegistry   │
+│   │  React + Tailwind     │◀─┼────────│  VaultContainer          │
+│   └───────────────────────┘  │        └────────────┬─────────────┘
+│  fillOtpField(id, otp) ◀─────┼─────────────────────┘
+└──────────────────────────────┘   tabs.sendMessage(tabId, {frameId})
+```
+
+The content script shares a realm with the page, so it is told only a state, a
+token and a row count — never an entry name. The names go from the background
+to the **menu iframe**, which is a different origin the page cannot read into.
+The code goes from the background to the **field's frame**, addressed by frame
+id, and is never broadcast: a broadcast would hand a live otp to every frame on
+the page, ad frames included.
+
+The iframe is **not** sandboxed, deliberately. A sandboxed frame has no
+extension api, which is why Bitwarden needs a postMessage relay and origin
+checks for everything; ours keeps `runtime.sendMessage` and fetches its own
+entries, so there is no relay to get wrong. The one thing that does travel by
+`postMessage` is the menu's measured height and an Escape-pressed-inside
+signal — see `MenuControlMessage` for why neither can be done any other way,
+and why nothing secret may join them.
+
+### Matching is against the frame's url, never the tab's
+
+Every frame already reports under its own browser-supplied `sender.url`, and
+that is what entries are matched on. A login form on an attacker-controlled
+origin embedded in a trusted page therefore gets nothing — the shape of the
+credential-theft report Bitwarden shipped in 2023 (`clients#5608`). The cost is
+that a legitimate hosted second-factor widget on its own origin needs its own
+matcher on the entry, which is the right trade and the right default.
+
+### The offer token
+
+The menu iframe's `sender.frameId` is its _own_ frame, and field ids are unique
+only within a frame, so a fill request cannot name the field it means. The
+background therefore mints an offer token bound to
+`{ tabId, frameId, documentId, url, fieldId, entries }`, hands it to the content
+script, which passes it in the iframe's url hash.
+
+It is `crypto.randomUUID()` and not a counter, and that is the part worth not
+"simplifying". The menu page is in `web_accessible_resources`, so **any site can
+frame `chrome-extension://<id>/menu.html` itself** — and a frame loaded from
+that url _is_ an extension context, with `runtime.sendMessage` and with
+`sender.tab.id` set to the tab it sits in. A hostile frame on the page the user
+is on shares a tab with a legitimate open offer. Gating on "is the sender an
+extension page" does nothing, because it is one. Only an unguessable handle
+separates our menu from theirs.
+
+One offer per tab, no expiry sweeper: a tab has one focused field, so a second
+offer means the first is stale, which also settles the out-of-order race when
+focus moves between frames. `tabs.onRemoved`, an explicit close and a vault
+lock cover the rest. Fills additionally check that the named entry was one the
+offer listed — the menu is one postMessage from the page, so its request is a
+suggestion, not an authority.
+
+### Known limit: the menu is clipped to its frame
+
+The menu renders in the frame that owns the field, and `position: fixed`
+resolves against _that frame's_ viewport. A hosted widget in a 320x60 iframe
+clips the menu to 320x60; z-index is irrelevant, because it is a
+containing-block and clip problem and no css escapes a nested browsing context.
+`positionMenu` degrades to an `over` placement — overlapping the field rather
+than being placed where it cannot be seen. Escaping properly means relaying the
+anchor rect up the frame chain and recomputing on every ancestor's scroll, and
+breaks the moment an ancestor has no content script; that is its own feature.
+
+Two smaller placement rules live in `menuHost.ts`: a field in a `showModal()`
+dialog or an open popover is in the **top layer**, where nothing outside it
+paints at any z-index, so the host is attached inside it; and everything else
+attaches to `documentElement` rather than `body`, because a transformed
+ancestor breaks `position: fixed` and a transformed `<body>` is what every
+page-transition library leaves behind.
+
+### Filling
+
+`lib/content/fillField.ts`, and it has the suite because it is the part most
+likely to quietly do nothing on a real widget.
+
+- Values are written through **the prototype's** `value` setter. React installs
+  its own accessor on the node to track changes; assigning through it leaves
+  the tracker believing nothing happened and the next render restores the old
+  value. On Firefox this is a no-op that costs nothing — Xray vision already
+  hides page-defined own properties from a content script — so it is written
+  once and commented, not branched.
+- `input` is an `InputEvent` with `inputType` and `data`. Hand-rolled widgets
+  branch on the first and read the second; a plain `Event` gives them
+  `undefined` and throws the moment anything reads `.length` off it.
+- Segmented rows **await a frame between boxes** and re-read `disabled` each
+  pass, because the common widget enables box _i+1_ only in response to box
+  _i_ — which is exactly why `isSegmentCandidate` does not filter disabled
+  inputs. And after the first box it stops if the row filled itself: several
+  widgets treat a multi-character value as a paste and distribute it, and
+  carrying on writes every character twice.
+- Nothing here submits — no `Enter`, no `requestSubmit()`, no click on a submit
+  button. That is as far as the promise goes: plenty of sites submit themselves
+  the instant the value is complete, and that is their call.
 
 ## Development commands
 
@@ -201,8 +334,23 @@ and are referenced as `"typescript": "catalog:"`.
   to take `Logger` and `bgActions` from it, and that alone put **2.7MB** of
   vault code into `content-scripts/content.js`, injected into every frame of
   every page. It imports `../classes/Logger` and `../state` directly for that
-  reason; the content script is back to ~19kB. Check the build's size table
-  after touching those imports.
+  reason; the content script is ~25kB. Check the build's size table after
+  touching those imports. The same rule is why the autofill menu is an iframe
+  rather than a react root in the shadow root — React and the components stay
+  in `menu.html`'s chunk, which loads only when someone focuses an otp field.
+  If `content.js` ever jumps by ~190kB, something under `lib/content/` has
+  reached into `lib/ui/`.
+- **`onMessage` handlers must never return a promise.** `@wxt-dev/browser` is a
+  shim, not a polyfill: on chromium `browser` _is_ `chrome`, and chrome's
+  `runtime.onMessage` ignores a returned promise and closes the channel. The
+  content script's listener is async now that it fills fields, so
+  `entrypoints/content.ts` uses the `sendResponse` + `return true` shape that
+  `lib/background/handleMessage.ts` has always used. Getting this wrong makes
+  every fill look like it silently failed.
+- **`web_accessible_resources` must be written in the mv3 object form.** wxt
+  flattens it to mv2's plain string array for the Firefox build and throws
+  outright if you write the string form yourself. `use_dynamic_url` is
+  deliberately _not_ set — see the comment in `wxt.config.ts`.
 - `content_security_policy.extension_pages` carries `'wasm-unsafe-eval'`
   because favalib derives the vault key with argon2id from `hash-wasm`, which
   instantiates a WebAssembly module. It runs on **every** unlock, so without

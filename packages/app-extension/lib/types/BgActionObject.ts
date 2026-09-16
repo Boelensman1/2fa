@@ -48,7 +48,76 @@ export interface ReportOtpFieldsActionObject {
     /** An entry supplied an `inputSelector` and it matched nothing. */
     overrideMissed: boolean
     scannedAt: number
+    /** The selectors this frame has already scanned with, so the background
+     * can tell a first report from one that already used them. */
+    usedInputSelectors: string[]
   }
+}
+
+/**
+ * What a frame gets back for reporting.
+ *
+ * Only the `inputSelector` overrides that apply to its url, because the
+ * background is the only side that can know them -- knowing them means reading
+ * the vault. Until this existed the content script called `observeOtpFields`
+ * with no selectors at all, so `detectOtpFields` never took the override
+ * branch and `EntryMeta.inputSelector` did nothing end to end.
+ *
+ * Safe to answer on every report, unlike an autofill offer: this crosses to
+ * the content script's isolated world and produces nothing the page can see.
+ */
+export interface ReportOtpFieldsResponse {
+  inputSelectors: string[]
+}
+
+/**
+ * A content script saying a detected field has been focused.
+ *
+ * Asked on focus rather than prefetched with the field report, for two
+ * reasons. Every frame reports at load whether or not it found anything, so
+ * answering there would put a vault query on the hot path of every page load
+ * in the browser. And the answer sizes an overlay the page can measure, so
+ * producing one unprompted would tell every site carrying an otp field how
+ * many entries the user has for it.
+ *
+ * Carries no url and no frame: `handleMessage` reads those off the
+ * `MessageSender`, which the browser fills in and a content script cannot
+ * forge.
+ */
+export interface OpenAutofillMenuActionObject {
+  type: typeof BG_ACTION_KEYS.OPEN_AUTOFILL_MENU
+  data: { fieldId: string }
+}
+
+export interface CloseAutofillMenuActionObject {
+  type: typeof BG_ACTION_KEYS.CLOSE_AUTOFILL_MENU
+  data: { token: string }
+}
+
+/**
+ * The menu iframe asking what to render. **Sent by the menu, not the page.**
+ *
+ * This is the message that keeps entry names out of the page's realm: the
+ * answer goes to an extension document the page cannot read into. The token is
+ * what makes that safe -- the menu url is web-accessible, so any site can
+ * frame it and ask, and only an unguessable handle distinguishes our menu from
+ * theirs. See `AutofillOfferRegistry`.
+ */
+export interface GetMenuEntriesActionObject {
+  type: typeof BG_ACTION_KEYS.GET_MENU_ENTRIES
+  data: { token: string }
+}
+
+/**
+ * The menu iframe asking for a code to be typed into the field.
+ *
+ * The entry is named, the field is not: which field, in which frame, is read
+ * from the offer the token resolves to. The menu could not be trusted with it
+ * anyway -- it is one `postMessage` away from the page.
+ */
+export interface FillOtpFieldActionObject {
+  type: typeof BG_ACTION_KEYS.FILL_OTP_FIELD
+  data: { token: string; entryId: EntryId }
 }
 
 export interface GetVaultStateActionObject {
@@ -119,6 +188,10 @@ export type BgActionObject =
   | SendLogActionObject
   | SendDebugCommandActionObject
   | ReportOtpFieldsActionObject
+  | OpenAutofillMenuActionObject
+  | CloseAutofillMenuActionObject
+  | GetMenuEntriesActionObject
+  | FillOtpFieldActionObject
   | GetVaultStateActionObject
   | CreateVaultActionObject
   | PairDeviceActionObject

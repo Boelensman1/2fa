@@ -11,11 +11,19 @@ import type {
   LogEntryPayload,
   SendDebugCommandActionObject,
   ReportOtpFieldsActionObject,
+  ReportOtpFieldsResponse,
 } from '../types'
 import type { DetectedOtpField } from '../detect'
 import type { EntryId, Password } from 'favalib'
 import type {
+  AutofillOfferSummary,
+  CloseAutofillMenuActionObject,
   CreateVaultActionObject,
+  FillOtpFieldActionObject,
+  FillResult,
+  GetMenuEntriesActionObject,
+  ListedEntry,
+  OpenAutofillMenuActionObject,
   GetPasswordStrengthActionObject,
   PasswordStrength,
   EntryList,
@@ -40,6 +48,11 @@ export const BG_ACTION_KEYS = {
   SEND_DEBUG_COMMAND: 'SEND_DEBUG_COMMAND' as const,
 
   REPORT_OTP_FIELDS: 'REPORT_OTP_FIELDS' as const,
+
+  OPEN_AUTOFILL_MENU: 'OPEN_AUTOFILL_MENU' as const,
+  CLOSE_AUTOFILL_MENU: 'CLOSE_AUTOFILL_MENU' as const,
+  GET_MENU_ENTRIES: 'GET_MENU_ENTRIES' as const,
+  FILL_OTP_FIELD: 'FILL_OTP_FIELD' as const,
 
   GET_VAULT_STATE: 'GET_VAULT_STATE' as const,
   CREATE_VAULT: 'CREATE_VAULT' as const,
@@ -91,10 +104,45 @@ const actions = {
   // sendAlways: the first report arrives at document_idle, while the service
   // worker may still be booting. Gated behind the loaded check it would be
   // dropped and never retried.
-  reportOtpFields: (fields: DetectedOtpField[], overrideMissed: boolean) =>
-    sendAlways<ReportOtpFieldsActionObject>({
+  reportOtpFields: (
+    fields: DetectedOtpField[],
+    overrideMissed: boolean,
+    usedInputSelectors: string[],
+  ) =>
+    sendAlways<ReportOtpFieldsActionObject, ReportOtpFieldsResponse>({
       type: BG_ACTION_KEYS.REPORT_OTP_FIELDS,
-      data: { fields, overrideMissed, scannedAt: Date.now() },
+      data: {
+        fields,
+        overrideMissed,
+        scannedAt: Date.now(),
+        usedInputSelectors,
+      },
+    }),
+
+  // Sent by the content script. The url and frame come from the MessageSender,
+  // so there is nothing here for a page to influence.
+  openAutofillMenu: (fieldId: string): Promise<AutofillOfferSummary | null> =>
+    send<OpenAutofillMenuActionObject, AutofillOfferSummary>({
+      type: BG_ACTION_KEYS.OPEN_AUTOFILL_MENU,
+      data: { fieldId },
+    }),
+  closeAutofillMenu: (token: string) =>
+    send<CloseAutofillMenuActionObject>({
+      type: BG_ACTION_KEYS.CLOSE_AUTOFILL_MENU,
+      data: { token },
+    }),
+  // The two below are sent by the *menu iframe*, not by the content script.
+  // That is the point of them: the reply reaches an extension document the
+  // page cannot read into, so entry names never enter the page's realm.
+  getMenuEntries: (token: string): Promise<ListedEntry[] | null> =>
+    send<GetMenuEntriesActionObject, ListedEntry[]>({
+      type: BG_ACTION_KEYS.GET_MENU_ENTRIES,
+      data: { token },
+    }),
+  fillOtpField: (token: string, entryId: EntryId): Promise<FillResult | null> =>
+    send<FillOtpFieldActionObject, FillResult>({
+      type: BG_ACTION_KEYS.FILL_OTP_FIELD,
+      data: { token, entryId },
     }),
 
   getVaultState: (): Promise<VaultSummary | null> =>

@@ -1,6 +1,7 @@
 import { browser } from 'wxt/browser'
 import { defineContentScript } from 'wxt/utils/define-content-script'
 import { load, handleMessage } from '@/lib/content'
+import type { CtActionObject } from '@/lib/types'
 
 export default defineContentScript({
   matches: ['<all_urls>'],
@@ -13,6 +14,21 @@ export default defineContentScript({
   main(ctx) {
     load(ctx)
 
-    browser.runtime.onMessage.addListener(handleMessage)
+    // sendResponse + `return true` rather than returning the promise.
+    // `@wxt-dev/browser` resolves to `chrome` on chromium, and chrome's
+    // onMessage ignores a returned promise and closes the channel -- which
+    // would make every fill look like it silently failed.
+    browser.runtime.onMessage.addListener(
+      (
+        message: CtActionObject,
+        _sender,
+        sendResponse: (response?: unknown) => void,
+      ) => {
+        void handleMessage(message)
+          .catch(() => undefined)
+          .then(sendResponse)
+        return true
+      },
+    )
   },
 })

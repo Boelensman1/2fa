@@ -312,6 +312,48 @@ class VaultContainer {
     }
   }
 
+  /** Whether there are keys in memory to generate a token with. */
+  get isUnlocked(): boolean {
+    return this.favaLib !== null && !this.pairing
+  }
+
+  /**
+   * The entries that claim one frame's url, most specific first.
+   *
+   * Separate from {@link VaultContainer.listEntries} because the autofill menu
+   * asks a different question: not "what is in the vault, filtered" but "what
+   * belongs to exactly this url". The url is the *frame's*, browser-supplied,
+   * never the tab's -- a field on an embedded third-party origin must not be
+   * offered the surrounding page's entries.
+   * @param url - The frame's url.
+   * @returns The matching entries, safe to send to the menu.
+   */
+  entriesForUrl(url: string): ListedEntry[] {
+    if (!this.isUnlocked) return []
+    return (this.favaLib?.vault.findEntryMetasForUrl(url) ?? []).map(
+      toListedEntry,
+    )
+  }
+
+  /**
+   * The `inputSelector` overrides that apply to one frame's url.
+   *
+   * These are the user's escape hatch for pages the heuristic gets wrong, and
+   * until now nothing ever supplied them: the content script called
+   * `observeOtpFields` with no selectors, so `detectOtpFields` never took the
+   * override branch at all. The background is the only side that can know
+   * them, because knowing them means reading the vault.
+   * @param url - The frame's url.
+   * @returns The selectors, deduplicated. Empty when there is nothing to override.
+   */
+  inputSelectorsForUrl(url: string): string[] {
+    if (!this.isUnlocked) return []
+    const selectors = (this.favaLib?.vault.findEntryMetasForUrl(url) ?? [])
+      .map((entry) => entry.inputSelector)
+      .filter((selector): selector is string => Boolean(selector))
+    return [...new Set(selectors)]
+  }
+
   /** Feedback for the create screen. favalib rejects a score below 3 outright. */
   async getPasswordStrength(password: Password): Promise<PasswordStrength> {
     const { score, feedback } =

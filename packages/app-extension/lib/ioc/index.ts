@@ -9,6 +9,7 @@ import {
   StateManager,
   Db,
   OtpFieldRegistry,
+  AutofillOfferRegistry,
   VaultContainer,
 } from './entities'
 
@@ -31,6 +32,7 @@ export const initContainer = (
   // Independent bindings
   bindIfNotSkipped(IOC_TYPES.DB, Db)
   bindIfNotSkipped(IOC_TYPES.OtpFieldRegistry, OtpFieldRegistry)
+  bindIfNotSkipped(IOC_TYPES.AutofillOfferRegistry, AutofillOfferRegistry)
 
   // Depends on Db
   bindIfNotSkipped(IOC_TYPES.StateManager, StateManager)

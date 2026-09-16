@@ -1,27 +1,7 @@
 import type { FC } from 'react'
 
 import type { ListedEntry } from '@/lib/types'
-
-/** A stable colour per issuer, so rows stay recognisable between openings. */
-const AVATAR_COLOURS = [
-  'bg-blue-500',
-  'bg-emerald-500',
-  'bg-violet-500',
-  'bg-amber-500',
-  'bg-rose-500',
-  'bg-cyan-600',
-]
-
-const avatarColour = (seed: string) => {
-  let hash = 0
-  for (let index = 0; index < seed.length; index++) {
-    hash = (hash * 31 + seed.charCodeAt(index)) >>> 0
-  }
-  return AVATAR_COLOURS[hash % AVATAR_COLOURS.length]
-}
-
-const initial = (entry: ListedEntry) =>
-  (entry.issuer || entry.name || '?').trim().charAt(0).toUpperCase() || '?'
+import { avatarColour, initial } from './avatar'
 
 interface EntryRowProps {
   entry: ListedEntry

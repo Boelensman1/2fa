@@ -63,6 +63,29 @@ const SettingsTab: FC<SettingsTabProps> = ({ summary, onLock, onReset }) => {
 
         <section className="space-y-2">
           <h2 className="text-[11px] font-semibold tracking-wide text-gray-500 uppercase">
+            Autofill
+          </h2>
+          <label className="flex items-start gap-1.5 text-gray-600">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={config.inlineMenu}
+              onChange={(event) =>
+                void saveConfig({ inlineMenu: event.target.checked })
+              }
+            />
+            <span>
+              Offer to fill codes on the page
+              <span className="block text-gray-400">
+                Clicking a verification code field shows the entries that match
+                that site. Fava never fills anything until you pick one.
+              </span>
+            </span>
+          </label>
+        </section>
+
+        <section className="space-y-2">
+          <h2 className="text-[11px] font-semibold tracking-wide text-gray-500 uppercase">
             Diagnostics
           </h2>
           <label className="flex items-center gap-1.5 text-gray-600">

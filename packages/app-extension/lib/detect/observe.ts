@@ -58,17 +58,29 @@ export interface ObserveOptions extends DetectionOptions {
 export interface OtpFieldObserver {
   /** Scan now, bypassing the debounce. */
   rescan: () => void
+  /**
+   * Replaces the entry `inputSelector` overrides and rescans with them.
+   *
+   * The frame cannot know these when it starts: they live in the vault, which
+   * only the background can read. So the first scan is always heuristic-only
+   * and the overrides arrive a round trip later.
+   * @param next - The selectors now in force.
+   */
+  setInputSelectors: (next: readonly string[]) => void
   stop: () => void
 }
 
 /** A cheap identity for a result set, to suppress unchanged reports. */
 const fingerprint = (result: DetectionResult): string =>
-  result.handles
+  // overrideMissed is part of the identity: a saved selector that has gone
+  // stale is a finding in itself, and on a frame with no fields it is the only
+  // thing that changes when the overrides do.
+  `${result.overrideMissed ? '!' : ''}${result.handles
     .map(
       ({ field }) =>
         `${field.id}:${field.confidence}:${String(field.score)}:${String(field.segmentCount)}`,
     )
-    .join('|')
+    .join('|')}`
 
 /**
  * Whether a batch of mutations could possibly have changed the answer.
@@ -113,6 +125,8 @@ export const observeOtpFields = (options: ObserveOptions): OtpFieldObserver => {
   const maxShadowRoots =
     detectionOptions.maxShadowRoots ?? DEFAULT_MAX_SHADOW_ROOTS
 
+  let inputSelectors: readonly string[] = detectionOptions.inputSelectors ?? []
+
   const observed = new WeakSet<Document | ShadowRoot>()
   const observers: MutationObserver[] = []
   let pending: number | null = null
@@ -147,7 +161,7 @@ export const observeOtpFields = (options: ObserveOptions): OtpFieldObserver => {
 
     for (const scope of collectRoots(root, maxShadowRoots)) observeRoot(scope)
 
-    const result = detectOtpFields(detectionOptions)
+    const result = detectOtpFields({ ...detectionOptions, inputSelectors })
     const current = fingerprint(result)
     // A six-digit form that re-renders on every keystroke would otherwise spam
     // the background with identical reports.
@@ -173,6 +187,10 @@ export const observeOtpFields = (options: ObserveOptions): OtpFieldObserver => {
 
   return {
     rescan: scan,
+    setInputSelectors: (next) => {
+      inputSelectors = next
+      scan()
+    },
     stop: () => {
       stopped = true
       if (pending !== null) timers.clearTimeout(pending)

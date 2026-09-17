@@ -29,8 +29,10 @@ const Popup = () => {
     case 'pairing':
       return (
         <PairScreen
+          syncServerUrl={summary.syncServerUrl}
           syncConnected={summary.syncConnected}
           onPaired={() => void refresh()}
+          onSyncServerChanged={() => void refresh()}
         />
       )
     case 'locked':

@@ -142,6 +142,22 @@ export interface PairDeviceActionObject {
   }
 }
 
+export interface SetSyncServerActionObject {
+  type: typeof BG_ACTION_KEYS.SET_SYNC_SERVER
+  data: {
+    /** Absolute; an extension page has no origin for a path to resolve against. */
+    serverUrl: string
+    /**
+     * The server's shared secret, which the user supplies.
+     *
+     * It crosses to the background because that is where the vault is, and it
+     * is stored in the vault there. It is never sent to the server -- favalib
+     * proves it over a nonce the server draws -- and it must not be logged.
+     */
+    serverSecret: string
+  }
+}
+
 export interface UnlockVaultActionObject {
   type: typeof BG_ACTION_KEYS.UNLOCK_VAULT
   data: { password: Password }
@@ -256,6 +272,7 @@ export type BgActionObject =
   | GetVaultStateActionObject
   | CreateVaultActionObject
   | PairDeviceActionObject
+  | SetSyncServerActionObject
   | UnlockVaultActionObject
   | LockVaultActionObject
   | ResetVaultActionObject

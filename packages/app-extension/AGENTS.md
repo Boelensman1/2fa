@@ -54,6 +54,29 @@ Three things are worth knowing before changing any of it.
   or name. The "for this site" group is `findEntryMetasForUrl(activeTabUrl)`,
   already sorted most-specific-first, and is hidden while a query is active.
 
+### The sync server is set up after the vault, not baked into it
+
+`getFavaLibVaultCreationUtils` no longer takes a server url, because a url
+alone configures nothing: the server refuses any socket that cannot prove its
+shared secret, and only the user has that. So `SyncServerForm` asks for both
+together and `VaultContainer.setSyncServer` hands them to
+`favaLib.setSyncServerUrl`, which resolves only once the server has **accepted**
+— a wrong secret is a rejection there rather than a connection that silently
+never works. `../app-browser` does the same, from its own `SyncServerForm`.
+
+Two consequences worth knowing. Pairing is a conversation over that server, so
+`PairScreen` renders the form instead of the connection-code box until one is
+configured. And `VaultSummary` carries `syncServerUrl` **and** `syncConnected`
+because they are different questions: no server configured is answered by the
+form, a configured server that is down is answered by waiting.
+
+`parameters.ts` holds prefills for both, and `syncServerSecretPrefill` has
+`DEV` in its env var name for the reason app-browser's does — anything
+reachable from `import.meta.env` is compiled into the bundle, and an extension
+bundle is as readable as a served page, since unpacking a `.crx` is a `unzip`.
+Unlike app-browser's, the url prefill is absolute: a path there resolves
+against the origin serving the app, and an extension page has no such origin.
+
 ### Staying unlocked across a worker restart
 
 mv3 evicts the worker after ~30s idle, which would otherwise mean retyping the

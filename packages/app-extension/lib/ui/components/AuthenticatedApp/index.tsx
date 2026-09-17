@@ -259,7 +259,12 @@ const AuthenticatedApp: FC<AuthenticatedAppProps> = ({
             onLock={lock}
           />
         ) : (
-          <SettingsTab summary={summary} onLock={lock} onReset={reset} />
+          <SettingsTab
+            summary={summary}
+            onLock={lock}
+            onReset={reset}
+            onVaultChanged={onVaultChanged}
+          />
         )}
       </div>
 

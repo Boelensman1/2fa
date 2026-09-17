@@ -1,19 +1,29 @@
 import type { FC } from 'react'
+import { useState } from 'react'
 
 import { version } from '@/lib/parameters'
 import type { VaultSummary } from '@/lib/types'
 import { useConfig, useGlobalState } from '../../hooks'
 import Button from '../Button'
+import SyncServerForm from '../SyncServerForm'
 
 interface SettingsTabProps {
   summary: VaultSummary
   onLock: () => void
   onReset: () => void
+  /** Re-reads the vault summary after the sync server changes. */
+  onVaultChanged: () => void
 }
 
-const SettingsTab: FC<SettingsTabProps> = ({ summary, onLock, onReset }) => {
+const SettingsTab: FC<SettingsTabProps> = ({
+  summary,
+  onLock,
+  onReset,
+  onVaultChanged,
+}) => {
   const { config, saveConfig } = useConfig()
   const globalState = useGlobalState()
+  const [editingServer, setEditingServer] = useState(false)
 
   const confirmReset = () => {
     if (
@@ -47,18 +57,57 @@ const SettingsTab: FC<SettingsTabProps> = ({ summary, onLock, onReset }) => {
             {summary.deviceId ?? '—'}
           </p>
           <p className="text-gray-500">
-            Sync{' '}
-            <span
-              className={
-                summary.syncConnected ? 'text-green-600' : 'text-yellow-700'
-              }
-            >
-              {summary.syncConnected ? 'connected' : 'not connected'}
-            </span>
-            {' · '}
             {summary.entryCount}{' '}
             {summary.entryCount === 1 ? 'entry' : 'entries'}
           </p>
+        </section>
+
+        <section className="space-y-2">
+          <h2 className="text-[11px] font-semibold tracking-wide text-gray-500 uppercase">
+            Sync server
+          </h2>
+          {/*
+            Two separate facts. No server configured is answered by the form
+            below; a configured server that is down is answered by waiting, and
+            saying "not connected" without that distinction sends the user to
+            retype a secret that was never the problem.
+          */}
+          {summary.syncServerUrl === null ? (
+            <p className="text-gray-500">
+              Not set up. This vault stays on this device until you point it at
+              a server.
+            </p>
+          ) : (
+            <>
+              <p className="font-mono break-all text-gray-400">
+                {summary.syncServerUrl}
+              </p>
+              <p
+                className={
+                  summary.syncConnected ? 'text-green-600' : 'text-yellow-700'
+                }
+              >
+                {summary.syncConnected ? 'Connected' : 'Not connected'}
+              </p>
+            </>
+          )}
+
+          {editingServer ? (
+            <SyncServerForm
+              currentUrl={summary.syncServerUrl}
+              onConfigured={() => {
+                setEditingServer(false)
+                onVaultChanged()
+              }}
+              onCancel={() => setEditingServer(false)}
+            />
+          ) : (
+            <Button variant="secondary" onClick={() => setEditingServer(true)}>
+              {summary.syncServerUrl === null
+                ? 'Set up sync'
+                : 'Change sync server'}
+            </Button>
+          )}
         </section>
 
         <section className="space-y-2">

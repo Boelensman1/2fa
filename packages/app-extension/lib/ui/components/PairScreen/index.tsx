@@ -3,11 +3,16 @@ import { useState } from 'react'
 
 import { bgActions } from '@/lib/state'
 import Button from '../Button'
+import SyncServerForm from '../SyncServerForm'
 import TextField from '../TextField'
 
 interface PairScreenProps {
   onPaired: () => void
+  /** Null when no sync server has been configured yet. */
+  syncServerUrl: string | null
   syncConnected: boolean
+  /** Re-reads the vault summary, so a configured server changes what is rendered. */
+  onSyncServerChanged: () => void
 }
 
 /**
@@ -19,7 +24,12 @@ interface PairScreenProps {
  * this extension's vault lives. The text code carries exactly the same
  * payload, so nothing is lost but a convenience.
  */
-const PairScreen: FC<PairScreenProps> = ({ onPaired, syncConnected }) => {
+const PairScreen: FC<PairScreenProps> = ({
+  onPaired,
+  syncServerUrl,
+  syncConnected,
+  onSyncServerChanged,
+}) => {
   const [connectionString, setConnectionString] = useState('')
   const [deviceName, setDeviceName] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -50,6 +60,33 @@ const PairScreen: FC<PairScreenProps> = ({ onPaired, syncConnected }) => {
     if (!confirm('Cancel pairing and forget the vault created on this device?'))
       return
     void bgActions.resetVault().then(onPaired)
+  }
+
+  // Pairing is a conversation over the sync server, so there is nothing to do
+  // here until one is configured. It is a step rather than a build-time
+  // setting because the server will not accept a socket without its shared
+  // secret, and only the user has that -- see `SyncServerForm`.
+  if (syncServerUrl === null) {
+    return (
+      <div className="flex flex-col gap-4 p-5">
+        <header>
+          <h1 className="text-lg font-semibold text-gray-900">
+            Set up your sync server
+          </h1>
+          <p className="mt-1 text-xs text-gray-500">
+            Joining an existing vault happens over your sync server, so it has
+            to be set up first. Use the same address and secret as the device
+            you are joining from.
+          </p>
+        </header>
+
+        <SyncServerForm
+          currentUrl={null}
+          onConfigured={onSyncServerChanged}
+          onCancel={onCancel}
+        />
+      </div>
+    )
   }
 
   return (

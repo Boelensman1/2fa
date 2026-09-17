@@ -8,6 +8,7 @@ import {
   type FavaLib,
   type LockedRepresentationString,
   type Password,
+  type ServerSecret,
 } from 'favalib'
 
 import IOC_TYPES from '../types'
@@ -130,6 +131,7 @@ class VaultContainer {
         status,
         deviceId: null,
         deviceFriendlyName: null,
+        syncServerUrl: null,
         syncConnected: false,
         entryCount: 0,
       }
@@ -139,6 +141,10 @@ class VaultContainer {
       status,
       deviceId: favaLib.meta.deviceId,
       deviceFriendlyName: favaLib.meta.deviceFriendlyName,
+      // Null means no server has been configured, which is a different thing
+      // from one that is configured and currently down -- the first is
+      // answered by the sync-server form and the second by waiting.
+      syncServerUrl: favaLib.sync?.serverUrl ?? null,
       syncConnected: favaLib.sync?.webSocketConnected ?? false,
       // While pairing there is a vault object, but it is the empty one this
       // device just made -- reporting its size would show "0 items" next to a
@@ -210,7 +216,9 @@ class VaultContainer {
   async pair(connectionString: string, deviceFriendlyName?: string) {
     const favaLib = this.favaLib
     if (!favaLib) throw new Error('Create a vault before pairing')
-    if (!favaLib.sync) throw new Error('No sync server configured')
+    if (!favaLib.sync) {
+      throw new Error('Set up the sync server before pairing')
+    }
 
     const name = deviceFriendlyName?.trim()
     if (name) {
@@ -227,6 +235,30 @@ class VaultContainer {
     await favaLib.sync.respondToAddDeviceFlow(connectionString, 'text')
     await finished
     this.pairing = false
+  }
+
+  /**
+   * Points this vault at a sync server, and proves the shared secret to it.
+   *
+   * A url alone configures nothing since favalib gained the connection gate:
+   * the server refuses a socket that cannot prove its secret, and only the
+   * user can supply that -- which is why this is a step after the vault
+   * exists rather than a build-time parameter. `../app-browser`'s
+   * `SyncServerForm` is the same call from the other client.
+   *
+   * `setSyncServerUrl` resolves only once the server has accepted, so a wrong
+   * secret surfaces as a rejection here instead of a connection that quietly
+   * never works. Both values are stored in the vault, and the secret itself
+   * never travels -- what crosses the wire is an HMAC over a nonce the server
+   * draws.
+   * @param serverUrl - An absolute ws:// or wss:// url.
+   * @param serverSecret - The secret the server is configured with.
+   */
+  async setSyncServer(serverUrl: string, serverSecret: string) {
+    const favaLib = this.favaLib
+    if (!favaLib) throw new Error('Create a vault before setting a sync server')
+
+    await favaLib.setSyncServerUrl(serverUrl, serverSecret as ServerSecret)
   }
 
   async unlock(password: Password) {

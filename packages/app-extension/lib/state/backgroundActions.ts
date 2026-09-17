@@ -38,6 +38,7 @@ import type {
   LockVaultActionObject,
   PairDeviceActionObject,
   ResetVaultActionObject,
+  SetSyncServerActionObject,
   UnlockVaultActionObject,
   VaultActionResult,
   VaultSummary,
@@ -62,6 +63,7 @@ export const BG_ACTION_KEYS = {
   GET_VAULT_STATE: 'GET_VAULT_STATE' as const,
   CREATE_VAULT: 'CREATE_VAULT' as const,
   PAIR_DEVICE: 'PAIR_DEVICE' as const,
+  SET_SYNC_SERVER: 'SET_SYNC_SERVER' as const,
   UNLOCK_VAULT: 'UNLOCK_VAULT' as const,
   LOCK_VAULT: 'LOCK_VAULT' as const,
   RESET_VAULT: 'RESET_VAULT' as const,
@@ -177,6 +179,17 @@ const actions = {
     send<PairDeviceActionObject, VaultActionResult>({
       type: BG_ACTION_KEYS.PAIR_DEVICE,
       data: { connectionString, deviceFriendlyName },
+    }),
+  // Resolves only once the server has accepted the secret, so `ok: false`
+  // here means the server said no rather than that the attempt is still in
+  // flight.
+  setSyncServer: (
+    serverUrl: string,
+    serverSecret: string,
+  ): Promise<VaultActionResult | null> =>
+    send<SetSyncServerActionObject, VaultActionResult>({
+      type: BG_ACTION_KEYS.SET_SYNC_SERVER,
+      data: { serverUrl, serverSecret },
     }),
   unlockVault: (password: Password): Promise<VaultActionResult | null> =>
     send<UnlockVaultActionObject, VaultActionResult>({

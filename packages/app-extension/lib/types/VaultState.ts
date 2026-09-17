@@ -15,6 +15,13 @@ export interface VaultSummary {
   status: VaultStatus
   deviceId: string | null
   deviceFriendlyName: string | null
+  /**
+   * The sync server this vault is configured with, or null when none is.
+   *
+   * Distinct from `syncConnected`: a vault with no server configured needs the
+   * sync-server form, one with a server that is down needs patience.
+   */
+  syncServerUrl: string | null
   /** Whether the sync websocket is up. `false` whenever there is no vault. */
   syncConnected: boolean
   entryCount: number

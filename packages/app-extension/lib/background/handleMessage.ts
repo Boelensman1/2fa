@@ -317,6 +317,15 @@ async function unboundHandleMessage(
       )
     }
 
+    case BG_ACTION_KEYS.SET_SYNC_SERVER: {
+      return attempt(() =>
+        vaultContainer.setSyncServer(
+          action.data.serverUrl,
+          action.data.serverSecret,
+        ),
+      )
+    }
+
     case BG_ACTION_KEYS.UNLOCK_VAULT: {
       return attempt(() => vaultContainer.unlock(action.data.password))
     }

@@ -104,7 +104,9 @@ const makeFavaLib = (overrides: Partial<FakeFavaLib> = {}) => {
       ;(fake.listeners[event] ??= []).push(cb)
     },
     setDeviceFriendlyName: vi.fn(() => Promise.resolve()),
+    setSyncServerUrl: vi.fn(() => Promise.resolve()),
     sync: {
+      serverUrl: 'ws://localhost:8080',
       webSocketConnected: true,
       closeServerConnection: () => {
         fake.closed = true
@@ -344,6 +346,49 @@ describe('restoreSession', () => {
   })
 })
 
+describe('setSyncServer', () => {
+  const unlockedContainer = async (overrides: Partial<FakeFavaLib> = {}) => {
+    const { favaLib } = makeFavaLib(overrides)
+    loadFavaLibFromLockedRepesentation.mockResolvedValue(favaLib)
+    const db = new Db()
+    await db.upsertMetaKV('lockedRepresentation', 'blob')
+    const container = new VaultContainer(db)
+    await container.unlock('pw' as never)
+    return { container, favaLib }
+  }
+
+  it('passes the url and the secret through to favalib', async () => {
+    const { container, favaLib } = await unlockedContainer()
+
+    await container.setSyncServer('wss://sync.example.com', 'the-secret')
+
+    expect(favaLib.setSyncServerUrl).toHaveBeenCalledWith(
+      'wss://sync.example.com',
+      'the-secret',
+    )
+  })
+
+  it('refuses before there is a vault to configure', async () => {
+    await expect(
+      build().setSyncServer('wss://sync.example.com', 'the-secret'),
+    ).rejects.toThrow(/create a vault/i)
+  })
+
+  it('surfaces a server that rejected the secret', async () => {
+    // setSyncServerUrl resolves only once the server has accepted, so its
+    // rejection is the only signal a wrong secret gives -- swallowing it would
+    // leave the user with a connection that silently never works.
+    const { container, favaLib } = await unlockedContainer()
+    favaLib.setSyncServerUrl.mockRejectedValue(
+      new Error('Could not connect to the sync server'),
+    )
+
+    await expect(
+      container.setSyncServer('wss://sync.example.com', 'wrong'),
+    ).rejects.toThrow(/could not connect/i)
+  })
+})
+
 describe('listEntries', () => {
   const unlocked = async (overrides: Partial<FakeFavaLib>) => {
     const { favaLib } = makeFavaLib(overrides)
@@ -442,6 +487,7 @@ describe('summary', () => {
     expect(summary).toEqual({
       status: 'no-vault',
       deviceId: null,
+      syncServerUrl: null,
       deviceFriendlyName: null,
       syncConnected: false,
       entryCount: 0,

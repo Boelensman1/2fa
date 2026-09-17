@@ -1,9 +1,10 @@
 # 04 — No key rotation; `changePassword` revokes nothing
 
 **Verdict:** weak — but far cheaper to fix than it looks
-**Status:** open
+**Status:** done — except the extension half, which has no code in this tree
 **Priority:** P1
-**Touches:** `src/subclasses/PersistentStorageManager.mts:194-221`
+**Touches:** `changePassword` in `src/subclasses/PersistentStorageManager.mts`,
+`src/utils/creationUtils.mts` (`generateSalt`), `src/FavaLibEvent.mts`
 
 ## Finding
 
@@ -57,13 +58,96 @@ authenticated public-key distribution path first, which is
 
 ## How to verify
 
-Create a vault in the CLI, run `changePassword`, and confirm the `salt` in
-`vault.json` changed and that the old `encryptedVaultState` ciphertext no longer
-decrypts under the retained key. The existing test at
-`tests/subclasses/PersistentStorageManager.test.mts:188` asserts old-fails /
-new-works but reuses the same `salt` variable throughout, so it cannot observe
-this — it needs extending.
+Note there is no CLI flow to drive this with: **no app package calls
+`changePassword` at all** — the CLI's `vault restore-password` re-stores the
+keytar entry and explicitly does not re-encrypt anything. Verification is the
+library suite.
+
+The properties to hold are: the stored `salt` changed; the symmetric key
+recovered from the new envelope differs from the retained one; the retained key
+no longer decrypts what the vault writes after the change; and the blob still
+opens end-to-end under the new password and not the old.
+
+The pre-existing test asserted old-fails / new-works but reused one module-scope
+`salt` variable throughout, so it could not observe any of this.
 
 ## Resolution
 
-_Not started._
+Done 2026-09-17. `changePassword` now draws a fresh salt and a fresh symmetric
+key, wraps the retained private key and the **new** symmetric key under the new
+password, and installs both in one swap before saving. The vault state needs no
+explicit re-encryption step: `getEncryptedVaultState` always encrypts from
+plaintext, so the save that follows the swap writes the state under the new key
+with an AAD built from the new salt.
+
+What landed, beyond the ~20 lines the finding budgeted:
+
+- **`generateSalt` in `creationUtils.mts`**, shared with the v1 re-wrap that
+  previously drew its salt inline. A salt length is a security parameter and
+  this review has already been bitten by a constant differing between two paths
+  (the 12-vs-16-byte nonce in [09](09-iv-handling.md)). Deliberately **not** a
+  `CryptoLib` method: that interface is public API and consumers may supply
+  their own provider, so a new required member is a break for them, and there is
+  nothing platform-specific above the `getRandomBytes` it already has.
+- **`replaceKeyMaterial` takes one `VaultKeyMaterial` object** of six values
+  rather than five positional arguments, and is now `private`. The object form
+  is what makes the rollback below symmetric — `snapshotKeyMaterial()` returns
+  the same type, so restoring is not a six-argument call reassembled by hand,
+  which is the "half a swap" its own doc warns about. It was reachable from
+  outside through the public `favaLib.storage.persistentStorage` getter, where
+  an inconsistent swap produces a permanently unopenable vault; an outside
+  caller cannot construct a consistent generation anyway, since a matching
+  `encryptedSymmetricKey` needs the private key.
+- **The old generation is put back if the save fails.** Without it the caller
+  sees a rejection — and tells the user their password is unchanged — while the
+  instance holds the new material, so the next autosave (an entry added, a sync
+  command, a device removed) commits a password nobody was given. That is a
+  lockout with no recovery path, because the old `encryptedPrivateKey` is gone.
+  With the rollback, the worst case is a save function that wrote and _then_
+  threw, which degrades to a silent revert: the old password still opens the
+  vault. Revert is recoverable, lockout is not. The CLI's save function writes
+  `.tmp` and renames, so a throw there really does mean the old blob is intact.
+- **`getLockedRepresentation` snapshots the key material once**, and builds the
+  AAD, the ciphertext, the MAC fields and the MAC from that one generation. It
+  previously read `this.*` at four points separated by `await`s, so a swap
+  landing mid-save could write an envelope whose stored salt was new and whose
+  AAD salt was old — which **MACs correctly** and then fails to decrypt, with
+  the previous blob already overwritten. Pre-existing (`salt`, `macKey` and
+  `encryptedPrivateKey` were already mutated by `changePassword`), but rotation
+  multiplies the torn combinations, so it is closed here.
+- **`FavaLibEvent.PasswordChanged`**, dispatched after the save and carrying an
+  empty payload. This is the hook for the extension half below; a listener that
+  cached credentials only needs to know they are stale, and a payload here would
+  be a payload carrying secrets.
+
+Deliberately **not** rotated: the RSA keypair. Peers hold this device's public
+key and the only distribution channel is an unauthenticated
+`AddSyncDeviceCommand` — [12](12-sync-findings-index.md) territory. Full
+revocation still means re-pairing devices.
+
+Nothing on the sync path moved, as the finding predicted. Verified rather than
+assumed: the handshake passes an explicit JPAKE-derived key, `resilver` mints a
+fresh key per destination device, and commands use a per-command ephemeral, so
+`key ?? this.symmetricKey` never falls through to the at-rest DEK. Exports are
+OpenPGP under a user-supplied passphrase, untouched.
+
+### Still open — the extension half
+
+"Also clear the extension's session password on a password change" is **not
+actionable in this tree**: `VaultContainer.ts` lives only on the
+`app-extension` branch, and no app package calls `changePassword` at all. The
+`PasswordChanged` event is the bridge — that branch hooks it and clears
+`browser.storage.session`'s `vaultPassword`, the same call its `lock()` already
+makes. Tracked next to [07](07-session-key-api.md), which owns the storage
+choice itself.
+
+### Two follow-ups this work surfaced
+
+- **The v1 migration re-wraps the legacy symmetric key rather than rotating
+  it** (`creationUtils.mts`), so a migrated vault's v2 ciphertext sits under the
+  key that previously protected unauthenticated CBC data. The same two lines
+  would fix it; it is outside this finding's literal scope and wants
+  `fixtures.test.mts` checked first.
+- **`save()` silently no-ops without a save function**, so `changePassword` on
+  a read-only instance rotates in memory and evaporates with no error. Harmless
+  before rotation, since the in-memory and on-disk keys at least still agreed.

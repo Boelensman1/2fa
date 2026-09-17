@@ -141,7 +141,8 @@ records the wider window the v1 read path opens while it exists.
 
 What did close, all of it real: the IV-XOR rewrite of plaintext block 0 and
 every bit-flip or splice; envelope forgery (above); the password-change splice
-(below); the padding oracle on the sync path; and silent corruption.
+(below — and since closed a second time by [04](04-key-rotation.md)); the
+padding oracle on the sync path; and silent corruption.
 
 ### What landed
 
@@ -163,12 +164,17 @@ every bit-flip or splice; envelope forgery (above); the password-change splice
   authenticates the sender yet ([13](13-sync-command-authentication.md)). The
   four domain prefixes mean an at-rest blob can no longer be replayed as a sync
   payload or the reverse.
-- **The at-rest AAD binds `SHA-256(encryptedPrivateKey)`.** `changePassword`
-  reuses both the salt and the symmetric key, re-wrapping only the private key,
-  so without this the DEK and the AAD are identical before and after a password
-  change and a vault state lifted from a pre-change backup authenticates under
-  the **new** password — silently restoring a deleted entry or a revoked sync
-  device while the rotation appeared to work. The digest is hashed over the
+- **The at-rest AAD binds `SHA-256(encryptedPrivateKey)`.** When this shipped,
+  `changePassword` reused both the salt and the symmetric key, re-wrapping only
+  the private key, so without this the DEK and the AAD were identical before and
+  after a password change and a vault state lifted from a pre-change backup
+  authenticated under the **new** password — silently restoring a deleted entry
+  or a revoked sync device while the rotation appeared to work.
+  [04](04-key-rotation.md) has since rotated the salt and the DEK as well, so
+  that splice is closed twice over; the field stays, both because dropping it
+  would be a format break and because it is what keeps a blob assembled from two
+  key generations from authenticating at the ciphertext layer. The digest is
+  hashed over the
   **exact stored bytes**: node writes PEM with `\n` and node-forge with
   `\r\n`, so normalising on one path and not the other would pass within a
   provider and fail across them. `fixtures.test.mts` opens a node-migrated vault

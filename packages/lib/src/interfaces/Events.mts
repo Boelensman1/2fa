@@ -4,6 +4,9 @@ import type { ConnectionStatus } from '../subclasses/SyncManager.mjs'
 
 export interface FavaLibEventMap {
   [FavaLibEvent.Changed]: EmptyObject
+  // Deliberately empty: a listener that cached credentials only needs to know
+  // they are stale, and a payload here would be a payload carrying secrets.
+  [FavaLibEvent.PasswordChanged]: EmptyObject
   [FavaLibEvent.LoadedFromLockedRepresentation]: EmptyObject
   [FavaLibEvent.ConnectToExistingVaultFinished]: EmptyObject
   [FavaLibEvent.ConnectionToSyncServerStatusChanged]: {

@@ -7,20 +7,22 @@ holds the detail. Tick a box only when that file's `Status:` line and the
 ## Done
 
 - [x] **01** — argon2id raised to m = 64 MiB / t = 3 / p = 4, parameters
-      recorded per vault (`95075ca`)
+      recorded per vault
 - [x] **02** — AES-256-GCM with AAD, plus a password-keyed `envelopeMac`
-      (`95075ca`)
 - [x] **03** — `storageVersion` is read on load and a too-new vault is refused
-      (`62aaf6b`)
+- [x] **04** — `changePassword` draws a fresh salt and a fresh symmetric key,
+      and emits `PasswordChanged`. The RSA keypair is still not rotated, by
+      design. Its extension half is **not** done — see below.
 - [x] **06** — KDF vectors, a frozen v1 fixture vault and stored-format
-      assertions (`733208a`)
+      assertions
 - [x] **08** · **09** · **10** — reviewed, no action. `10` carries an amendment
       on the at-rest RSA self-wrap.
 
 ## Open — key hierarchy
 
-- [ ] **04** — rotate the salt and the symmetric key in `changePassword`; clear
-      the extension's session password. P1, ~20 lines.
+- [ ] **04 (extension half)** — clear the extension's session `vaultPassword`
+      on a password change, by hooking `FavaLibEvent.PasswordChanged`. Owned by
+      the `app-extension` branch; there is no such code in this tree.
 - [ ] **05** — run `validateEntryFatal` (drop-and-log) on the load path and in
       `importVaultState`; validate and cap `sync.devices`. P1, ~15 lines.
 - [ ] **07** — export/import-unlocked-session API on `favalib` so the extension

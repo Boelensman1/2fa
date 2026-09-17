@@ -237,13 +237,17 @@ describe('stored envelope integrity', () => {
   })
 
   describe('AAD binding', () => {
-    it('binds the vault state to the encrypted private key', async () => {
-      // changePassword reuses both the salt AND the symmetric key, re-wrapping
-      // only the private key. Without a digest of encryptedPrivateKey in the
-      // AAD, the key and the AAD would be identical before and after, and a
-      // vault state lifted from a pre-change backup would authenticate under
-      // the new password -- silently restoring a deleted entry or a revoked
-      // sync device while the rotation appeared to have worked.
+    it('binds the vault state to the encrypted private key, independently of the salt', async () => {
+      // The salt and the symmetric key are held FIXED here on purpose, so that
+      // the only thing moving between the two AADs is the wrapped private key.
+      // A real password change rotates all three
+      // (key-hierarchy-review/04-key-rotation.md) and would make the AADs
+      // differ for three reasons at once, which would assert nothing about
+      // this field in particular.
+      //
+      // What the binding buys is that a vault state cannot be carried across a
+      // re-wrap of the private key under any circumstances -- including the
+      // one this field was added for, when changePassword moved nothing else.
       //
       // At the whole-envelope level the MAC also stops this. The binding is
       // what stops it at the ciphertext level, which is the layer that still

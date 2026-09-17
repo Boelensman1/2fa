@@ -2,6 +2,7 @@ import type { ZxcvbnResult } from '@zxcvbn-ts/core'
 import { uint8ArrayToBase64 } from 'uint8array-extras'
 
 import type { PlatformProviders } from '../interfaces/PlatformProviders.mjs'
+import type CryptoLib from '../interfaces/CryptoLib.mjs'
 import type {
   MacKey,
   Password,
@@ -43,6 +44,33 @@ export interface LoadFavaLibOptions {
   /** Whether to connect to the configured sync server while loading. */
   connectToSyncServer?: boolean
 }
+
+/**
+ * The length of a vault salt, in bytes. 128 bits, matching what createKeys
+ * draws in both providers.
+ */
+const SALT_BYTES = 16
+
+/**
+ * Draws a fresh vault salt.
+ *
+ * Note what a Salt is here: the base64 STRING of the random bytes, and that
+ * string is what argon2id receives -- 24 UTF-8 bytes, not the 16 raw ones.
+ * See the key-hierarchy-review README, detail 4.
+ *
+ * Shared by the v1 re-wrap below and by
+ * PersistentStorageManager.changePassword, so the two cannot drift: a salt
+ * length is a security parameter, and this review has already been bitten once
+ * by a constant differing between paths (the 12-vs-16-byte nonce, finding 09).
+ * Deliberately not a CryptoLib method -- that interface is public API and a
+ * consumer may supply their own provider, so a new required member is a break
+ * for them, and there is nothing platform-specific to implement above the
+ * getRandomBytes that interface already has.
+ * @param cryptoLib - The crypto provider to draw randomness from.
+ * @returns A promise resolving to the new salt.
+ */
+export const generateSalt = async (cryptoLib: CryptoLib): Promise<Salt> =>
+  uint8ArrayToBase64(await cryptoLib.getRandomBytes(SALT_BYTES)) as Salt
 
 /**
  * Evaluates the strength of a password.
@@ -294,7 +322,7 @@ const loadFavaLibFromLockedRepesentation = async (
     //
     // The RSA keypair is deliberately NOT rotated: peers hold this device's
     // public key, and rotation is key-hierarchy-review/04-key-rotation.md.
-    salt = uint8ArrayToBase64(await cryptoLib.getRandomBytes(16)) as Salt
+    salt = await generateSalt(cryptoLib)
     kdf = V2_KDF_PARAMETERS
     const rewrapped = await cryptoLib.encryptKeys(
       privateKey,

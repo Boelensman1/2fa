@@ -25,7 +25,7 @@ match.
 | [01](01-kdf-parameters.md)          | Argon2id parameters                           | weak                     | P0       | done               |
 | [02](02-ciphertext-authenticity.md) | Vault ciphertext is unauthenticated           | broken                   | P0       | done               |
 | [03](03-storage-versioning.md)      | `storageVersion` is write-only                | weak                     | P0       | done               |
-| [04](04-key-rotation.md)            | No rotation; `changePassword` revokes nothing | weak                     | P1       | open               |
+| [04](04-key-rotation.md)            | No rotation; `changePassword` revokes nothing | weak                     | P1       | done               |
 | [05](05-load-path-validation.md)    | Load path skips the entry validators          | weak                     | P1       | open               |
 | [06](06-crypto-test-coverage.md)    | Nothing pins the KDF or the stored format     | weak                     | P1       | done               |
 | [07](07-session-key-api.md)         | Extension stores the raw master password      | untidy                   | P2       | open               |
@@ -81,7 +81,13 @@ Two things came **out** of that work rather than into it, and both are open:
   and it is why a PBES2/AES-CBC blob is still in the hierarchy. `10`'s Decision
   to keep the RSA layer stands.
 
-Remaining, in order: `04`, `05`, `07`, `18`. Whoever raises the KDF parameters
+`04` landed 2026-09-17: `changePassword` now draws a fresh salt and a fresh
+symmetric key, and the library emits `FavaLibEvent.PasswordChanged` so an
+embedder can drop anything it cached. The RSA keypair is still not rotated —
+peers hold the public key — so full revocation remains re-pairing. The one part
+of `04` left open is its extension half, which has no code in this tree.
+
+Remaining, in order: `05`, `07`, `18`. Whoever raises the KDF parameters
 again must move the policy assertion in `kdf-vectors.test.ts` to a v3 vector and
 leave **both** existing anchors beside it; the v1 anchor survives until the v1
 read path itself is deleted (`18`, item 1).
@@ -133,7 +139,8 @@ Five details that are easy to get wrong:
 1. **The whole hierarchy is per-device, not per-vault.** Each device runs its own
    `createKeys` and holds its own password, salt, RSA keypair and symmetric key.
    Only _entries_ and _public keys_ sync between devices. This is the most
-   consequential fact in the review — it is why [04](04-key-rotation.md) is cheap.
+   consequential fact in the review — it is why [04](04-key-rotation.md) was
+   cheap.
 2. **The symmetric key is wrapped to the device's own public key.** The RSA layer
    is a self-wrap for the at-rest path; it is a genuine peer-to-peer key only on
    the sync path.

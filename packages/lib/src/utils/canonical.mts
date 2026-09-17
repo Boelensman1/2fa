@@ -71,14 +71,19 @@ export interface KdfParameters {
  * storage-format break, so the two would always have to move together. One
  * encoding of one number.
  *
- * `encryptedPrivateKeyDigest` is what closes the password-change splice.
- * `changePassword` re-wraps only the private key -- it reuses both the salt and
- * the symmetric key -- so without this field the AAD and the data encryption
- * key are identical before and after a password change, and an
- * `encryptedVaultState` lifted from a pre-change backup authenticates under the
- * new password. That silently restores a deleted entry or a revoked sync device
- * while the rotation appears to have worked. The encrypted private key is the
- * one field that changed, so binding it closes the splice.
+ * `encryptedPrivateKeyDigest` binds the ciphertext to the exact wrapped private
+ * key it was written beside. It was added to close the password-change splice
+ * at a time when `changePassword` re-wrapped only the private key, reusing both
+ * the salt and the symmetric key: without it the AAD and the data encryption
+ * key were identical before and after a change, so an `encryptedVaultState`
+ * lifted from a pre-change backup authenticated under the new password.
+ *
+ * `changePassword` now rotates the salt and the symmetric key too
+ * (key-hierarchy-review/04-key-rotation.md), so that splice is closed twice
+ * over. The field stays: it is part of the v2 envelope and removing it would be
+ * a storage-format break, and it is what keeps a blob assembled from two
+ * generations from authenticating at the ciphertext layer, whatever moved
+ * between them.
  *
  * It does NOT close rollback under an unchanged password, where the encrypted
  * private key is unchanged too (that is

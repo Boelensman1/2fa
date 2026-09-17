@@ -9,6 +9,7 @@ import {
   type LockedRepresentationString,
   type Password,
   type ServerSecret,
+  type UnlockedSessionString,
 } from 'favalib'
 
 import IOC_TYPES from '../types'
@@ -30,24 +31,28 @@ const log = new Logger('background-script/VaultContainer')
 const VAULT_KEY = 'lockedRepresentation'
 
 /**
- * Where the master password lives while the vault is unlocked.
+ * Where the unlocked session lives while the vault is unlocked.
  *
- * This is the one genuinely uncomfortable line in this file, so: favalib can
- * only build a `FavaLib` from `(lockedRepresentation, password)` -- there is
- * no api to rehydrate one from the keys it has already derived. An mv3 service
- * worker is evicted after ~30s idle, taking the instance with it. So the only
- * way to stay unlocked across an eviction is to keep the password.
+ * favalib's `exportUnlockedSession()` blob: the four secrets a password unlock
+ * derives, so that a worker restart rehydrates through
+ * `loadFavaLibFromUnlockedSession` with no argon2id pass at all. It replaced
+ * keeping the master password here, which is what this had to do while favalib
+ * could only build a `FavaLib` from `(lockedRepresentation, password)`.
  *
- * `Db`'s session area is `browser.storage.session`: memory-backed, never
- * written to disk, wiped when the browser closes, and unreadable from content
- * scripts. Anything that can read it is already a context that could read the
- * unlocked vault directly.
+ * It is still plaintext key material, and favalib's jsdoc states the contract
+ * it must be held under: memory-backed storage with the lifetime of a process,
+ * and nothing else. `Db`'s session area is exactly that --
+ * `browser.storage.session`, never written to disk, wiped when the browser
+ * closes, unreadable from content scripts. Do not move it to `local:`, do not
+ * log it, and keep `lock()` clearing it.
  *
- * The clean fix is an "export/import unlocked session" api in favalib, which
- * would let this hold derived key material with a lifetime of its own instead.
- * Until then this is what survives a worker restart, and `lock()` clears it.
+ * What it buys over the password is a smaller blast radius and a faster boot:
+ * this opens one key generation of one vault, where the password opens every
+ * generation and is very often the user's password somewhere else too.
+ * `changePassword` rotates the generation, which is why
+ * `FavaLibEvent.PasswordChanged` re-exports it.
  */
-const SESSION_PASSWORD_KEY = 'vaultPassword'
+const SESSION_KEY = 'unlockedSession'
 
 /**
  * Whether the browser keeps the background alive on its own.
@@ -154,12 +159,12 @@ class VaultContainer {
   }
 
   /**
-   * Wires a fresh instance up and remembers the password for the session.
+   * Wires a fresh instance up and remembers the session for the worker's life.
    *
    * The save function must be installed on every instance: the one baked into
    * `creationUtils` throws, because it has no instance to refresh afterwards.
    */
-  private async attach(favaLib: FavaLib, password: Password) {
+  private async attach(favaLib: FavaLib) {
     favaLib.storage.setSaveFunction(async (lockedRepresentation) => {
       await this.db.upsertMetaKV(VAULT_KEY, lockedRepresentation)
     })
@@ -180,11 +185,36 @@ class VaultContainer {
       }
     })
 
+    // A session blob opens one key GENERATION, and changePassword moves it:
+    // favalib refuses the pre-rotation blob against the vault that change
+    // wrote, which would surface as the vault mysteriously locking itself at
+    // the next eviction. Re-export instead of dropping, so the worker can
+    // still come back.
+    favaLib.addEventListener(FavaLibEvent.PasswordChanged, () => {
+      void this.rememberSession(favaLib)
+    })
+
     this.favaLib = favaLib
 
-    if (backgroundCanBeEvicted()) {
-      await this.db.setSessionValue(SESSION_PASSWORD_KEY, password)
-    }
+    await this.rememberSession(favaLib)
+  }
+
+  /**
+   * Writes the unlocked session to `Db`'s session area, if anything will read
+   * it.
+   *
+   * Re-exported rather than written once, because the blob is bound to a key
+   * generation: the same export opens every save that generation goes on to
+   * make, but not one made after a `changePassword`.
+   */
+  private async rememberSession(favaLib: FavaLib) {
+    // Nothing evicts a persistent background page, so there is no reader --
+    // writing key material for one is exposure bought for nothing.
+    if (!backgroundCanBeEvicted()) return
+    await this.db.setSessionValue(
+      SESSION_KEY,
+      favaLib.storage.exportUnlockedSession(),
+    )
   }
 
   /**
@@ -198,7 +228,7 @@ class VaultContainer {
    */
   async createVault(password: Password, mode: 'create' | 'connect') {
     const { favaLib } = await creationUtils.createNewFavaLibVault(password)
-    await this.attach(favaLib, password)
+    await this.attach(favaLib)
 
     this.pairing = mode === 'connect'
     favaLib.addEventListener(
@@ -277,7 +307,7 @@ class VaultContainer {
       blob,
       password,
     )
-    await this.attach(favaLib, password)
+    await this.attach(favaLib)
 
     // With a sync server configured, `Ready` only fires once the first batch of
     // remote commands has been applied. Listing before it returns a vault that
@@ -288,8 +318,13 @@ class VaultContainer {
   /**
    * Rebuilds the instance after the service worker was evicted.
    *
-   * Silent by design: no stored password just means the vault is locked, which
+   * Silent by design: no stored session just means the vault is locked, which
    * is a normal state and not an error to report.
+   *
+   * No key derivation happens here -- that is the point of the session blob.
+   * The old password path ran a full argon2id unlock on every worker boot,
+   * which at the v2 parameters is the better part of a second of the popup
+   * sitting on a spinner.
    */
   async restoreSession() {
     if (this.favaLib) return
@@ -297,13 +332,31 @@ class VaultContainer {
     // is nothing to look for.
     if (!backgroundCanBeEvicted()) return
 
-    const password = await this.db.getSessionValue(SESSION_PASSWORD_KEY)
-    if (!password) return
+    const session = await this.db.getSessionValue(SESSION_KEY)
+    if (!session) return
+
+    const blob = await this.readBlob()
+    if (!blob) {
+      // The vault was forgotten while the worker was down. The session opens
+      // nothing now, so do not keep holding key material for it.
+      await this.db.deleteSessionValue(SESSION_KEY)
+      return
+    }
 
     try {
-      await this.unlock(password as Password)
+      const favaLib = await creationUtils.loadFavaLibFromUnlockedSession(
+        blob,
+        session as UnlockedSessionString,
+      )
+      await this.attach(favaLib)
+      // With a sync server configured, `Ready` only fires once the first batch
+      // of remote commands has been applied -- same reason as `unlock`.
+      await favaLib.ready
       log.info('Restored an unlocked vault after a worker restart')
     } catch (error) {
+      // favalib's contract for every throw out of the session path is the
+      // same: discard the session and ask for the password. Do not branch on
+      // which error it was.
       log.warn(
         `Could not restore the unlocked vault: ${describeVaultError(error)}`,
       )
@@ -315,7 +368,7 @@ class VaultContainer {
     this.favaLib?.sync?.closeServerConnection()
     this.favaLib = null
     this.pairing = false
-    await this.db.deleteSessionValue(SESSION_PASSWORD_KEY)
+    await this.db.deleteSessionValue(SESSION_KEY)
   }
 
   /** Forgets the vault entirely. Unrecoverable without another device. */

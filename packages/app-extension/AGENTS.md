@@ -95,15 +95,25 @@ anything manifest-shaped, because the two targets differ more than usual here:
 wxt rewrites `content_security_policy` from the mv3 object form to mv2's single
 string, and the background from `service_worker` to `scripts`.
 
-That works by keeping the **master password** in `Db`'s `session:` area
+That works by keeping favalib's **unlocked session** in `Db`'s `session:` area
 (`browser.storage.session`: memory-backed, never written to disk, wiped when
-the browser closes, unreadable from content scripts). That is not a casual
-choice — favalib can only build a `FavaLib` from
-`(lockedRepresentation, password)`, with no api to rehydrate one from the keys
-it has already derived, so there is nothing else to keep. Anything able to read
-that area is already a context that could read the unlocked vault directly. The
-clean fix is an export/import-unlocked-session api in favalib; until then, do
-not move this to `local:`, and keep `lock()` clearing it.
+the browser closes, unreadable from content scripts). `exportUnlockedSession()`
+is the four secrets a password unlock derives, and
+`loadFavaLibFromUnlockedSession()` rehydrates from them with no key derivation
+at all — so a worker restart costs nothing, where the master password it
+replaced meant a full argon2id pass on every boot.
+
+It is still plaintext key material, and favalib's jsdoc states the contract it
+must be held under: memory-backed storage with the lifetime of a process, and
+nothing else. Do not move it to `local:`, do not log it, and keep `lock()`
+clearing it.
+
+The blob is bound to a key **generation**, not to a particular save: one export
+opens every envelope that generation goes on to write, and `changePassword` is
+the only thing that moves it. `FavaLibEvent.PasswordChanged` therefore
+re-exports rather than dropping — favalib would refuse the pre-rotation blob
+against the vault that change wrote, which surfaces as the vault locking itself
+at the next eviction for no visible reason.
 
 ## `lib/detect/` — the otp field heuristic
 
@@ -558,7 +568,7 @@ and are referenced as `"typescript": "catalog:"`.
   and ignores this.
 - **Do not import the `lib/` barrel from the content script.** `lib/index.ts`
   re-exports the ioc container, which now reaches `VaultContainer` and through
-  it all of favalib — node-forge, jpake, openpgp. `lib/content/index.ts` used
+  it all of favalib — openpgp, jpake, zxcvbn. `lib/content/index.ts` used
   to take `Logger` and `bgActions` from it, and that alone put **2.7MB** of
   vault code into `content-scripts/content.js`, injected into every frame of
   every page. It imports `../classes/Logger` and `../state` directly for that
@@ -610,7 +620,7 @@ and are referenced as `"typescript": "catalog:"`.
   instantiates a WebAssembly module. It runs on **every** unlock, so without
   this nothing unlocks, in the popup or the background. It permits no `eval()`
   and no remote script — it is specifically the wasm carve-out.
-- The background bundle is ~2.7MB and that is expected: rolldown inlines every
+- The background bundle is ~2.5MB and that is expected: rolldown inlines every
   one of favalib's dynamic `import()`s (jsqr, zxcvbn, openpgp, qrcode). That is
   load-bearing rather than merely wasteful — the worker is declared as a
   _classic_ service worker, which cannot do a runtime `import()` at all. If a

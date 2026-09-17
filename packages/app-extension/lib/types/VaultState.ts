@@ -55,7 +55,7 @@ export interface EntryList {
  *
  * Computed in the background rather than the popup: reaching
  * `getPasswordStrength` means importing favalib's vault factory, which drags
- * node-forge, jpake and the rest into whatever bundle touches it. The popup is
+ * openpgp, jpake and the rest into whatever bundle touches it. The popup is
  * meant to stay a thin client, so it asks instead.
  */
 export interface PasswordStrength {

@@ -36,6 +36,7 @@ vi.mock('wxt/utils/storage', () => ({
  */
 const createNewFavaLibVault = vi.fn()
 const loadFavaLibFromLockedRepesentation = vi.fn()
+const loadFavaLibFromUnlockedSession = vi.fn()
 const getPasswordStrength = vi.fn()
 
 vi.mock('../../lib/vault/creationUtils', () => ({
@@ -44,6 +45,8 @@ vi.mock('../../lib/vault/creationUtils', () => ({
       createNewFavaLibVault(...args) as unknown,
     loadFavaLibFromLockedRepesentation: (...args: unknown[]) =>
       loadFavaLibFromLockedRepesentation(...args) as unknown,
+    loadFavaLibFromUnlockedSession: (...args: unknown[]) =>
+      loadFavaLibFromUnlockedSession(...args) as unknown,
     getPasswordStrength: (...args: unknown[]) =>
       getPasswordStrength(...args) as unknown,
   },
@@ -78,6 +81,8 @@ interface FakeFavaLib {
   emit: (_event: string) => void
   closed: boolean
   respondToAddDeviceFlow: ReturnType<typeof vi.fn>
+  /** What `exportUnlockedSession` hands back; a new generation returns a new one. */
+  session: string
 }
 
 const makeFavaLib = (overrides: Partial<FakeFavaLib> = {}) => {
@@ -88,6 +93,7 @@ const makeFavaLib = (overrides: Partial<FakeFavaLib> = {}) => {
     listeners: {} as Record<string, (() => void)[]>,
     closed: false,
     respondToAddDeviceFlow: vi.fn(() => Promise.resolve()),
+    session: 'unlocked-session',
     ...overrides,
   }
 
@@ -99,6 +105,7 @@ const makeFavaLib = (overrides: Partial<FakeFavaLib> = {}) => {
         fake.saveFunction = fn
       },
       forceSave: () => fake.saveFunction?.('locked-representation'),
+      exportUnlockedSession: () => fake.session,
     },
     addEventListener: (event: string, cb: () => void) => {
       ;(fake.listeners[event] ??= []).push(cb)
@@ -237,24 +244,60 @@ describe('unlock and lock', () => {
     expect(store.has('local:meta:lockedRepresentation')).toBe(true)
   })
 
-  it('drops the session password on lock', async () => {
+  it('stores the unlocked session, and never the password', async () => {
+    const { favaLib } = makeFavaLib()
+    loadFavaLibFromLockedRepesentation.mockResolvedValue(favaLib)
+    const db = new Db()
+    await db.upsertMetaKV('lockedRepresentation', 'blob')
+    const container = new VaultContainer(db)
+
+    await container.unlock('pw' as never)
+
+    expect(store.get('session:unlockedSession')).toBe('unlocked-session')
+    // The blob favalib exports replaced the master password here. Nothing may
+    // put that back: it opens every key generation of this vault, and is very
+    // often the user's password somewhere else too.
+    expect([...store.values()]).not.toContain('pw')
+  })
+
+  it('drops the session on lock', async () => {
     const { favaLib } = makeFavaLib()
     loadFavaLibFromLockedRepesentation.mockResolvedValue(favaLib)
     const db = new Db()
     await db.upsertMetaKV('lockedRepresentation', 'blob')
     const container = new VaultContainer(db)
     await container.unlock('pw' as never)
-    expect(store.has('session:vaultPassword')).toBe(true)
+    expect(store.has('session:unlockedSession')).toBe(true)
 
     await container.lock()
 
-    expect(store.has('session:vaultPassword')).toBe(false)
+    expect(store.has('session:unlockedSession')).toBe(false)
   })
 
-  it('does not store the password where the background is persistent', async () => {
+  it('re-exports the session after a password change', async () => {
+    // The blob is bound to a key GENERATION, and changePassword moves it.
+    // Keeping the pre-rotation one would make favalib refuse it at the next
+    // eviction, which reads as the vault locking itself for no reason.
+    const { favaLib, emit } = makeFavaLib({ session: 'session-gen-1' })
+    loadFavaLibFromLockedRepesentation.mockResolvedValue(favaLib)
+    const db = new Db()
+    await db.upsertMetaKV('lockedRepresentation', 'blob')
+    const container = new VaultContainer(db)
+    await container.unlock('pw' as never)
+
+    favaLib.storage.exportUnlockedSession = () => 'session-gen-2'
+    emit('passwordChanged')
+    // The listener is not awaited by favalib's dispatch, so give the write a turn.
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(store.get('session:unlockedSession')).toBe('session-gen-2')
+  })
+
+  it('does not store the session where the background is persistent', async () => {
     // Firefox is built as mv2, whose background page is never evicted, so
-    // restoreSession has no reader there. Writing the master password for
-    // nobody is exposure bought for nothing.
+    // restoreSession has no reader there. Writing key material for nobody is
+    // exposure bought for nothing.
     vi.stubEnv('MANIFEST_VERSION', '2')
     try {
       const { favaLib } = makeFavaLib()
@@ -266,7 +309,7 @@ describe('unlock and lock', () => {
       await container.unlock('pw' as never)
 
       await expect(container.getStatus()).resolves.toBe('unlocked')
-      expect(store.has('session:vaultPassword')).toBe(false)
+      expect(store.has('session:unlockedSession')).toBe(false)
     } finally {
       vi.unstubAllEnvs()
     }
@@ -277,15 +320,15 @@ describe('unlock and lock', () => {
     try {
       const db = new Db()
       await db.upsertMetaKV('lockedRepresentation', 'blob')
-      // Even with a password left behind by an earlier mv3 build, mv2 must not
+      // Even with a session left behind by an earlier mv3 build, mv2 must not
       // reach for it.
-      await db.setSessionValue('vaultPassword', 'pw')
+      await db.setSessionValue('unlockedSession', 'unlocked-session')
       const container = new VaultContainer(db)
 
       await container.restoreSession()
 
       await expect(container.getStatus()).resolves.toBe('locked')
-      expect(loadFavaLibFromLockedRepesentation).not.toHaveBeenCalled()
+      expect(loadFavaLibFromUnlockedSession).not.toHaveBeenCalled()
     } finally {
       vi.unstubAllEnvs()
     }
@@ -305,21 +348,29 @@ describe('unlock and lock', () => {
 })
 
 describe('restoreSession', () => {
-  it('re-unlocks from the session password after a worker restart', async () => {
+  it('re-unlocks from the session blob after a worker restart', async () => {
     const { favaLib } = makeFavaLib()
-    loadFavaLibFromLockedRepesentation.mockResolvedValue(favaLib)
+    loadFavaLibFromUnlockedSession.mockResolvedValue(favaLib)
     const db = new Db()
     await db.upsertMetaKV('lockedRepresentation', 'blob')
-    await db.setSessionValue('vaultPassword', 'pw')
+    await db.setSessionValue('unlockedSession', 'unlocked-session')
 
     // A fresh container is exactly what a restarted service worker builds.
     const restarted = new VaultContainer(db)
     await restarted.restoreSession()
 
     await expect(restarted.getStatus()).resolves.toBe('unlocked')
+    // Both halves, in favalib's order. No password is involved, which is the
+    // whole reason this path exists: the old one ran a full argon2id unlock on
+    // every worker boot.
+    expect(loadFavaLibFromUnlockedSession).toHaveBeenCalledWith(
+      'blob',
+      'unlocked-session',
+    )
+    expect(loadFavaLibFromLockedRepesentation).not.toHaveBeenCalled()
   })
 
-  it('stays locked when there is no session password', async () => {
+  it('stays locked when there is no session blob', async () => {
     const db = new Db()
     await db.upsertMetaKV('lockedRepresentation', 'blob')
     const container = new VaultContainer(db)
@@ -327,22 +378,40 @@ describe('restoreSession', () => {
     await container.restoreSession()
 
     await expect(container.getStatus()).resolves.toBe('locked')
-    expect(loadFavaLibFromLockedRepesentation).not.toHaveBeenCalled()
+    expect(loadFavaLibFromUnlockedSession).not.toHaveBeenCalled()
   })
 
-  it('locks rather than throwing when the stored password no longer works', async () => {
-    loadFavaLibFromLockedRepesentation.mockRejectedValue(
-      new Error('Invalid password'),
+  it('drops a session left behind for a vault that was forgotten', async () => {
+    // Nothing else clears it in that order: `reset` does, but a vault can also
+    // go while the worker is down. The session opens nothing now, so holding
+    // key material for it buys nothing.
+    const db = new Db()
+    await db.setSessionValue('unlockedSession', 'unlocked-session')
+    const container = new VaultContainer(db)
+
+    await container.restoreSession()
+
+    await expect(container.getStatus()).resolves.toBe('no-vault')
+    expect(store.has('session:unlockedSession')).toBe(false)
+    expect(loadFavaLibFromUnlockedSession).not.toHaveBeenCalled()
+  })
+
+  it('locks rather than throwing when the session no longer fits the vault', async () => {
+    // favalib's contract for every throw out of the session path is the same:
+    // discard it and ask for the password. Exported-before-a-password-change
+    // is the case that actually happens.
+    loadFavaLibFromUnlockedSession.mockRejectedValue(
+      new Error('This unlocked session does not fit the stored vault'),
     )
     const db = new Db()
     await db.upsertMetaKV('lockedRepresentation', 'blob')
-    await db.setSessionValue('vaultPassword', 'stale')
+    await db.setSessionValue('unlockedSession', 'stale-session')
     const container = new VaultContainer(db)
 
     await expect(container.restoreSession()).resolves.toBeUndefined()
 
     await expect(container.getStatus()).resolves.toBe('locked')
-    expect(store.has('session:vaultPassword')).toBe(false)
+    expect(store.has('session:unlockedSession')).toBe(false)
   })
 })
 

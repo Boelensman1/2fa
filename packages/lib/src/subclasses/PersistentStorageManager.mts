@@ -329,10 +329,6 @@ class PersistentStorageManager {
    * generation -- producing a matching encryptedSymmetricKey needs the private
    * key -- so the only thing exposing it achieves is a permanently unopenable
    * vault.
-   *
-   * The v1 storage migration does not go through here: it builds its material
-   * before the FavaLib exists (creationUtils.mts) and hands it to the
-   * constructor already consistent.
    * @param material - The generation to install.
    */
   private replaceKeyMaterial(material: VaultKeyMaterial): void {
@@ -350,16 +346,6 @@ class PersistentStorageManager {
    */
   public setSaveFunction(saveFunction: SaveFunction) {
     this.saveFunction = saveFunction
-  }
-
-  /**
-   * Whether a save function is configured. The storage migration is skipped
-   * without one, so that a consumer that only reads a vault (the fixture tests
-   * being the case that matters) can never rewrite it.
-   * @returns True when saving is possible.
-   */
-  public get canSave(): boolean {
-    return Boolean(this.saveFunction)
   }
 
   /**
@@ -403,9 +389,9 @@ class PersistentStorageManager {
    */
   async validatePassword(salt: Salt, password: Password): Promise<boolean> {
     try {
-      // this.kdf, not the v2 defaults: after a migration the two agree, but a
-      // vault loaded at other parameters would otherwise fail every password
-      // check with a correct password.
+      // this.kdf, not the current defaults: a vault written at other
+      // parameters would otherwise fail every password check with a correct
+      // password.
       await this.cryptoLib.decryptKeys(
         this.encryptedSecretKeys,
         this.encryptedSymmetricKey,
@@ -459,10 +445,10 @@ class PersistentStorageManager {
     const isValid = await this.validatePassword(this.salt, oldPassword)
     if (!isValid) throw new AuthenticationError('Invalid old password')
 
-    // The entire new generation is derived before a single field moves, the
-    // same way the v1 re-wrap does it in creationUtils: a half-applied swap
-    // writes a vault that saves and never opens, and deriving up front makes
-    // that state unrepresentable rather than merely avoided. encryptKeys
+    // The entire new generation is derived before a single field moves: a
+    // half-applied swap writes a vault that saves and never opens, and
+    // deriving up front makes that state unrepresentable rather than merely
+    // avoided. encryptKeys
     // derives the password hash once and returns the MAC key from it, so this
     // costs one argon2id pass, not two.
     const salt = await generateSalt(this.cryptoLib)

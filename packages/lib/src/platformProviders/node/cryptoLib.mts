@@ -3,10 +3,8 @@ import { promisify } from 'node:util'
 import {
   generateKey as generateKeyCb,
   hkdf as hkdfCb,
-  privateDecrypt,
   createHash,
   createHmac,
-  createPrivateKey,
   timingSafeEqual,
   randomBytes,
   createCipheriv,
@@ -23,7 +21,6 @@ import type {
   EncryptedSecretKeys,
   EncryptedSymmetricKey,
   KdfParameters,
-  LegacyEncryptedPrivateKey,
   MacKey,
   Password,
   PasswordHash,
@@ -36,7 +33,7 @@ import type {
   SymmetricKey,
   SyncKey,
 } from '../../interfaces/CryptoLib.mjs'
-import { V1_KDF_PARAMETERS, V2_KDF_PARAMETERS } from '../../version.mjs'
+import { SYNC_KDF_PARAMETERS, V2_KDF_PARAMETERS } from '../../version.mjs'
 import { buildKeyWrapAad } from '../../utils/canonical.mjs'
 import { generatePasswordHash } from '../browser/cryptoLib.mjs'
 import {
@@ -55,7 +52,7 @@ import {
 const generateKey = promisify(generateKeyCb)
 const hkdf = promisify(hkdfCb)
 
-/** See the browser provider: GCM nonces are 12 bytes, not the v1 path's 16. */
+/** See the browser provider: GCM nonces are 12 bytes. */
 const GCM_NONCE_BYTES = 12
 
 /** The AES-GCM authentication tag length, in bytes. */
@@ -205,38 +202,6 @@ class NodeCryptoLib implements CryptoLib {
       symmetricKey,
       macKey,
     }
-  }
-
-  /**
-   * @inheritdoc
-   */
-  async decryptKeysV1(
-    encryptedPrivateKey: LegacyEncryptedPrivateKey,
-    encryptedSymmetricKey: EncryptedSymmetricKey,
-    salt: Salt,
-    password: Password,
-  ): Promise<{ symmetricKey: SymmetricKey }> {
-    const passwordHash = await generatePasswordHash(
-      salt,
-      password,
-      V1_KDF_PARAMETERS,
-    )
-
-    const privateKey = this.unwrapLegacyPrivateKey(
-      encryptedPrivateKey,
-      passwordHash,
-    )
-
-    // v1 wrapped the symmetric key with RSA-OAEP/MGF1-SHA-1, which is node's
-    // default OAEP hash -- hence no oaepHash here. The RSA keypair itself is
-    // not returned: the upgrade mints a fresh curve pair, so this key is read
-    // exactly once and then discarded.
-    const symmetricKey = privateDecrypt(
-      { key: privateKey },
-      Buffer.from(encryptedSymmetricKey, 'base64'),
-    ).toString('utf8') as SymmetricKey
-
-    return { symmetricKey }
   }
 
   /**
@@ -464,8 +429,11 @@ class NodeCryptoLib implements CryptoLib {
   ) {
     const parts = encryptedText.split(':')
     if (parts.length !== 3 || parts[0] !== V2_ENVELOPE_PREFIX) {
-      // A v1 envelope reaching here is a bug or an attack, never a migration:
-      // the v1 reader is decryptSymmetricV1 and only the load path may call it.
+      // A storage version 1 envelope -- base64(iv):base64(ct), AES-256-CBC --
+      // reaching here is a bug or an attack. Nothing in the library reads that
+      // format any more (key-hierarchy-review/18-anti-rollback.md), and the
+      // shape is refused rather than attempted, which is what keeps the CBC
+      // padding oracle off the sync path.
       throw new CryptoError('Could not decrypt data')
     }
     const [, nonceString, encryptedData] = parts
@@ -501,22 +469,6 @@ class NodeCryptoLib implements CryptoLib {
   /**
    * @inheritdoc
    */
-  async decryptSymmetricV1<T extends string>(
-    symmetricKey: SymmetricKey,
-    encryptedText: Encrypted<T>,
-  ) {
-    const [ivString, encryptedData] = encryptedText.split(':')
-    const iv = Buffer.from(ivString, 'base64')
-    const keyBuffer = Buffer.from(symmetricKey, 'base64')
-    const decipher = createDecipheriv('aes-256-cbc', keyBuffer, iv)
-    let decrypted = decipher.update(encryptedData, 'base64', 'utf8')
-    decrypted += decipher.final('utf8')
-    return Promise.resolve(decrypted as T)
-  }
-
-  /**
-   * @inheritdoc
-   */
   async createSymmetricKey(): Promise<SymmetricKey> {
     const key = await generateKey('aes', { length: 256 })
     return key.export().toString('base64') as SymmetricKey
@@ -529,51 +481,13 @@ class NodeCryptoLib implements CryptoLib {
     const keyBuffer = await argon2id({
       password: sharedKey,
       salt,
-      parallelism: V1_KDF_PARAMETERS.parallelism,
-      iterations: V1_KDF_PARAMETERS.iterations,
-      memorySize: V1_KDF_PARAMETERS.memorySize,
+      parallelism: SYNC_KDF_PARAMETERS.parallelism,
+      iterations: SYNC_KDF_PARAMETERS.iterations,
+      memorySize: SYNC_KDF_PARAMETERS.memorySize,
       hashLength: 32,
       outputType: 'binary',
     })
     return Buffer.from(keyBuffer).toString('base64') as SyncKey
-  }
-
-  /**
-   * Unwraps a storage version 1 PBES2-encrypted RSA private key.
-   *
-   * MIGRATION PATH ONLY, reachable from decryptKeysV1 and nowhere else. It is
-   * the last RSA operation in the provider and goes with the v1 read path.
-   * @param encryptedPrivateKey - The stored v1 encrypted private key
-   * @param passwordHash - The argon2id hash used as the PKCS#8 passphrase
-   * @returns The plaintext private key PEM
-   * @throws {CryptoError} If the password or the key is not usable.
-   */
-  private unwrapLegacyPrivateKey(
-    encryptedPrivateKey: LegacyEncryptedPrivateKey,
-    passwordHash: PasswordHash,
-  ): string {
-    try {
-      return createPrivateKey({
-        key: encryptedPrivateKey,
-        type: 'pkcs8',
-        format: 'pem',
-        passphrase: passwordHash,
-      }).export({
-        type: 'pkcs8',
-        format: 'pem',
-      }) as string
-    } catch (err) {
-      // eslint-disable-next-line no-restricted-globals
-      if (err instanceof Error && 'code' in err) {
-        if (err.code === 'ERR_OSSL_BAD_DECRYPT') {
-          throw new CryptoError('Invalid password')
-        }
-        if (err.code === 'ERR_OSSL_UNSUPPORTED') {
-          throw new CryptoError('Invalid private key')
-        }
-      }
-      throw err
-    }
   }
 }
 

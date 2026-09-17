@@ -22,13 +22,10 @@ import {
   InitializationError,
   FavaLibError,
   StorageVersionError,
+  UnsupportedStorageVersionError,
   CryptoError,
 } from '../FavaLibError.mjs'
-import {
-  LEGACY_STORAGE_VERSION,
-  SESSION_VERSION,
-  STORAGE_VERSION,
-} from '../version.mjs'
+import { SESSION_VERSION, STORAGE_VERSION } from '../version.mjs'
 import {
   buildEnvelopeMacMessage,
   buildVaultAad,
@@ -37,7 +34,6 @@ import {
 
 import LibraryLoader from '../subclasses/LibraryLoader.mjs'
 import type {
-  LegacyLockedRepresentation,
   LockedRepresentation,
   LockedRepresentationString,
   ProcessedCommand,
@@ -59,6 +55,19 @@ import {
 
 /** Appended to every message that refuses a vault the user can still recover. */
 const DATA_IS_INTACT = 'Do not reset or delete the vault, its data is intact.'
+
+/**
+ * The way across from a storage version this build no longer reads.
+ *
+ * There is deliberately no automatic upgrade. The entries export is a list of
+ * otpauth:// URIs and carries no storage version at all, so it crosses the
+ * break unchanged -- which an in-place migration could not do, since the old
+ * format's RSA keypair cannot become a curve one and every peer would have to
+ * pair again regardless.
+ */
+const MIGRATE_BY_EXPORTING =
+  'Open it with the version of the app that wrote it, export your entries, ' +
+  'and import them here.'
 
 /**
  * Parses JSON, reporting a failure as an InitializationError.
@@ -97,10 +106,10 @@ const SALT_BYTES = 16
  * string is what argon2id receives -- 24 UTF-8 bytes, not the 16 raw ones.
  * See the key-hierarchy-review README, detail 4.
  *
- * Shared by the v1 re-wrap below and by
- * PersistentStorageManager.changePassword, so the two cannot drift: a salt
- * length is a security parameter, and this review has already been bitten once
- * by a constant differing between paths (the 12-vs-16-byte nonce, finding 09).
+ * Shared with PersistentStorageManager.changePassword so the two cannot drift:
+ * a salt length is a security parameter, and this review has already been
+ * bitten once by a constant differing between paths (the 12-vs-16-byte nonce,
+ * finding 09).
  * Deliberately not a CryptoLib method -- that interface is public API and a
  * consumer may supply their own provider, so a new required member is a break
  * for them, and there is nothing platform-specific to implement above the
@@ -250,27 +259,17 @@ const createNewFavaLibVault = async (
 }
 
 /**
- * A LockedRepresentation that has passed the completeness check: the four
- * fields every storage version carries are known to be present and to be
- * strings.
+ * A LockedRepresentation whose every required field is known to be present and
+ * of the right type.
  *
- * `kdf` and `envelopeMac` stay optional on purpose -- a version 1 blob
- * legitimately has neither, and requireV2EnvelopeFields is what says so by
- * name rather than calling a v2 vault "incomplete".
+ * `libVersion` stays optional: it is informational, recorded so a consumer can
+ * tell which build last wrote a vault, and it must never decide whether one
+ * opens.
  */
 type CompleteLockedRepresentation = Partial<
-  LockedRepresentation & LegacyLockedRepresentation
+  Pick<LockedRepresentation, 'libVersion'>
 > &
-  Pick<
-    LockedRepresentation,
-    'encryptedSymmetricKey' | 'salt' | 'encryptedVaultState'
-  >
-
-/** The two fields a storage version 2 envelope must carry. */
-interface V2EnvelopeFields {
-  kdf: KdfParameters
-  envelopeMac: string
-}
+  Omit<LockedRepresentation, 'libVersion' | 'storageVersion'>
 
 /**
  * Every key a constructed FavaLib needs: the four secrets a password unlock
@@ -303,22 +302,38 @@ interface UnlockedVaultKeys {
  * '0.5' > 1 false, so the cast gives right answers for the wrong reason on
  * some inputs and wrong ones on others.
  *
- * Runs before the completeness check, because a future format will
- * legitimately look "incomplete" to this build -- the user should be told to
- * upgrade, not that their vault is corrupt.
+ * Runs before the completeness check, because a format this build does not
+ * read will legitimately look "incomplete" to it -- the user should be told
+ * which version they have, not that their vault is corrupt.
+ *
+ * There is exactly one readable version. Anything older is refused rather than
+ * migrated: reading the old format at all reopened a downgrade window wider
+ * than plain rollback, because a v1 blob needed no matching salt and no
+ * matching kdf block to be accepted over a current vault
+ * (key-hierarchy-review/18-anti-rollback.md).
  * @param parsed - The parsed stored vault, of unknown shape.
  * @returns The validated storage version.
  * @throws {StorageVersionError} If the version is not an integer, is out of
  * range, or is newer than this build can read.
+ * @throws {UnsupportedStorageVersionError} If it is older than this build
+ * reads.
  */
 const readStorageVersion = (parsed: unknown): number => {
-  const rawStorageVersion = (parsed as { storageVersion?: unknown } | undefined)
+  const storageVersion = (parsed as { storageVersion?: unknown } | undefined)
     ?.storageVersion
-  // Absent means a vault written before the field existed. An explicit null is
-  // not the same thing -- that is a malformed blob, and falls through to the
-  // integer check below.
-  const storageVersion =
-    rawStorageVersion === undefined ? LEGACY_STORAGE_VERSION : rawStorageVersion
+  // An absent field is not defaulted. It means a vault written before the
+  // field existed, which is storage version 1, and that is refused below like
+  // any other version this build does not read. An explicit null is a
+  // malformed blob and falls through to the integer check.
+  if (storageVersion === undefined) {
+    throw new UnsupportedStorageVersionError(
+      `This vault carries no storageVersion, so it was saved in a format ` +
+        `older than the one this version reads (${STORAGE_VERSION}). ` +
+        MIGRATE_BY_EXPORTING +
+        ' ' +
+        DATA_IS_INTACT,
+    )
+  }
   if (typeof storageVersion !== 'number' || !Number.isInteger(storageVersion)) {
     throw new StorageVersionError(
       `lockedRepresentation has a storageVersion that is not an integer: ${JSON.stringify(storageVersion)}`,
@@ -327,6 +342,16 @@ const readStorageVersion = (parsed: unknown): number => {
   if (storageVersion < 1) {
     throw new StorageVersionError(
       `lockedRepresentation has an out of range storageVersion: ${storageVersion}`,
+    )
+  }
+  if (storageVersion < STORAGE_VERSION) {
+    throw new UnsupportedStorageVersionError(
+      `This vault was saved with storage version ${storageVersion}, and this ` +
+        `version reads only ${STORAGE_VERSION}. There is no automatic ` +
+        `upgrade. ` +
+        MIGRATE_BY_EXPORTING +
+        ' ' +
+        DATA_IS_INTACT,
     )
   }
   if (storageVersion > STORAGE_VERSION) {
@@ -341,36 +366,39 @@ const readStorageVersion = (parsed: unknown): number => {
 }
 
 /**
- * Checks that a parsed stored vault carries the three fields every storage
- * version has.
- *
- * Three, not four: the slot holding the device's key material is named
- * differently in each version, and the names are the honest part. A v1
- * `encryptedPrivateKey` is a PBES2 PEM wrapping an RSA key; a v2
- * `encryptedSecretKeys` is an AES-GCM seal over two curve keys. Nothing can
- * read one as the other, so neither is required until the version has said
- * which one should be there -- `requireEncryptedSecretKeys` below, and the
- * legacy branch of the password path.
+ * Checks that a parsed stored vault carries every field it needs.
  *
  * The typeof half is not redundant with the truthiness half. Every one of
  * these is read through a Partial<LockedRepresentation> cast that claims a
  * type it cannot enforce, so a number or an object would otherwise sail
  * through as a salt and fail much later with something unrecognisable. The
  * truthiness half is what narrows away undefined for the code downstream.
+ *
+ * One check rather than three: while there were two storage formats, the key
+ * slot was named differently in each and the kdf block and envelope MAC were
+ * absent from one of them, so requiring them here would have called a
+ * perfectly good vault "incomplete". With a single format there is nothing
+ * left to be conditional about.
  * @param parsed - The parsed stored vault.
  * @returns The same object, narrowed.
- * @throws {InitializationError} If any of the three is missing or not a string.
+ * @throws {InitializationError} If any field is missing or of the wrong type.
  */
 const requireCompleteLockedRepresentation = (
   parsed: Partial<LockedRepresentation> | undefined,
 ): CompleteLockedRepresentation => {
   if (
-    !parsed?.encryptedSymmetricKey ||
+    !parsed?.encryptedSecretKeys ||
+    !parsed.encryptedSymmetricKey ||
     !parsed.salt ||
     !parsed.encryptedVaultState ||
+    !parsed.kdf ||
+    !parsed.envelopeMac ||
+    typeof parsed.encryptedSecretKeys !== 'string' ||
     typeof parsed.encryptedSymmetricKey !== 'string' ||
     typeof parsed.salt !== 'string' ||
-    typeof parsed.encryptedVaultState !== 'string'
+    typeof parsed.encryptedVaultState !== 'string' ||
+    typeof parsed.kdf !== 'object' ||
+    typeof parsed.envelopeMac !== 'string'
   ) {
     throw new InitializationError(
       'lockedRepresentation is incomplete or corrupted',
@@ -380,68 +408,12 @@ const requireCompleteLockedRepresentation = (
 }
 
 /**
- * Reads the sealed secret keys of a storage version 2 vault.
- *
- * Called by everything downstream of the version gate rather than checked once
- * in the completeness check, because a version 1 vault legitimately has no
- * such field -- and calling that vault "incomplete" would be a worse message
- * than the one the legacy path gives.
- * @param stored - The stored vault, already known to be complete.
- * @returns The sealed secret keys.
- * @throws {InitializationError} If the field is missing or not a string.
- */
-const requireEncryptedSecretKeys = (
-  stored: CompleteLockedRepresentation,
-): EncryptedSecretKeys => {
-  const encryptedSecretKeys = stored.encryptedSecretKeys
-  if (!encryptedSecretKeys || typeof encryptedSecretKeys !== 'string') {
-    throw new InitializationError(
-      'lockedRepresentation is incomplete or corrupted',
-    )
-  }
-  return encryptedSecretKeys
-}
-
-/**
- * Checks that a storage version 2 envelope carries its kdf block and its
- * envelope MAC.
- *
- * Separate from the completeness check above so that the message names the
- * real problem instead of calling a v2 vault "incomplete", and separate from
- * decryptV2VaultState because the password path needs `kdf` before it can call
- * decryptKeys.
- * @param stored - The stored vault, already known to be complete.
- * @param storageVersion - The version it claims, already validated.
- * @returns The two required fields.
- * @throws {InitializationError} If either is missing or of the wrong type.
- */
-const requireV2EnvelopeFields = (
-  stored: CompleteLockedRepresentation,
-  storageVersion: number,
-): V2EnvelopeFields => {
-  const kdf = stored.kdf
-  const envelopeMac = stored.envelopeMac
-  if (
-    !kdf ||
-    !envelopeMac ||
-    typeof kdf !== 'object' ||
-    typeof envelopeMac !== 'string'
-  ) {
-    throw new InitializationError(
-      `lockedRepresentation claims storage version ${storageVersion} but ` +
-        `is missing its kdf parameters or its envelopeMac`,
-    )
-  }
-  return { kdf, envelopeMac }
-}
-
-/**
- * Verifies a storage version 2 envelope and decrypts its vault state.
+ * Verifies a stored vault's envelope and decrypts its vault state.
  *
  * The MAC check and the decrypt live in one function so that there is no way
- * to perform one without the other. Both v2 load paths -- password and
- * unlocked session -- go through here, which is a stronger guarantee than a
- * shared tail: a tail can be bypassed by adding a third caller, a chokepoint
+ * to perform one without the other. Both load paths -- password and unlocked
+ * session -- go through here, which is a stronger guarantee than a shared
+ * tail: a tail can be bypassed by adding a third caller, a chokepoint
  * cannot.
  *
  * The MAC is verified BEFORE anything is decrypted, parsed or used, because
@@ -463,18 +435,16 @@ const requireV2EnvelopeFields = (
  * @param cryptoLib - The crypto provider.
  * @param stored - The stored vault.
  * @param storageVersion - Its validated storage version.
- * @param envelope - Its kdf block and envelope MAC.
  * @param keys - The symmetric key and MAC key to open it with, however they
  * were obtained.
  * @returns A promise resolving to the decrypted vault state json.
  * @throws {CryptoError} If the MAC does not verify, or the ciphertext does not
  * authenticate.
  */
-const decryptV2VaultState = async (
+const decryptVaultState = async (
   cryptoLib: CryptoLib,
   stored: CompleteLockedRepresentation,
   storageVersion: number,
-  envelope: V2EnvelopeFields,
   keys: Pick<UnlockedVaultKeys, 'symmetricKey' | 'macKey'>,
 ): Promise<string> => {
   const macIsValid = await cryptoLib.verifyEnvelopeMac(
@@ -483,12 +453,12 @@ const decryptV2VaultState = async (
       libVersion: stored.libVersion ?? '',
       storageVersion,
       salt: stored.salt,
-      kdf: envelope.kdf,
-      encryptedSecretKeys: requireEncryptedSecretKeys(stored),
+      kdf: stored.kdf,
+      encryptedSecretKeys: stored.encryptedSecretKeys,
       encryptedSymmetricKey: stored.encryptedSymmetricKey,
       encryptedVaultState: stored.encryptedVaultState,
     }),
-    envelope.envelopeMac,
+    stored.envelopeMac,
   )
   if (!macIsValid) {
     throw new CryptoError(
@@ -503,8 +473,8 @@ const decryptV2VaultState = async (
     buildVaultAad(
       storageVersion,
       stored.salt,
-      envelope.kdf,
-      await cryptoLib.sha256(requireEncryptedSecretKeys(stored)),
+      stored.kdf,
+      await cryptoLib.sha256(stored.encryptedSecretKeys),
     ),
   )
 }
@@ -668,6 +638,8 @@ const constructFavaLib = (
  * @param options - Options controlling how the vault is loaded.
  * @returns A promise that resolves when loading is complete.
  * @throws {StorageVersionError} If the vault was saved by a newer library, or its storageVersion is invalid.
+ * @throws {UnsupportedStorageVersionError} If the vault was saved in a storage
+ * version older than the one this build reads. There is no migration.
  * @throws {InitializationError} If loading fails due to invalid or corrupted data.
  */
 const loadFavaLibFromLockedRepesentation = async (
@@ -689,110 +661,31 @@ const loadFavaLibFromLockedRepesentation = async (
   const storageVersion = readStorageVersion(parsed)
   const stored = requireCompleteLockedRepresentation(parsed)
 
-  // Storage version 1 is a MIGRATION PATH, not a supported format. It derives
-  // with the v1 argon2id parameters, unwraps with RSA-OAEP/MGF1-SHA-1, reads
-  // an unauthenticated AES-256-CBC envelope, and has no envelope MAC to check.
-  // This function is the only place in the library allowed to reach any of
-  // that; nothing on the sync path may, and neither may the unlocked-session
-  // path below. See version.mts on when it goes away.
-  const isLegacy = storageVersion < STORAGE_VERSION
-
-  let keys: UnlockedVaultKeys
-  let vaultStateString: string
-
-  if (isLegacy) {
-    const legacyKeyField = stored.encryptedPrivateKey
-    if (!legacyKeyField || typeof legacyKeyField !== 'string') {
-      throw new InitializationError(
-        'lockedRepresentation is incomplete or corrupted',
-      )
-    }
-    const legacyKeys = await cryptoLib.decryptKeysV1(
-      legacyKeyField,
-      stored.encryptedSymmetricKey,
-      stored.salt,
-      password,
-    )
-    vaultStateString = await cryptoLib.decryptSymmetricV1(
-      legacyKeys.symmetricKey,
-      stored.encryptedVaultState,
-    )
-
-    // A whole fresh generation, derived here rather than after the FavaLib is
-    // built, so that the salt, both seals, the MAC key and the kdf block that
-    // reach PersistentStorageManager are consistent BY CONSTRUCTION. The salt
-    // feeds both the at-rest AAD and the envelope MAC, so a half-applied swap
-    // would produce a vault that saves successfully and never opens again.
-    //
-    // It is also why an unlocked session cannot open a v1 vault: this step
-    // needs the password, and the session path does not have one.
-    //
-    // `createKeys` rather than a re-wrap of what was read, because nothing
-    // from a v1 vault can be carried across: it holds an RSA keypair, and v2
-    // speaks X25519 and Ed25519. The symmetric key goes with it, which costs
-    // nothing -- the vault state is re-encrypted from plaintext on the save
-    // below either way -- and rotates the data encryption key on migration as
-    // a side effect. It is one argon2id pass, the same as the re-wrap it
-    // replaces.
-    //
-    // The consequence is the one part of this migration a user can see: this
-    // device's public keys change, so every peer's record of it is stale and
-    // the devices have to pair again. That is stated rather than worked around
-    // -- announcing new keys over the old channel would authenticate them with
-    // exactly the primitive that authenticates nothing. See
-    // key-hierarchy-review/13-sync-command-authentication.md.
-    const fresh = await cryptoLib.createKeys(password)
-    keys = {
-      privateKey: fresh.privateKey,
-      signingSecretKey: fresh.signingSecretKey,
-      publicKey: fresh.publicKey,
-      signingPublicKey: fresh.signingPublicKey,
-      symmetricKey: fresh.symmetricKey,
-      macKey: fresh.macKey,
-      encryptedSecretKeys: fresh.encryptedSecretKeys,
-      encryptedSymmetricKey: fresh.encryptedSymmetricKey,
-      salt: fresh.salt,
-      kdf: fresh.kdf,
-    }
-  } else {
-    const envelope = requireV2EnvelopeFields(stored, storageVersion)
-
-    const decrypted = await cryptoLib.decryptKeys(
-      requireEncryptedSecretKeys(stored),
-      stored.encryptedSymmetricKey,
-      stored.salt,
-      password,
-      envelope.kdf,
-    )
-    keys = {
-      ...decrypted,
-      encryptedSecretKeys: requireEncryptedSecretKeys(stored),
-      encryptedSymmetricKey: stored.encryptedSymmetricKey,
-      salt: stored.salt,
-      kdf: envelope.kdf,
-    }
-
-    vaultStateString = await decryptV2VaultState(
-      cryptoLib,
-      stored,
-      storageVersion,
-      envelope,
-      keys,
-    )
+  const decrypted = await cryptoLib.decryptKeys(
+    stored.encryptedSecretKeys,
+    stored.encryptedSymmetricKey,
+    stored.salt,
+    password,
+    stored.kdf,
+  )
+  const keys: UnlockedVaultKeys = {
+    ...decrypted,
+    encryptedSecretKeys: stored.encryptedSecretKeys,
+    encryptedSymmetricKey: stored.encryptedSymmetricKey,
+    salt: stored.salt,
+    kdf: stored.kdf,
   }
+
+  const vaultStateString = await decryptVaultState(
+    cryptoLib,
+    stored,
+    storageVersion,
+    keys,
+  )
 
   const vaultState = parseVaultState(vaultStateString)
 
-  // The queued commands of a v1 vault are v1-CBC payloads with MGF1-SHA-1 key
-  // wraps, and every upgraded peer rejects those. Carrying them across would
-  // have a freshly migrated device ship undeliverable traffic on its first
-  // connection. They are dropped whether or not this load is able to save,
-  // because they are equally undeliverable either way.
-  if (isLegacy) {
-    vaultState.sync.commandSendQueue = []
-  }
-
-  const favaLib = constructFavaLib(
+  return constructFavaLib(
     platformProviders,
     deviceType,
     passwordExtraDict,
@@ -801,16 +694,6 @@ const loadFavaLibFromLockedRepesentation = async (
     vaultState,
     options,
   )
-
-  if (isLegacy) {
-    // save() is a no-op without a saveFunction, which is exactly the property
-    // tests/fixtures.test.mts relies on so that a test run can never rewrite
-    // the checked-in v1 fixture.
-    await favaLib.storage.forceSave()
-    favaLib.reportStorageUpgrade(storageVersion)
-  }
-
-  return favaLib
 }
 
 /**
@@ -928,39 +811,19 @@ const loadFavaLibFromUnlockedSession = async (
   ) as Partial<LockedRepresentation> | undefined
 
   // The stored vault is gated before the session blob is even parsed, in the
-  // same order the password path gates it: a vault from a newer library must
+  // same order the password path gates it: a vault this build cannot read must
   // be reported as one whatever else is wrong.
   const storageVersion = readStorageVersion(parsed)
   const stored = requireCompleteLockedRepresentation(parsed)
 
-  if (storageVersion < STORAGE_VERSION) {
-    // Refused for two independent reasons. A v1 envelope carries no
-    // envelopeMac, so there is nothing to check the session against and no way
-    // to tell a stale one from a current one. And opening a v1 vault re-wraps
-    // it to the current format, which needs the password -- a session does not
-    // have one, so this path could not migrate the vault even if it were safe
-    // to read it.
-    //
-    // Keeping it out also preserves the rule decryptKeysV1 and
-    // decryptSymmetricV1 document: the legacy crypto has exactly one caller.
-    throw new StorageVersionError(
-      `An unlocked session cannot open a storage version ${storageVersion} ` +
-        `vault: it carries no envelopeMac to check the session against, and ` +
-        `upgrading one needs the password. Unlock with the password once; ` +
-        `the vault is upgraded in the process.`,
-    )
-  }
-
   const session = parseUnlockedSession(unlockedSessionString)
-  const envelope = requireV2EnvelopeFields(stored, storageVersion)
 
   let vaultStateString: string
   try {
-    vaultStateString = await decryptV2VaultState(
+    vaultStateString = await decryptVaultState(
       cryptoLib,
       stored,
       storageVersion,
-      envelope,
       session,
     )
   } catch (error) {
@@ -996,10 +859,10 @@ const loadFavaLibFromUnlockedSession = async (
       // it claims to describe.
       publicKey: encryptionPublicKeyFromSecret(session.privateKey),
       signingPublicKey: signingPublicKeyFromSecret(session.signingSecretKey),
-      encryptedSecretKeys: requireEncryptedSecretKeys(stored),
+      encryptedSecretKeys: stored.encryptedSecretKeys,
       encryptedSymmetricKey: stored.encryptedSymmetricKey,
       salt: stored.salt,
-      kdf: envelope.kdf,
+      kdf: stored.kdf,
     },
     vaultState,
     options,

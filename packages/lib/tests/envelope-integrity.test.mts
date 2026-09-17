@@ -115,14 +115,18 @@ describe('stored envelope integrity', () => {
     })
 
     it.each(['envelopeMac', 'kdf'] as const)(
-      'refuses a v2 blob with no %s rather than silently accepting it',
+      'refuses a blob with no %s rather than silently accepting it',
       async (field) => {
+        // Dropping the MAC must not be a way to skip the MAC check. Both
+        // fields are required by the one completeness check now -- while two
+        // storage formats existed they could not be, because the older one
+        // legitimately carried neither.
         const representation = parse() as Partial<LockedRepresentation>
         delete representation[field]
 
         await expect(
           load(representation as LockedRepresentation),
-        ).rejects.toThrow(/missing its kdf parameters or its envelopeMac/)
+        ).rejects.toThrow(/incomplete or corrupted/)
       },
     )
 
@@ -337,10 +341,11 @@ describe('stored envelope integrity', () => {
     })
 
     it('refuses a v1 envelope, so the padding oracle is off the sync path', async () => {
-      // The only reader of the v1 CBC envelope is decryptSymmetricV1, and the
-      // only caller of that is the vault load path. If decryptSymmetric ever
-      // starts accepting a v1 envelope again, the oracle described in
-      // 02-ciphertext-authenticity.md is back on the wire.
+      // Nothing in the library reads the storage version 1 CBC envelope any
+      // more -- that read path was deleted rather than migrated
+      // (key-hierarchy-review/18-anti-rollback.md). This asserts the shape
+      // stays refused: if decryptSymmetric ever starts accepting it again, the
+      // oracle described in 02-ciphertext-authenticity.md is back on the wire.
       const key = await cryptoLib.createSymmetricKey()
       const v1Shaped =
         'bm9uY2Vub25jZW5vbmNlbm8=:c29tZWNpcGhlcnRleHQ=' as EncryptedVaultStateString

@@ -76,8 +76,9 @@ Two things came **out** of that work rather than into it, and both are open:
 - **`18`** — rollback. `02` claimed the AAD binding stopped the
   `vault.json.backup` swap; it does not, and neither does the MAC, because both
   are functions of an envelope that was valid when it was written. `18` also
-  owns the wider downgrade-then-migrate window that stays open while the v1 read
-  path exists.
+  owned the wider downgrade-then-migrate window that stayed open while the v1
+  read path existed — closed 2026-09-17 by deleting that read path, leaving
+  `18` open for the rollback half alone.
 - **`10`'s amendment** — the at-rest RSA self-wrap has two costs this review did
   not weigh: it is what made the vault ciphertext forgeable by anyone holding
   the device's public key (the reason `02` needed a password-keyed MAC at all),
@@ -132,13 +133,18 @@ their values and only their documentation moved. The rule, stated once in
 re-versioned. The one visible cost is that a v1 vault's migration now mints a
 fresh keypair, so paired devices have to pair again — stated to the user rather
 than engineered around, because the alternative authenticates new keys with the
-primitive `13` says authenticates nothing.
+primitive `13` says authenticates nothing. (Amended 2026-09-17: that cost is
+what made the migration not worth keeping. It was deleted instead; a v1 vault is
+refused, and the entries cross as an export. Paired devices still have to pair
+again, so nothing was lost that the migration preserved.)
 
-Remaining, in order: `18`. Whoever raises the KDF parameters
-again must move the policy assertion in `kdf-vectors.test.ts` to a v3 vector and
-leave **both** existing anchors beside it; the v1 anchor survives until the v1
-read path itself is deleted (`18`, item 1) — which now also removes the last RSA
-code in the library.
+Remaining, in order: `18`, now down to its rollback half. Whoever raises the KDF
+parameters again must move the policy assertion in `kdf-vectors.test.ts` to a v3
+vector and leave **both** existing anchors beside it — a vault records the
+parameters it was written with and must still open under them. (Amended
+2026-09-17: the v1 read path is deleted, which took the last RSA code in the
+library with it. The cheap anchor stayed regardless: `createSyncKey` derives
+with those same numbers.)
 
 ## The verified hierarchy
 
@@ -196,8 +202,8 @@ encryptedSymmetricKey, salt, encryptedVaultState, libVersion, storageVersion,
 kdf, envelopeMac}`.
 
 **AES-GCM everywhere, at last.** The PBES2/AES-256-CBC blob is gone with the RSA
-layer it existed for; see [10](10-rsa-layer.md)'s amendment. The only cipher
-outside AES-256-GCM is in the v1 read path.
+layer it existed for; see [10](10-rsa-layer.md)'s amendment. Since the v1 read
+path was deleted on 2026-09-17, AES-256-GCM is the only cipher in the library.
 
 Five details that are easy to get wrong:
 

@@ -9,6 +9,7 @@ import {
   SaveFunction,
   FavaLibEvent,
   StorageVersionError,
+  UnsupportedStorageVersionError,
 } from 'favalib'
 import NodePlatformProvider from 'favalib/platformProviders/node'
 import { Settings } from './init.mjs'
@@ -87,6 +88,16 @@ const loadVault = async (
         { connectToSyncServer },
       )
   } catch (err) {
+    if (err instanceof UnsupportedStorageVersionError) {
+      throw new Error(
+        `The vault at "${settings.vaultLocation}" was saved in an older storage ` +
+          `format that this version of favacli cannot read, and there is no ` +
+          `automatic upgrade. Open it with the version of favacli that wrote ` +
+          `it, export your entries with "favacli export text", and import them ` +
+          `here. Your data is intact — do not delete the vault or its backup. ` +
+          `(${err.message})`,
+      )
+    }
     if (err instanceof StorageVersionError) {
       throw new Error(
         `The vault at "${settings.vaultLocation}" was saved by a newer version of ` +

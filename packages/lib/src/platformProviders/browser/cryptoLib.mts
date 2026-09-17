@@ -1,4 +1,3 @@
-import forge from 'node-forge'
 import {
   base64ToUint8Array,
   hexToUint8Array,
@@ -16,7 +15,6 @@ import type {
   EncryptedSecretKeys,
   EncryptedSymmetricKey,
   KdfParameters,
-  LegacyEncryptedPrivateKey,
   MacKey,
   Password,
   PasswordHash,
@@ -29,7 +27,7 @@ import type {
   SymmetricKey,
   SyncKey,
 } from '../../interfaces/CryptoLib.mjs'
-import { V1_KDF_PARAMETERS, V2_KDF_PARAMETERS } from '../../version.mjs'
+import { SYNC_KDF_PARAMETERS, V2_KDF_PARAMETERS } from '../../version.mjs'
 import { buildKeyWrapAad } from '../../utils/canonical.mjs'
 import {
   createEncryptionKeyPair,
@@ -45,18 +43,19 @@ import {
 } from '../shared/curves.mjs'
 
 /**
- * The AES-GCM nonce length, in bytes. Twelve, not the sixteen the v1 CBC path
- * used: 96 bits is the only length GCM's counter construction handles without
- * an extra GHASH pass, and it is what every implementation agrees on.
+ * The AES-GCM nonce length, in bytes. Twelve, not the sixteen the AES-CBC it
+ * replaced used: 96 bits is the only length GCM's counter construction handles
+ * without an extra GHASH pass, and it is what every implementation agrees on.
  */
 const GCM_NONCE_BYTES = 12
 
 /**
  * The prefix that marks a storage version 2 ciphertext envelope.
  *
- * A v1 envelope is `base64(iv) + ":" + base64(ct)`, whose first field is always
- * exactly 24 base64 characters, so the two shapes cannot be confused. The
- * prefix is what makes that explicit rather than inferred.
+ * Storage version 1's envelope was `base64(iv) + ":" + base64(ct)`, whose first
+ * field is always exactly 24 base64 characters, so the two shapes cannot be
+ * confused. Nothing reads that format any more, but the prefix is what makes
+ * the refusal explicit rather than inferred.
  */
 const V2_ENVELOPE_PREFIX = 'v2'
 
@@ -70,22 +69,11 @@ const DEK_WRAP_INFO = 'favalib:dek-wrap:v2'
 const ENVELOPE_MAC_INFO = 'favalib:envelope-mac:v2'
 
 /**
- * Normalizes line endings in a string so they match the
- * node cryptoprovider format
- * @param str - The input string to normalize.
- * @returns The normalized string with consistent line endings.
- */
-const normalizeLineEndings = (str: string): string => {
-  return str.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
-}
-
-/**
  * Create a password hash
  * @param salt - The salt to use
  * @param password - The password to hash
- * @param parameters - The argon2id cost parameters. Storage version 2 vaults
- * record their own in the LockedRepresentation; version 1 vaults use
- * V1_KDF_PARAMETERS.
+ * @param parameters - The argon2id cost parameters. A stored vault records its
+ * own in the LockedRepresentation; the default is what a new one gets.
  * @returns The calculated password hash
  */
 export const generatePasswordHash = (
@@ -236,37 +224,6 @@ class BrowserCryptoLib implements CryptoLib {
       symmetricKey,
       macKey,
     }
-  }
-
-  /**
-   * @inheritdoc
-   */
-  async decryptKeysV1(
-    encryptedPrivateKey: LegacyEncryptedPrivateKey,
-    encryptedSymmetricKey: EncryptedSymmetricKey,
-    salt: Salt,
-    password: Password,
-  ): Promise<{ symmetricKey: SymmetricKey }> {
-    const passwordHash = await generatePasswordHash(
-      salt,
-      password,
-      V1_KDF_PARAMETERS,
-    )
-
-    const privateKey = await this.decryptLegacyPrivateKey(
-      encryptedPrivateKey,
-      passwordHash,
-    )
-    // v1 wrapped the symmetric key with RSA-OAEP/MGF1-SHA-1. The RSA keypair
-    // itself is not returned: the upgrade mints a fresh curve pair, so this key
-    // is read exactly once and then discarded.
-    const privateKeyObj = forge.pki.privateKeyFromPem(privateKey)
-    const symmetricKey = privateKeyObj.decrypt(
-      atob(encryptedSymmetricKey),
-      'RSA-OAEP',
-    ) as SymmetricKey
-
-    return { symmetricKey }
   }
 
   /**
@@ -526,8 +483,11 @@ class BrowserCryptoLib implements CryptoLib {
   ) {
     const parts = encryptedText.split(':')
     if (parts.length !== 3 || parts[0] !== V2_ENVELOPE_PREFIX) {
-      // A v1 envelope reaching here is a bug or an attack, never a migration:
-      // the v1 reader is decryptSymmetricV1 and only the load path may call it.
+      // A storage version 1 envelope -- base64(iv):base64(ct), AES-256-CBC --
+      // reaching here is a bug or an attack. Nothing in the library reads that
+      // format any more (key-hierarchy-review/18-anti-rollback.md), and the
+      // shape is refused rather than attempted, which is what keeps the CBC
+      // padding oracle off the sync path.
       throw new CryptoError('Could not decrypt data')
     }
     const [, nonceString, encryptedData] = parts
@@ -562,35 +522,6 @@ class BrowserCryptoLib implements CryptoLib {
   /**
    * @inheritdoc
    */
-  async decryptSymmetricV1<T extends string>(
-    symmetricKey: SymmetricKey,
-    encryptedText: Encrypted<T>,
-  ) {
-    const [ivString, encryptedData] = encryptedText.split(':')
-    const iv = base64ToUint8Array(ivString)
-    const keyUint8Array = base64ToUint8Array(symmetricKey)
-
-    const key = await window.crypto.subtle.importKey(
-      'raw',
-      keyUint8Array,
-      { name: 'AES-CBC', length: 256 },
-      false,
-      ['decrypt'],
-    )
-
-    const encrypted = base64ToUint8Array(encryptedData)
-    const decrypted = await window.crypto.subtle.decrypt(
-      { name: 'AES-CBC', iv },
-      key,
-      encrypted,
-    )
-
-    return uint8ArrayToString(decrypted) as T
-  }
-
-  /**
-   * @inheritdoc
-   */
   async createSymmetricKey(): Promise<SymmetricKey> {
     const key = await window.crypto.subtle.generateKey(
       { name: 'AES-GCM', length: 256 },
@@ -608,53 +539,13 @@ class BrowserCryptoLib implements CryptoLib {
     const key = await argon2id({
       password: sharedKey,
       salt,
-      parallelism: V1_KDF_PARAMETERS.parallelism,
-      iterations: V1_KDF_PARAMETERS.iterations,
-      memorySize: V1_KDF_PARAMETERS.memorySize,
+      parallelism: SYNC_KDF_PARAMETERS.parallelism,
+      iterations: SYNC_KDF_PARAMETERS.iterations,
+      memorySize: SYNC_KDF_PARAMETERS.memorySize,
       hashLength: 32,
       outputType: 'binary',
     })
     return uint8ArrayToBase64(key) as SyncKey
-  }
-
-  /**
-   * Unwraps a storage version 1 PBES2-encrypted RSA private key.
-   *
-   * MIGRATION PATH ONLY, reachable from decryptKeysV1 and nowhere else. It and
-   * the OAEP unwrap beside it are the last RSA operations in the provider, and
-   * they go with the v1 read path.
-   * @param encryptedPrivateKey - The stored v1 encrypted private key.
-   * @param passwordHash - The argon2id hash the key was wrapped under.
-   * @returns A promise resolving to the plaintext private key PEM.
-   * @throws {CryptoError} If the password or the key is not usable.
-   */
-  private async decryptLegacyPrivateKey(
-    encryptedPrivateKey: LegacyEncryptedPrivateKey,
-    passwordHash: PasswordHash,
-  ): Promise<string> {
-    try {
-      const privateKeyPem = forge.pki.decryptRsaPrivateKey(
-        encryptedPrivateKey,
-        passwordHash,
-      )
-      if (!privateKeyPem) {
-        throw new CryptoError('Invalid password')
-      }
-      return Promise.resolve(
-        normalizeLineEndings(forge.pki.privateKeyToPem(privateKeyPem)),
-      )
-    } catch (err) {
-      // eslint-disable-next-line no-restricted-globals
-      if (err instanceof Error) {
-        if (err.message === 'Invalid password') {
-          throw new CryptoError('Invalid password')
-        }
-        if (err.message.includes('Unsupported private key')) {
-          throw new CryptoError('Invalid private key')
-        }
-      }
-      throw err
-    }
   }
 }
 

@@ -137,7 +137,8 @@ backup carries the same `salt`, `storageVersion` and `kdf` as the live file, so
 any AAD derived from the envelope validates for both, and so does the MAC. An
 AEAD cannot detect a rollback to a previously valid, complete file; that needs
 external monotonic state. It is now [18](18-anti-rollback.md), which also
-records the wider window the v1 read path opens while it exists.
+records the wider window the v1 read path opened while it existed — closed
+2026-09-17 by deleting that read path.
 
 What did close, all of it real: the IV-XOR rewrite of plaintext block 0 and
 every bit-flip or splice; envelope forgery (above); the password-change splice

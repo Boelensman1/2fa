@@ -7,7 +7,7 @@ browser PWA and a browser extension, in one pnpm workspace.
 
 | Package | npm name | What it is |
 | --- | --- | --- |
-| `packages/lib` | `favalib` | Vault/crypto core; `@noble/curves` (X25519 + Ed25519), openpgp, jpake, canvas, qrcode, and node-forge for the storage-version-1 read path only. Also owns the shared branded types (`favalib/types`) and the sync wire protocol (`favalib/protocol/*`) |
+| `packages/lib` | `favalib` | Vault/crypto core; `@noble/curves` (X25519 + Ed25519), openpgp, jpake, canvas, qrcode. Also owns the shared branded types (`favalib/types`) and the sync wire protocol (`favalib/protocol/*`) |
 | `packages/server` | `favaserver` | WebSocket sync server; `ws` + knex/objection on PostgreSQL |
 | `packages/app-cli` | `favacli` | Clipanion CLI; stores secrets with keytar |
 | `packages/app-browser` | `favabrowser` | SolidJS + Vite PWA |

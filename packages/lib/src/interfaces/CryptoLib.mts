@@ -64,28 +64,13 @@ export interface DevicePublicKeys {
 export type SyncKey = Tagged<SymmetricKey, 'SyncKey'>
 
 /**
- * A device's sealed secret keys: the v2 AES-256-GCM envelope over the JSON of
- * both of them, under a key derived from the password hash.
- *
- * Storage version 1 kept something else entirely in this slot -- a PKCS#8
- * PBES2 PEM wrapping an RSA private key -- which the migration path still
- * reads as LegacyEncryptedPrivateKey.
+ * A device's sealed secret keys: an AES-256-GCM envelope over the JSON of both
+ * of them, under a key derived from the password hash.
  */
 export type EncryptedSecretKeys = Encrypted<SecretKeysString>
 
 /** Represents the stringified form of a device's pair of secret keys */
 export type SecretKeysString = Tagged<string, 'SecretKeysString'>
-
-/**
- * A storage version 1 encrypted RSA private key (PBES2 PEM).
- *
- * MIGRATION PATH ONLY, and the last RSA-shaped value in the library. It goes
- * when the v1 read path does -- see key-hierarchy-review/18-anti-rollback.md.
- */
-export type LegacyEncryptedPrivateKey = Tagged<
-  string,
-  'LegacyEncryptedPrivateKey'
->
 
 /**
  * Represents the key the envelope MAC is computed with (base64 encoded).
@@ -171,36 +156,6 @@ interface CryptoLib {
     publicKey: PublicKey
     signingPublicKey: SigningPublicKey
     macKey: MacKey
-  }>
-
-  /**
-   * Decrypts the keys of a storage version 1 vault.
-   *
-   * MIGRATION PATH ONLY. This is the one place in the library that still
-   * derives with the v1 argon2id parameters, the one that still holds RSA code
-   * at all, and it must stay reachable only from
-   * loadFavaLibFromLockedRepesentation -- no sync code may call it. There is no
-   * MAC key, because a v1 envelope carries no MAC. Delete this together with
-   * LEGACY_STORAGE_VERSION once installs have upgraded.
-   *
-   * It returns ONLY the symmetric key, which is all a migration needs: a v1
-   * vault's RSA keypair cannot become a curve keypair, so the upgrade mints a
-   * fresh pair and the old one is read once and discarded. The device's public
-   * key therefore changes on migration and its peers have to pair again --
-   * stated in full in key-hierarchy-review/13-sync-command-authentication.md.
-   * @param encryptedPrivateKey - The v1 PBES2-wrapped RSA private key
-   * @param encryptedSymmetricKey - The v1 RSA-OAEP wrapped symmetric key
-   * @param salt - The salt used for key derivation
-   * @param password - The password to unwrap with
-   * @returns A promise that resolves to the vault's symmetric key
-   */
-  decryptKeysV1: (
-    encryptedPrivateKey: LegacyEncryptedPrivateKey,
-    encryptedSymmetricKey: EncryptedSymmetricKey,
-    salt: Salt,
-    password: Password,
-  ) => Promise<{
-    symmetricKey: SymmetricKey
   }>
 
   /**
@@ -348,23 +303,6 @@ interface CryptoLib {
   ) => Promise<T>
 
   /**
-   * Decrypts a storage version 1 (AES-256-CBC, unauthenticated) ciphertext.
-   *
-   * MIGRATION PATH ONLY, exactly like decryptKeysV1: reachable from the vault
-   * load path and from nowhere else. Keeping it off the sync path is what
-   * actually removes the padding oracle described in
-   * key-hierarchy-review/02-ciphertext-authenticity.md, rather than merely
-   * making the new path safe.
-   * @param symmetricKey - The symmetric key to use for decryption
-   * @param encryptedText - The v1 text to decrypt
-   * @returns A promise that resolves to the decrypted text
-   */
-  decryptSymmetricV1: <T extends string>(
-    symmetricKey: SymmetricKey,
-    encryptedText: Encrypted<T>,
-  ) => Promise<T>
-
-  /**
    * Encrypts a plain text message using a symmetric key
    * @param symmetricKey - The symmetric key to use for encryption
    * @param plainText - The text to encrypt
@@ -386,8 +324,9 @@ interface CryptoLib {
   /**
    * Creates a sync key from a shared key (that was created from a JPAKE exchange)
    *
-   * Deliberately still at the v1 argon2id parameters: its input is already a
-   * 256-bit ECC shared secret, so the cost setting is immaterial.
+   * Uses SYNC_KDF_PARAMETERS rather than the password parameters: its input is
+   * already a 256-bit ECC shared secret, so there is nothing to grind and the
+   * cost setting is immaterial.
    * @param sharedKey - The shared key to derive from
    * @param salt - A salt to derive the key with
    * @returns A promise that resolves to the derived key

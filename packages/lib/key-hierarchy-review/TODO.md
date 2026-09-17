@@ -45,9 +45,10 @@ holds the detail. Tick a box only when that file's `Status:` line and the
       store the exported session blob instead of `vaultPassword`, and clear it
       on `lock()` and on `FavaLibEvent.PasswordChanged`. There is no such code
       in this tree.
-- [ ] **18** — anti-rollback. Two parts: delete the v1 read path once installs
-      have upgraded (calendar call), then a monotonic counter outside the blob.
-      P1.
+- [ ] **18** — anti-rollback. Half done: the v1 read path is deleted, so the
+      downgrade-then-migrate window is closed. What remains is a monotonic
+      counter outside the blob, against a same-version snapshot replayed over a
+      current vault. P1.
 
 ## Open — sync layer
 

@@ -8,6 +8,7 @@ import {
   InitializationError,
   SESSION_VERSION,
   StorageVersionError,
+  UnsupportedStorageVersionError,
   getFavaLibVaultCreationUtils,
   type DeviceType,
   type EntryId,
@@ -55,7 +56,6 @@ const fixtureV1 = readFileSync(
   new URL('./fixtures/vault-v1.json', import.meta.url),
   'utf8',
 ) as LockedRepresentationString
-const V1_FIXTURE_PASSWORD = 'fixture!Vault7#Frozen$v1' as Password
 
 const fixtureDeviceType = 'fixture-device' as DeviceType
 const fixtureExtraDict: PasswordExtraDict = ['fixture']
@@ -90,7 +90,7 @@ const countingProviders = (): {
       return super.createKeys(password)
     }
     decryptKeys: CryptoLib['decryptKeys'] = (
-      encryptedPrivateKey,
+      encryptedSecretKeys,
       encryptedSymmetricKey,
       salt,
       password,
@@ -98,25 +98,11 @@ const countingProviders = (): {
     ) => {
       calls++
       return super.decryptKeys(
-        encryptedPrivateKey,
+        encryptedSecretKeys,
         encryptedSymmetricKey,
         salt,
         password,
         kdf,
-      )
-    }
-    decryptKeysV1: CryptoLib['decryptKeysV1'] = (
-      encryptedPrivateKey,
-      encryptedSymmetricKey,
-      salt,
-      password,
-    ) => {
-      calls++
-      return super.decryptKeysV1(
-        encryptedPrivateKey,
-        encryptedSymmetricKey,
-        salt,
-        password,
       )
     }
     encryptKeys: CryptoLib['encryptKeys'] = (
@@ -195,10 +181,9 @@ describe('unlocked session (07-session-key-api.md)', () => {
     })
 
     it('imports under a different provider than it was exported from', async () => {
-      // The blob carries a private key PEM, and node writes "\n" where
-      // node-forge writes "\r\n". That asymmetry is what made the at-rest AAD
-      // hash the exact stored bytes (02-ciphertext-authenticity.md); it is
-      // cheap to close here too.
+      // The at-rest AAD folds in a hash of the exact stored bytes
+      // (02-ciphertext-authenticity.md), so any encoding difference between
+      // the two providers would show up here. Cheap to close.
       const lib = await utils(browserProviders).loadFavaLibFromUnlockedSession(
         fixtureV2,
         session,
@@ -385,38 +370,18 @@ describe('unlocked session (07-session-key-api.md)', () => {
       session = favaLib.storage.exportUnlockedSession()
     })
 
-    it('refuses a storage version 1 vault, before it looks at the session', async () => {
+    it('refuses an older storage version, before it looks at the session', async () => {
       // Deliberately paired with a syntactically invalid session: the version
-      // gate has to win, or the caller of a future format is told their vault
-      // is corrupt rather than that they should upgrade.
+      // gate has to win, or the caller of an unreadable vault is told their
+      // session is corrupt rather than which version they actually have.
       await expect(
         utils().loadFavaLibFromUnlockedSession(
           fixtureV1,
           'not json at all' as UnlockedSessionString,
           { connectToSyncServer: false },
         ),
-      ).rejects.toThrow(StorageVersionError)
+      ).rejects.toThrow(UnsupportedStorageVersionError)
     })
-
-    it('refuses a v1 vault whose migration could not be persisted', async () => {
-      // The subtle case. Loading the v1 fixture with no saveFunction leaves an
-      // instance holding freshly re-wrapped v2 material while the store is
-      // still v1, so its session looks perfectly valid -- and must still be
-      // refused by the version gate rather than by a MAC failure.
-      const migrated = await utils().loadFavaLibFromLockedRepesentation(
-        fixtureV1,
-        V1_FIXTURE_PASSWORD,
-        { connectToSyncServer: false },
-      )
-      const sessionFromMigrated = migrated.storage.exportUnlockedSession()
-      migrated.sync?.closeServerConnection()
-
-      await expect(
-        utils().loadFavaLibFromUnlockedSession(fixtureV1, sessionFromMigrated, {
-          connectToSyncServer: false,
-        }),
-      ).rejects.toThrow(StorageVersionError)
-    }, 30000)
 
     it('refuses a vault written by a newer library', async () => {
       const tooNew = JSON.stringify({

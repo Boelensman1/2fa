@@ -24,9 +24,11 @@ globalThis.window = { crypto: crypto.webcrypto }
 const nodeCrypto = new nodeProviders.CryptoLib()
 const browserCrypto = new browserProviders.CryptoLib()
 
-// The password hash of tests/fixtures/vault-v1.json, reused here on purpose:
-// tests/CryptoProviders/kdf-vectors.test.ts pins that this is what argon2id
-// produces for that vault, so these two files chain end to end.
+// The argon2id hash of the fixture password and salt at the cheap parameters,
+// reused here on purpose: tests/CryptoProviders/kdf-vectors.test.ts pins that
+// this is what argon2id produces for those inputs, so these two files chain end
+// to end. Any 64-byte hash would do for a MAC key; using one the suite already
+// pins is what makes the chain checkable.
 const PASSWORD_HASH =
   'bd9c01dab08f03a906c7fd2c155bf14e8e2706d04f0afe8e7afa54508b7526447feb04fb14cf98dc6810e443bf8674d17cc65bf2d65ed7498ec2b9ec4974a0bd' as PasswordHash
 const SALT = 'O454a0A723g+U3MYcYoCFA==' as Salt

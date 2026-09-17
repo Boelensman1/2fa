@@ -2,7 +2,6 @@ import type { Tagged } from 'type-fest'
 import type {
   EncryptedSecretKeys,
   EncryptedSymmetricKey,
-  LegacyEncryptedPrivateKey,
   KdfParameters,
   MacKey,
   PrivateKey,
@@ -26,11 +25,6 @@ export interface LockedRepresentation {
   /**
    * The device's two secret keys -- X25519 and Ed25519 -- sealed together with
    * AES-256-GCM under a key derived from the password hash.
-   *
-   * Storage version 1 kept a PBES2-wrapped RSA private key here instead, which
-   * is why the migration path reads the field as LegacyEncryptedPrivateKey and
-   * why the two never meet: a v1 keypair cannot become a curve keypair, so an
-   * upgrade mints a fresh pair and discards the old one.
    */
   encryptedSecretKeys: EncryptedSecretKeys
   /**
@@ -49,14 +43,13 @@ export interface LockedRepresentation {
   libVersion: string
   storageVersion: number
   /**
-   * The argon2id parameters this vault was written with. Absent in storage
-   * version 1, where they were hardcoded; required from version 2, so that the
-   * cost can be raised again later without breaking existing vaults.
+   * The argon2id parameters this vault was written with. Recorded rather than
+   * hardcoded, so that the cost can be raised later without breaking existing
+   * vaults.
    */
   kdf: KdfParameters
   /**
    * base64 HMAC-SHA256 over every other field, keyed from the password hash.
-   * Absent in storage version 1, required from version 2.
    *
    * This is what authenticates the vault to the holder of the PASSWORD. It was
    * added because the AES-GCM tag on `encryptedVaultState` could not: the key
@@ -73,25 +66,6 @@ export interface LockedRepresentation {
    */
   envelopeMac: string
 }
-/**
- * A storage version 1 envelope, as the migration path reads it.
- *
- * It differs from LockedRepresentation in exactly one field, and that field is
- * the whole reason the two formats cannot be conflated: `encryptedPrivateKey`
- * is a PBES2 PEM wrapping an RSA key, where v2 has `encryptedSecretKeys`, an
- * AES-GCM seal over two curve keys. A v1 vault also has no `kdf` block and no
- * `envelopeMac`.
- *
- * MIGRATION PATH ONLY -- it goes with the v1 read path
- * (key-hierarchy-review/18-anti-rollback.md).
- */
-export interface LegacyLockedRepresentation extends Omit<
-  LockedRepresentation,
-  'encryptedSecretKeys' | 'kdf' | 'envelopeMac'
-> {
-  encryptedPrivateKey: LegacyEncryptedPrivateKey
-}
-
 export type LockedRepresentationString = Tagged<
   string,
   'LockedRepresentationString'

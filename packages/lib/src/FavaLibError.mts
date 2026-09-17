@@ -102,8 +102,22 @@ export class SyncPairingVersionError extends SyncError {}
 export class InvalidCommandError extends FavaLibError {}
 
 /**
- * Error thrown when a stored vault's storageVersion is not one this build can
- * read -- either higher than this library supports, or not a valid version at
- * all.
+ * Error thrown when a stored vault's storageVersion is newer than this build
+ * can read, or is not a valid version at all.
+ *
+ * The sibling below is the other direction, and the two are separate classes
+ * because the advice is opposite: this one means upgrade the software, that one
+ * means the software cannot be upgraded far enough backwards to help.
  */
 export class StorageVersionError extends InitializationError {}
+
+/**
+ * Error thrown when a stored vault's storageVersion is older than the format
+ * this build reads.
+ *
+ * There is no migration, by design: a vault predating the current format is
+ * refused, and the way across is to open it with the older build, export the
+ * entries and import them here. See key-hierarchy-review/18-anti-rollback.md
+ * for why reading the old format at all was the wider problem.
+ */
+export class UnsupportedStorageVersionError extends InitializationError {}

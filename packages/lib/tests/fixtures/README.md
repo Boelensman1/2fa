@@ -2,7 +2,8 @@
 
 Frozen, real vaults written by past versions of the library. They exist so that
 a change to the at-rest format is caught by the test suite instead of by a user
-whose vault no longer opens.
+whose vault no longer opens — and, for a format the library no longer reads, so
+that the refusal is caught too.
 
 ## The convention
 
@@ -23,17 +24,31 @@ below.
 
 When a new storage version lands, add `vault-v<n>.json` alongside and leave the
 older files untouched — at that point the older fixture becomes the thing that
-proves the new upgrade/read-old path actually works.
+proves whatever the new version does about the old one: reads it, if there is a
+read path, and refuses it cleanly if there is not.
 
 ## `vault-v1.json`
 
 - **Storage version:** 1
 - **Written by:** favalib 0.0.21, at commit `e88f50b`
 - **Password:** `fixture!Vault7#Frozen$v1`
-- **Crypto it pins:** argon2id (m = 512 KiB, t = 256, p = 1, len = 64, salt used
-  as a 24-byte UTF-8 string) → PBES2-wrapped RSA-4096 → RSA-OAEP/MGF1-SHA-1
-  unwrap of the symmetric key → AES-256-CBC with a `base64(iv) + ":" +
-base64(ct)` payload.
+- **Format:** argon2id (m = 512 KiB, t = 256, p = 1, len = 64, salt used as a
+  24-byte UTF-8 string) → PBES2-wrapped RSA-4096 → RSA-OAEP/MGF1-SHA-1 unwrap
+  of the symmetric key → AES-256-CBC with a `base64(iv) + ":" + base64(ct)`
+  payload.
+
+**This vault is no longer readable, and that is now its job.** Storage version 1
+was dropped rather than migrated: reading it at all left a v1 blob able to be
+dropped over a current vault, open, and be silently rewritten — a downgrade
+window needing no matching salt and no matching kdf block. See
+`../../key-hierarchy-review/18-anti-rollback.md`.
+
+So `fixtures.test.mts` no longer opens this file. It asserts that both load
+paths refuse it — with the correct password, so the refusal is the version gate
+and not a failed unlock — that the error says how to get the data across
+(export under the old build, import under the new one), that an absent
+`storageVersion` field gets no benefit of the doubt, and above all that nothing
+is written in the attempt.
 
 Contents — two TOTP entries, both SHA-1 / 6 digits / 30s:
 
@@ -42,15 +57,16 @@ Contents — two TOTP entries, both SHA-1 / 6 digits / 30s:
 | `e6c4f652-bf77-4ca4-be3a-8b06dc63dd21` | Fixture Entry One | Fixture Issuer A | `JBSWY3DPEHPK3PXP` |
 | `01d91809-ae5d-4385-ad26-bee175020361` | Fixture Entry Two | Fixture Issuer B | `GEZDGNBVGY3TQOJQ` |
 
-`tests/fixtures.test.mts` asserts the OTPs those secrets produce at a fixed
-timestamp. Both expected values were cross-checked against an independent
-RFC 6238 implementation, so the test pins genuine correctness end to end rather
-than merely agreeing with itself.
+The entries are listed because they are what the file contains, not because
+anything asserts them any more — nothing can read them. The OTPs they produce
+are pinned against `vault-v2.json`, which holds the same two secrets.
 
-This fixture's password and salt are reused as the argon2id test vector in
-`tests/CryptoProviders/kdf-vectors.test.ts`, on purpose: that vector isolates
-the KDF step of this very vault, so when both go red the vector says which layer
-moved. Changing either file means looking at the other.
+This fixture's password and salt are still reused as the argon2id test vector in
+`tests/CryptoProviders/kdf-vectors.test.ts`. The cheap parameters outlived the
+format: `SYNC_KDF_PARAMETERS` uses exactly those numbers for `createSyncKey`,
+where the cost is immaterial because the input is already a 256-bit shared
+secret. Keeping the same inputs is also what lets that vector chain into
+`envelope-mac.test.ts`, which uses the resulting hash as its MAC-key anchor.
 
 `deviceId` is `91b8a8bf-3450-4e68-94db-4d6051901ffa` and `sync.serverUrl` is
 `undefined` — it was generated without a `serverUrl`, so no `SyncManager` was
@@ -97,8 +113,9 @@ writers and no readers, and keeping it would have meant keeping a parallel RSA
 reader alive to open it.
 
 The convention holds for every format that has shipped. `vault-v1.json` is the
-one that has, and it is untouched -- and now doing more work than before, since
-it is the only thing proving that a real v1 vault still opens and migrates.
+one that has, and it is untouched -- and still doing work, though not the work
+it used to: it is the only thing proving that a real v1 vault is refused rather
+than read.
 
 The evidence that the regeneration is honest is in the OTPs: the secrets are
 unchanged, so the expected values are the ones already cross-checked against an
@@ -120,12 +137,13 @@ format under test.
 
 Unlike v1, this fixture's password and salt are **not** reused as the argon2id
 test vector. `kdf-vectors.test.ts` keeps the v1 fixture's password and salt for
-both its v1 and v2 vectors, so that the only thing differing between the two
-vectors is the cost parameters. The chain this fixture pins end to end is
-asserted by `fixtures.test.mts` instead.
+both of its vectors, so that the only thing differing between the two is the
+cost parameters. The chain this fixture pins end to end is asserted by
+`fixtures.test.mts` instead.
 
 ### Recipe (v2)
 
 Identical to the v1 recipe above, at the commit named for this fixture. The
 only differences are the password and that `createNewFavaLibVault` now writes
-`storageVersion: 2`.
+`storageVersion: 2`. Note that the v1 recipe can only be followed at the commit
+it names: the current library has no v1 writer and no v1 reader.

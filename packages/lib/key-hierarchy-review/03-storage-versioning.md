@@ -64,6 +64,16 @@ and refuses a vault it cannot read, so the gate that [01](01-kdf-parameters.md)
 and [02](02-ciphertext-authenticity.md) need is in place. This change does
 **not** bump the format — the blob is still `storageVersion: 1`.
 
+> **Amended 2026-09-17.** Two things below have since changed, and the gate
+> itself is what did the changing. Storage version 2 landed, and then the
+> version 1 read path was **deleted** rather than migrated
+> ([18](18-anti-rollback.md)) — so `LEGACY_STORAGE_VERSION` is gone, an absent
+> `storageVersion` is now refused instead of "treated as 1", and a vault below
+> `STORAGE_VERSION` raises `UnsupportedStorageVersionError` rather than being
+> upgraded in place. Everything else below stands, including the ordering
+> argument and the numeric-string reasoning, which is why the gate was worth
+> building before there was a second version to gate against.
+
 What landed:
 
 - `src/version.mts` (new) holds `LIB_VERSION`, `STORAGE_VERSION`,

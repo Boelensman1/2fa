@@ -102,7 +102,11 @@ derivation** — no argon2id, no PBES2 unwrap of the private key.
   the session against; and opening a v1 vault _re-wraps_ it, which needs the
   password. The session path could not migrate a vault even if reading one were
   safe. This also keeps the rule `decryptKeysV1` and `decryptSymmetricV1`
-  document — the legacy crypto still has exactly one caller.
+  document — the legacy crypto still has exactly one caller. (Amended
+  2026-09-17: the v1 read path is gone, so the path-local refusal went with it —
+  `readStorageVersion`, which both load paths already call first, now refuses
+  every version below `STORAGE_VERSION`. The ordering property below is
+  unchanged and still tested.)
 - **One uniform error for "wrong vault", "stale" and "tampered".** A session
   import that distinguished them would tell whoever can write the session store
   which of their guesses was closest. `CryptoLib.decryptSymmetric` already takes
@@ -130,12 +134,18 @@ derivation** — no argon2id, no PBES2 unwrap of the private key.
   putting it in the unit those move would imply it is.
 - **The load path was split into six named helpers** —
   `readStorageVersion`, `requireCompleteLockedRepresentation`,
-  `requireV2EnvelopeFields`, `decryptV2VaultState`, `parseVaultState`,
-  `constructFavaLib` — landed as a separate, verified-green refactor before any
-  session code existed. `decryptV2VaultState` is the load-bearing one: the MAC
-  verify and the AAD-bound decrypt live in one function with no way to do one
-  without the other, and both v2 paths go through it. That is stronger than a
-  shared tail, which a third caller can bypass.
+  `requireEncryptedSecretKeys`, `requireV2EnvelopeFields`,
+  `decryptV2VaultState`, `parseVaultState`, `constructFavaLib` — landed as a
+  separate, verified-green refactor before any session code existed.
+  `decryptV2VaultState` is the load-bearing one: the MAC verify and the
+  AAD-bound decrypt live in one function with no way to do one without the
+  other, and both v2 paths go through it. That is stronger than a shared tail,
+  which a third caller can bypass. (Amended 2026-09-17: with one storage format
+  left, the three completeness checks collapsed back into
+  `requireCompleteLockedRepresentation` — they were only ever separate so that a
+  v1 vault, which legitimately carried no `kdf` and no `envelopeMac`, would not
+  be called incomplete. `decryptV2VaultState` is now `decryptVaultState`; the
+  chokepoint property is untouched and is what the table below mutates.)
 
 Deliberately **not** encrypted. Wrapping the blob needs a key held somewhere
 with a different lifetime, and on the platform this exists for there is none —
@@ -173,15 +183,15 @@ Nothing here needs a new primitive: the path composes `sha256`,
 
 ### Verified by mutation
 
-| Mutation                                                      | Result                                                                                                                                                                               |
-| ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| drop the `verifyEnvelopeMac` check from `decryptV2VaultState` | 5 red across **both** files — `envelope-integrity.test.mts` and the session tests. That the password path reddens is the proof the chokepoint is genuinely shared rather than copied |
-| drop the `storageVersion < STORAGE_VERSION` refusal           | `'refuses a storage version 1 vault…'` and `'refuses a v1 vault whose migration could not be persisted'` red, alone                                                                  |
-| parse the session blob before gating the stored vault         | `'refuses a storage version 1 vault, before it looks at the session'` red **alone** — the ordering is pinned, not just the outcome                                                   |
-| put `salt` into the exported blob                             | `'carries only the four derived secrets'` red, alone. Cryptographically inert, which is exactly why that test exists                                                                 |
-| export a wrong-but-present `publicKey`                        | `'hands the sync manager the same public key the password path does'` red, alone — the only test that motivates the field at all                                                     |
-| compare `sessionVersion` with `<` instead of `!==`            | 4 red, including `'refuses sessionVersion 2'`                                                                                                                                        |
-| change `SESSION_VERSION` to track `STORAGE_VERSION`           | **nothing red.** Recorded because a test cannot catch a coupling decision; the JSDoc at the constant is what carries it                                                              |
+| Mutation                                                    | Result                                                                                                                                                                               |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| drop the `verifyEnvelopeMac` check from `decryptVaultState` | 5 red across **both** files — `envelope-integrity.test.mts` and the session tests. That the password path reddens is the proof the chokepoint is genuinely shared rather than copied |
+| drop the `storageVersion < STORAGE_VERSION` refusal         | `'refuses an older storage version…'` red here, plus the `vault-v1.json is refused` block in `fixtures.test.mts`                                                                     |
+| parse the session blob before gating the stored vault       | `'refuses an older storage version, before it looks at the session'` red **alone** — the ordering is pinned, not just the outcome                                                    |
+| put `salt` into the exported blob                           | `'carries only the four derived secrets'` red, alone. Cryptographically inert, which is exactly why that test exists                                                                 |
+| export a wrong-but-present `publicKey`                      | `'hands the sync manager the same public key the password path does'` red, alone — the only test that motivates the field at all                                                     |
+| compare `sessionVersion` with `<` instead of `!==`          | 4 red, including `'refuses sessionVersion 2'`                                                                                                                                        |
+| change `SESSION_VERSION` to track `STORAGE_VERSION`         | **nothing red.** Recorded because a test cannot catch a coupling decision; the JSDoc at the constant is what carries it                                                              |
 
 Each was reverted afterwards.
 

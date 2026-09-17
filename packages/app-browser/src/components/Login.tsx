@@ -2,6 +2,7 @@ import { type Component, createSignal, Show } from 'solid-js'
 import {
   FavaLibEvent,
   StorageVersionError,
+  UnsupportedStorageVersionError,
   type LockedRepresentationString,
   type Password,
 } from 'favalib'
@@ -18,8 +19,8 @@ const Login: Component = () => {
   const [errorMessage, setErrorMessage] = createSignal<string | null>(null)
   // A vault we cannot read is still a vault. Resetting wipes localStorage, and
   // unlike the CLI this app keeps no backup, so offering Reset next to a
-  // "needs a newer version" message would invite people to destroy recoverable
-  // data.
+  // "cannot read this version" message would invite people to destroy
+  // recoverable data. Both storage-version directions set this.
   const [vaultIsUnreadable, setVaultIsUnreadable] = createSignal(false)
   const syncStoreWithLib = useSyncStoreWithLib()
 
@@ -61,6 +62,20 @@ const Login: Component = () => {
     e.preventDefault()
     setErrorMessage(null)
     login(password() as Password).catch((err: unknown) => {
+      // The two directions get opposite advice, which is why they are separate
+      // error types. Reloading fetches a newer app and fixes the first; nothing
+      // this app can do fixes the second, because there is no migration from
+      // the older format — the entries have to come across as an export.
+      if (err instanceof UnsupportedStorageVersionError) {
+        setVaultIsUnreadable(true)
+        setErrorMessage(
+          'This vault was saved in an older storage format that this version ' +
+            'cannot read, and there is no automatic upgrade. Open it with the ' +
+            'version of the app that wrote it, export your entries, and import ' +
+            'them here. Your data is intact — do not reset.',
+        )
+        return
+      }
       if (err instanceof StorageVersionError) {
         setVaultIsUnreadable(true)
         setErrorMessage(

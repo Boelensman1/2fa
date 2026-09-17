@@ -1,8 +1,8 @@
 # Browser E2E tests
 
 The Playwright suite exercises the running app through its UI. Each test gets
-a fresh browser context with isolated localStorage. The migration tests load
-the frozen v1 fixture, which has no sync server configured, so they do not
+a fresh browser context with isolated localStorage. The storage-version tests
+load the frozen v1 fixture, which has no sync server configured, so they do not
 connect to the sync backend or modify its database.
 
 The pairing tests do open a sync socket -- the app refuses a pairing code
@@ -43,7 +43,7 @@ stop app services.
 Pass runner options through `E2E_ARGS`, for example:
 
 ```sh
-make test-e2e E2E_ARGS='vault-migration --headed'
+make test-e2e E2E_ARGS='vault-v1-refused --headed'
 ```
 
 Failed runs retain traces and screenshots in `test-results/`. The HTML report
@@ -57,8 +57,8 @@ The shared fixture fails tests on uncaught browser errors. Use the configured
 base URL with `page.goto('/')` and seed only the test's isolated context.
 Assert UI behavior with Playwright's waiting assertions instead of sleeps.
 
-Reuse the historical vault fixtures when testing migration; never regenerate
-them with the current library. Add shared fixtures to `fixtures.ts` as other
+Reuse the historical vault fixtures when testing what the app does with an
+older stored format; never regenerate them with the current library. Add shared fixtures to `fixtures.ts` as other
 flows need them. Browser projects and runner settings live in
 `../playwright.config.mts`; see the
 [Playwright configuration reference](https://playwright.dev/docs/test-configuration).

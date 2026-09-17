@@ -1,12 +1,8 @@
 import { webcrypto } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type {
-  EntryId,
-  LockedRepresentation,
-  LockedRepresentationString,
-  Password,
-} from 'favalib'
+import { UnsupportedStorageVersionError } from 'favalib'
+import type { LockedRepresentationString, Password } from 'favalib'
 
 vi.mock('../src/parameters', () => ({
   deviceType: 'web',
@@ -14,8 +10,8 @@ vi.mock('../src/parameters', () => ({
   syncServerUrl: undefined,
 }))
 
-// Import the actual browser wiring: using the library factory directly would
-// miss a placeholder save callback that throws during the v1 migration.
+// Import the actual browser wiring rather than the library factory, so that
+// what is under test is the save function this app really installs.
 import creationUtils from '../src/utils/creationUtils'
 
 const v1Fixture = readFileSync(
@@ -57,36 +53,16 @@ describe('browser vault loading', () => {
       { connectToSyncServer: false },
     )
 
-  it('persists the v1 migration before loading returns and reopens it', async () => {
-    const lib = await loadStoredVault(v1Password)
-    // Assert immediately, before Login could install its UI-aware callback.
-    const migrated = JSON.parse(
-      localStorage.getItem(storageKey)!,
-    ) as LockedRepresentation
-    expect(migrated.storageVersion).toBe(2)
-    expect(migrated.envelopeMac).toEqual(expect.any(String))
-    await lib.ready
-
-    const reopened = await loadStoredVault(v1Password)
-    await reopened.ready
-
-    for (const vault of [lib, reopened]) {
-      expect(vault.meta.deviceId).toBe('91b8a8bf-3450-4e68-94db-4d6051901ffa')
-      expect(vault.vault.listEntriesMetas()).toHaveLength(2)
-      // Expected OTPs are independently pinned by the frozen fixture suite.
-      for (const [id, name, otp] of [
-        ['e6c4f652-bf77-4ca4-be3a-8b06dc63dd21', 'Fixture Entry One', '324550'],
-        ['01d91809-ae5d-4385-ad26-bee175020361', 'Fixture Entry Two', '017492'],
-      ]) {
-        expect(vault.vault.getEntryMeta(id as EntryId).name).toBe(name)
-        expect(
-          await vault.vault.generateTokenForEntry(
-            id as EntryId,
-            1_700_000_000_000,
-          ),
-        ).toMatchObject({ otp })
-      }
-    }
+  it('refuses a v1 vault and does not rewrite it', async () => {
+    // The correct password, so the refusal is the version gate and not a
+    // failed unlock. Nothing may be written: a v1 blob dropped over a current
+    // vault opening AND being rewritten in place is the downgrade window
+    // key-hierarchy-review/18-anti-rollback.md is about.
+    await expect(loadStoredVault(v1Password)).rejects.toThrow(
+      UnsupportedStorageVersionError,
+    )
+    expect(setItem).not.toHaveBeenCalled()
+    expect(localStorage.getItem(storageKey)).toBe(v1Fixture)
   })
 
   it('leaves the stored vault untouched when the password is wrong', async () => {
@@ -94,19 +70,6 @@ describe('browser vault loading', () => {
       loadStoredVault('wrong-password' as Password),
     ).rejects.toThrow()
     expect(setItem).not.toHaveBeenCalled()
-    expect(localStorage.getItem(storageKey)).toBe(v1Fixture)
-  })
-
-  it('propagates a migration save failure and keeps the original vault', async () => {
-    const storageError = new DOMException(
-      'Storage is full',
-      'QuotaExceededError',
-    )
-    setItem.mockImplementation(() => {
-      throw storageError
-    })
-
-    await expect(loadStoredVault(v1Password)).rejects.toBe(storageError)
     expect(localStorage.getItem(storageKey)).toBe(v1Fixture)
   })
 
@@ -120,6 +83,9 @@ describe('browser vault loading', () => {
     // The v2 fixture's device id; it changed when storage version 2 was
     // redefined to the curve hierarchy and the fixture was regenerated. See
     // packages/lib/tests/fixtures/README.md.
+    //
+    // Nothing is written on a successful load either: the load path has no
+    // reason to save, now that there is no migration to persist.
     expect(lib.meta.deviceId).toBe('822d43ef-ab39-4a9e-a106-2e96eb3fdb82')
     expect(lib.vault.listEntriesMetas()).toHaveLength(2)
     expect(setItem).not.toHaveBeenCalled()

@@ -4,7 +4,7 @@ import { describe, it, expect, beforeAll } from 'vitest'
 
 import {
   getFavaLibVaultCreationUtils,
-  STORAGE_VERSION,
+  UnsupportedStorageVersionError,
   V2_KDF_PARAMETERS,
   type DeviceType,
   type EntryId,
@@ -15,11 +15,7 @@ import {
 } from '../src/main.mjs'
 import { nodeProviders } from '../src/platformProviders/node/index.mjs'
 import { browserProviders } from '../src/platformProviders/browser/index.mjs'
-import type {
-  LegacyLockedRepresentation,
-  VaultState,
-} from '../src/interfaces/Vault.mjs'
-import { buildVaultAad } from '../src/utils/canonical.mjs'
+import type { UnlockedSessionString } from '../src/interfaces/Vault.mjs'
 
 // The browser CryptoLib reads window.crypto inside its method bodies only, and
 // nothing in src/ does environment detection, so this shim cannot perturb the
@@ -28,25 +24,13 @@ import { buildVaultAad } from '../src/utils/canonical.mjs'
 globalThis.window = { crypto: crypto.webcrypto }
 
 // See tests/fixtures/README.md. This vault is frozen: it was written by
-// favalib 0.0.21 at commit e88f50b and must never be regenerated, because its
-// entire value is that it predates any change to the stored format.
+// favalib 0.0.21 at commit e88f50b and must never be regenerated. It is no
+// longer readable -- storage version 1 was dropped rather than migrated -- so
+// what it pins now is the REFUSAL, which is the anti-rollback property of
+// key-hierarchy-review/18: a v1 blob dropped over a current vault must not
+// open, and must not be rewritten in the attempt.
 const FIXTURE_PASSWORD = 'fixture!Vault7#Frozen$v1' as Password
-const FIXTURE_DEVICE_ID = '91b8a8bf-3450-4e68-94db-4d6051901ffa'
 
-const ENTRY_ONE = {
-  id: 'e6c4f652-bf77-4ca4-be3a-8b06dc63dd21' as EntryId,
-  name: 'Fixture Entry One',
-  issuer: 'Fixture Issuer A',
-  // Cross-checked against an independent RFC 6238 implementation, so this
-  // pins real correctness rather than agreement with ourselves.
-  otpAtFixedTimestamp: '324550',
-}
-const ENTRY_TWO = {
-  id: '01d91809-ae5d-4385-ad26-bee175020361' as EntryId,
-  name: 'Fixture Entry Two',
-  issuer: 'Fixture Issuer B',
-  otpAtFixedTimestamp: '017492',
-}
 const FIXED_TIMESTAMP = 1_700_000_000_000
 
 const fixture = readFileSync(
@@ -54,8 +38,9 @@ const fixture = readFileSync(
   'utf8',
 ) as LockedRepresentationString
 
-// The v2 fixture. Same two secrets as v1, so the same expected OTPs apply --
-// and those were cross-checked against an independent RFC 6238 implementation.
+// The v2 fixture. Same two secrets as the v1 one, so the same expected OTPs
+// apply -- and those were cross-checked against an independent RFC 6238
+// implementation.
 // Regenerated once, when storage version 2 was REDEFINED to the curve hierarchy
 // before it ever shipped; see tests/fixtures/README.md on why that is not a
 // breach of the never-regenerate rule. That the OTPs came back unchanged is the
@@ -78,26 +63,25 @@ const fixtureV2 = readFileSync(
 ) as LockedRepresentationString
 
 describe('stored format fixtures', () => {
-  describe('vault-v1.json', () => {
-    let favaLib: FavaLib
-
-    beforeAll(async () => {
-      // Deliberately no saveFunction: PersistentStorageManager.save() is a
-      // no-op without one, so a test run can never rewrite the checked-in file.
-      const { loadFavaLibFromLockedRepesentation } =
-        getFavaLibVaultCreationUtils(
-          nodeProviders,
-          'fixture-device' as DeviceType,
-          ['fixture'],
-        )
-
-      favaLib = await loadFavaLibFromLockedRepesentation(
-        fixture,
-        FIXTURE_PASSWORD,
-        { connectToSyncServer: false },
+  describe('vault-v1.json is refused, not migrated', () => {
+    /**
+     * Builds creation utils that record every save, so a test can assert that
+     * a refused load wrote nothing.
+     * @param providers - The platform providers to load with.
+     * @returns The utils and the array the save function appends to.
+     */
+    const utilsRecordingSaves = (providers = nodeProviders) => {
+      const written: LockedRepresentationString[] = []
+      const utils = getFavaLibVaultCreationUtils(
+        providers,
+        'fixture-device' as DeviceType,
+        ['fixture'],
+        (representation) => {
+          written.push(representation)
+        },
       )
-      await favaLib.ready
-    })
+      return { utils, written }
+    }
 
     it('still declares storage version 1', () => {
       const parsed = JSON.parse(fixture) as LockedRepresentation
@@ -105,65 +89,74 @@ describe('stored format fixtures', () => {
       expect(parsed.libVersion).toBe('0.0.21')
     })
 
-    it('opens with the node provider and keeps its device identity', () => {
-      expect(favaLib.meta.deviceId).toBe(FIXTURE_DEVICE_ID)
+    it('is refused by the password path, with the correct password', async () => {
+      // The correct password, on purpose: the refusal must happen at the
+      // version gate, before anything is derived or decrypted, so it cannot
+      // depend on the password being wrong.
+      const { utils, written } = utilsRecordingSaves()
+
+      await expect(
+        utils.loadFavaLibFromLockedRepesentation(fixture, FIXTURE_PASSWORD, {
+          connectToSyncServer: false,
+        }),
+      ).rejects.toThrow(UnsupportedStorageVersionError)
+
+      // Nothing was written: the downgrade window key-hierarchy-review/18
+      // describes was a v1 blob opening AND being rewritten in place.
+      expect(written).toEqual([])
     })
 
-    it('round-trips both entries', () => {
-      const metas = favaLib.vault.listEntriesMetas()
-      expect(metas).toHaveLength(2)
+    it('says how to get the data across', async () => {
+      const { utils } = utilsRecordingSaves()
 
-      for (const expected of [ENTRY_ONE, ENTRY_TWO]) {
-        const meta = metas.find((m) => m.id === expected.id)
-        expect(meta, `entry ${expected.id} is missing`).toBeDefined()
-        expect(meta!.name).toBe(expected.name)
-        expect(meta!.issuer).toBe(expected.issuer)
-        expect(meta!.type).toBe('TOTP')
-      }
+      await expect(
+        utils.loadFavaLibFromLockedRepesentation(fixture, FIXTURE_PASSWORD, {
+          connectToSyncServer: false,
+        }),
+      ).rejects.toThrow(/export your entries/i)
     })
 
-    it('produces the same OTPs it did when it was written', async () => {
-      // This single assertion pins the whole chain: argon2id parameters, the
-      // PBES2-wrapped RSA key, RSA-OAEP unwrapping of the symmetric key, the
-      // AES-CBC "base64(iv):base64(ct)" encoding, and the TOTP derivation.
-      for (const expected of [ENTRY_ONE, ENTRY_TWO]) {
-        const token = await favaLib.vault.generateTokenForEntry(
-          expected.id,
-          FIXED_TIMESTAMP,
-        )
-        expect(token.otp).toBe(expected.otpAtFixedTimestamp)
-      }
-    })
+    it('is refused when the storageVersion field is absent entirely', async () => {
+      // A vault written before the field existed. It must not be assumed to be
+      // the current version, and it must not be assumed readable.
+      const parsed = JSON.parse(fixture) as Partial<LockedRepresentation>
+      delete parsed.storageVersion
+      const { utils, written } = utilsRecordingSaves()
 
-    it('is readable by the browser provider too', async () => {
-      // The fixture was written by the node provider. Decrypting it with the
-      // browser one gates the stored format on both implementations, which a
-      // fresh round trip inside a single provider cannot do.
-      const browserCrypto = new browserProviders.CryptoLib()
-      const parsed = JSON.parse(fixture) as LockedRepresentation
-
-      // decryptKeysV1 / decryptSymmetricV1 deliberately, not the v2 pair:
-      // this fixture IS a v1 blob, and reading it is the one thing the legacy
-      // path exists for.
-      const { symmetricKey } = await browserCrypto.decryptKeysV1(
-        (parsed as unknown as LegacyLockedRepresentation).encryptedPrivateKey,
-        parsed.encryptedSymmetricKey,
-        parsed.salt,
-        FIXTURE_PASSWORD,
-      )
-      const vaultState = JSON.parse(
-        await browserCrypto.decryptSymmetricV1(
-          symmetricKey,
-          parsed.encryptedVaultState,
+      await expect(
+        utils.loadFavaLibFromLockedRepesentation(
+          JSON.stringify(parsed) as LockedRepresentationString,
+          FIXTURE_PASSWORD,
+          { connectToSyncServer: false },
         ),
-      ) as VaultState
+      ).rejects.toThrow(UnsupportedStorageVersionError)
+      expect(written).toEqual([])
+    })
 
-      expect(vaultState.deviceId).toBe(FIXTURE_DEVICE_ID)
-      expect(vaultState.vault.map((entry) => entry.id)).toEqual([
-        ENTRY_ONE.id,
-        ENTRY_TWO.id,
-      ])
-      expect(vaultState.vault[0].payload.secret).toBe('JBSWY3DPEHPK3PXP')
+    it('is refused by the unlocked-session path too', async () => {
+      const { utils, written } = utilsRecordingSaves()
+
+      await expect(
+        utils.loadFavaLibFromUnlockedSession(
+          fixture,
+          '{}' as UnlockedSessionString,
+          { connectToSyncServer: false },
+        ),
+      ).rejects.toThrow(UnsupportedStorageVersionError)
+      expect(written).toEqual([])
+    })
+
+    it('is refused by the browser provider as well', async () => {
+      // The gate is shared, but asserting it per provider is what stops a
+      // future provider-local read path from quietly reopening the window.
+      const { utils, written } = utilsRecordingSaves(browserProviders)
+
+      await expect(
+        utils.loadFavaLibFromLockedRepesentation(fixture, FIXTURE_PASSWORD, {
+          connectToSyncServer: false,
+        }),
+      ).rejects.toThrow(UnsupportedStorageVersionError)
+      expect(written).toEqual([])
     })
   })
 
@@ -240,153 +233,6 @@ describe('stored format fixtures', () => {
           .sort(),
       ).toEqual([V2_ENTRY_ONE.id, V2_ENTRY_TWO.id].sort())
       inBrowser.sync?.closeServerConnection()
-    })
-  })
-
-  describe('vault-v1.json is migrated to the current storage version', () => {
-    /**
-     * Loads the fixture with a capturing save function, so the migration
-     * actually persists.
-     * @param providers - The platform providers to load with.
-     * @returns The loaded library and whatever it wrote.
-     */
-    const loadAndCapture = async (providers = nodeProviders) => {
-      let written: LockedRepresentationString | undefined
-      const { loadFavaLibFromLockedRepesentation } =
-        getFavaLibVaultCreationUtils(
-          providers,
-          'fixture-device' as DeviceType,
-          ['fixture'],
-          (representation) => {
-            written = representation
-          },
-        )
-      const lib = await loadFavaLibFromLockedRepesentation(
-        fixture,
-        FIXTURE_PASSWORD,
-        { connectToSyncServer: false },
-      )
-      await lib.ready
-      return { lib, written }
-    }
-
-    it('re-wraps to the current version on a successful unlock', async () => {
-      const { lib, written } = await loadAndCapture()
-
-      expect(written, 'the migration did not save').toBeDefined()
-      const migrated = JSON.parse(written!) as LockedRepresentation
-      expect(migrated.storageVersion).toBe(STORAGE_VERSION)
-      expect(migrated.kdf).toEqual(V2_KDF_PARAMETERS)
-      expect(migrated.envelopeMac).toEqual(expect.any(String))
-      // A fresh salt, and a v2 ciphertext envelope.
-      expect(migrated.salt).not.toBe(
-        (JSON.parse(fixture) as LockedRepresentation).salt,
-      )
-      expect(migrated.encryptedVaultState.startsWith('v2:')).toBe(true)
-
-      lib.sync?.closeServerConnection()
-    })
-
-    it('reopens at v2 with the same entries and the same OTPs', async () => {
-      const { lib: first, written } = await loadAndCapture()
-      first.sync?.closeServerConnection()
-
-      const { loadFavaLibFromLockedRepesentation } =
-        getFavaLibVaultCreationUtils(
-          nodeProviders,
-          'fixture-device' as DeviceType,
-          ['fixture'],
-        )
-      const reopened = await loadFavaLibFromLockedRepesentation(
-        written!,
-        FIXTURE_PASSWORD,
-        { connectToSyncServer: false },
-      )
-      await reopened.ready
-
-      expect(reopened.meta.deviceId).toBe(FIXTURE_DEVICE_ID)
-      for (const expected of [ENTRY_ONE, ENTRY_TWO]) {
-        const token = await reopened.vault.generateTokenForEntry(
-          expected.id,
-          FIXED_TIMESTAMP,
-        )
-        expect(token.otp).toBe(expected.otpAtFixedTimestamp)
-      }
-      reopened.sync?.closeServerConnection()
-    })
-
-    it('clears the command send queue', async () => {
-      // A v1 queue holds v1-CBC payloads with MGF1-SHA-1 key wraps, which
-      // every upgraded peer now rejects. Carrying them across would have a
-      // freshly migrated device ship undeliverable traffic immediately.
-      const { lib, written } = await loadAndCapture()
-      lib.sync?.closeServerConnection()
-
-      const migrated = JSON.parse(written!) as LockedRepresentation
-      const crypto = new nodeProviders.CryptoLib()
-      const { symmetricKey } = await crypto.decryptKeys(
-        migrated.encryptedSecretKeys,
-        migrated.encryptedSymmetricKey,
-        migrated.salt,
-        FIXTURE_PASSWORD,
-        migrated.kdf,
-      )
-      const state = JSON.parse(
-        await crypto.decryptSymmetric(
-          symmetricKey,
-          migrated.encryptedVaultState,
-          buildVaultAad(
-            migrated.storageVersion,
-            migrated.salt,
-            migrated.kdf,
-            await crypto.sha256(migrated.encryptedSecretKeys),
-          ),
-        ),
-      ) as VaultState
-
-      expect(state.sync.commandSendQueue).toEqual([])
-    })
-
-    it('a vault migrated by node opens in the browser, and vice versa', async () => {
-      // The at-rest AAD folds in a SHA-256 of encryptedSecretKeys, and node
-      // writes PEM with "\n" while node-forge writes "\r\n". Hashing anything
-      // but the exact stored bytes would pass within one provider and fail
-      // across them, which is the case a user hits on their second device.
-      const { lib: nodeLib, written: nodeWrote } =
-        await loadAndCapture(nodeProviders)
-      nodeLib.sync?.closeServerConnection()
-      const { lib: browserLib, written: browserWrote } =
-        await loadAndCapture(browserProviders)
-      browserLib.sync?.closeServerConnection()
-
-      const browserUtils = getFavaLibVaultCreationUtils(
-        browserProviders,
-        'fixture-device' as DeviceType,
-        ['fixture'],
-      )
-      const nodeUtils = getFavaLibVaultCreationUtils(
-        nodeProviders,
-        'fixture-device' as DeviceType,
-        ['fixture'],
-      )
-
-      const inBrowser = await browserUtils.loadFavaLibFromLockedRepesentation(
-        nodeWrote!,
-        FIXTURE_PASSWORD,
-        { connectToSyncServer: false },
-      )
-      await inBrowser.ready
-      expect(inBrowser.vault.listEntriesMetas()).toHaveLength(2)
-      inBrowser.sync?.closeServerConnection()
-
-      const inNode = await nodeUtils.loadFavaLibFromLockedRepesentation(
-        browserWrote!,
-        FIXTURE_PASSWORD,
-        { connectToSyncServer: false },
-      )
-      await inNode.ready
-      expect(inNode.vault.listEntriesMetas()).toHaveLength(2)
-      inNode.sync?.closeServerConnection()
     })
   })
 })

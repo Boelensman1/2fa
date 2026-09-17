@@ -7,6 +7,7 @@ import {
   getFavaLibVaultCreationUtils,
   Password,
   StorageVersionError,
+  UnsupportedStorageVersionError,
 } from 'favalib'
 import NodePlatformProvider from 'favalib/platformProviders/node'
 import { password as passwordInput } from '@inquirer/prompts'
@@ -45,8 +46,8 @@ class VaultRestorePasswordCommand extends BaseCommand {
       mask: '*',
     })) as Password
 
-    // No save function is passed: we only load the vault to validate the
-    // password, we never write it back.
+    // No save function is passed: loading only validates the password, and the
+    // load path never writes.
     const favaLibVaultCreationUtils = getFavaLibVaultCreationUtils(
       NodePlatformProvider,
       'cli' as DeviceType,
@@ -63,6 +64,15 @@ class VaultRestorePasswordCommand extends BaseCommand {
           { connectToSyncServer: false },
         )
     } catch (err) {
+      if (err instanceof UnsupportedStorageVersionError) {
+        throw new Error(
+          `This vault was saved in an older storage format that this version of ` +
+            `favacli cannot read, so the password cannot be verified against ` +
+            `it. There is no automatic upgrade: open it with the version of ` +
+            `favacli that wrote it, export your entries, and import them here. ` +
+            `Nothing was stored, and your data is intact.`,
+        )
+      }
       if (err instanceof StorageVersionError) {
         throw new Error(
           `This vault was saved by a newer version of favacli than the one you ` +

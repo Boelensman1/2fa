@@ -9,6 +9,7 @@ import {
   LockedRepresentation,
   LockedRepresentationString,
   StorageVersionError,
+  UnsupportedStorageVersionError,
   InitializationError,
   type PublicKey,
   type SigningPublicKey,
@@ -135,11 +136,24 @@ describe('creationUtils', () => {
       ).rejects.toThrow(StorageVersionError)
     })
 
-    it('treats an absent storageVersion as the legacy version', async () => {
+    it('refuses a vault written before the current storage version', async () => {
+      await expect(
+        creationUtils.loadFavaLibFromLockedRepesentation(
+          withStorageVersion(1),
+          password,
+        ),
+      ).rejects.toThrow(UnsupportedStorageVersionError)
+    })
+
+    it('refuses an absent storageVersion rather than assuming one', async () => {
       // A REAL v1 blob with the field removed, not a current one: absent means
       // "written before the field existed", and a v2 envelope with the field
       // stripped is a different thing entirely. tests/fixtures/vault-v1.json
       // is the only genuine v1 vault in the repo.
+      //
+      // The old behaviour was to assume version 1 and migrate. Both halves are
+      // gone: there is no migration, and a blob that declines to say what it
+      // is gets no benefit of the doubt.
       const parsed = JSON.parse(v1Fixture) as Record<string, unknown>
       delete parsed.storageVersion
 
@@ -148,14 +162,13 @@ describe('creationUtils', () => {
         deviceType,
         passwordExtraDict,
       )
-      const favaLib = await v1Utils.loadFavaLibFromLockedRepesentation(
-        JSON.stringify(parsed) as LockedRepresentationString,
-        V1_FIXTURE_PASSWORD,
-        { connectToSyncServer: false },
-      )
-      await favaLib.ready
-      expect(favaLib.meta.deviceId).toBe('91b8a8bf-3450-4e68-94db-4d6051901ffa')
-      favaLib.sync?.closeServerConnection()
+      await expect(
+        v1Utils.loadFavaLibFromLockedRepesentation(
+          JSON.stringify(parsed) as LockedRepresentationString,
+          V1_FIXTURE_PASSWORD,
+          { connectToSyncServer: false },
+        ),
+      ).rejects.toThrow(UnsupportedStorageVersionError)
     })
 
     it('does not let libVersion gate a load', async () => {
@@ -502,6 +515,8 @@ describe('creationUtils', () => {
       ['an object salt', 'salt', { value: 'AAAA' }],
       ['a numeric encryptedVaultState', 'encryptedVaultState', 1],
       ['an object encryptedSecretKeys', 'encryptedSecretKeys', {}],
+      ['a string kdf', 'kdf', 'argon2id'],
+      ['a numeric envelopeMac', 'envelopeMac', 7],
     ])('refuses %s', async (_label, field, value) => {
       // These used to pass a truthiness check behind an unchecked
       // `as Partial<LockedRepresentation>` cast and fail much later, somewhere
@@ -517,16 +532,26 @@ describe('creationUtils', () => {
       ).rejects.toThrow(/incomplete or corrupted/)
     })
 
-    it('refuses a v2 blob whose kdf is not an object', async () => {
-      const parsed = JSON.parse(lockedRepresentation) as Record<string, unknown>
-      parsed.kdf = 'argon2id'
+    it.each(['encryptedSecretKeys', 'kdf', 'envelopeMac'])(
+      'refuses a blob with no %s at all',
+      async (field) => {
+        // While two storage formats existed these three were checked
+        // separately, because a version 1 vault legitimately carried none of
+        // them and calling it "incomplete" would have been the wrong message.
+        // With one format left there is nothing conditional about them.
+        const parsed = JSON.parse(lockedRepresentation) as Record<
+          string,
+          unknown
+        >
+        delete parsed[field]
 
-      await expect(
-        creationUtils.loadFavaLibFromLockedRepesentation(
-          JSON.stringify(parsed) as LockedRepresentationString,
-          password,
-        ),
-      ).rejects.toThrow(/missing its kdf parameters or its envelopeMac/)
-    })
+        await expect(
+          creationUtils.loadFavaLibFromLockedRepesentation(
+            JSON.stringify(parsed) as LockedRepresentationString,
+            password,
+          ),
+        ).rejects.toThrow(/incomplete or corrupted/)
+      },
+    )
   })
 })

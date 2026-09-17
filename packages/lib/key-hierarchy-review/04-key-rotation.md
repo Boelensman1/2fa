@@ -153,11 +153,11 @@ for a smaller reason.
 
 ### Two follow-ups this work surfaced
 
-- **The v1 migration re-wraps the legacy symmetric key rather than rotating
-  it** (`creationUtils.mts`), so a migrated vault's v2 ciphertext sits under the
-  key that previously protected unauthenticated CBC data. The same two lines
-  would fix it; it is outside this finding's literal scope and wants
-  `fixtures.test.mts` checked first.
+- ~~**The v1 migration re-wraps the legacy symmetric key rather than rotating
+  it**~~ — **moot as of 2026-09-17.** It was fixed in passing when the migration
+  started calling `createKeys`, which mints a whole fresh generation, and then
+  became unreachable when the v1 read path was deleted outright
+  ([18](18-anti-rollback.md)).
 - **`save()` silently no-ops without a save function**, so `changePassword` on
   a read-only instance rotates in memory and evaporates with no error. Harmless
   before rotation, since the in-memory and on-disk keys at least still agreed.

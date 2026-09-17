@@ -33,18 +33,22 @@ import { browserProviders } from '../../src/platformProviders/browser/index.mjs'
 // index module does either.
 
 /**
- * The storage-version-1 argon2id cost parameters, spelled out rather than
- * imported, so that editing the shipped values cannot silently move them.
+ * The argon2id cost parameters createSyncKey derives with, spelled out rather
+ * than imported, so that editing the shipped values cannot silently move them.
+ *
+ * Storage version 1 derived passwords with these too. That read path is gone,
+ * but the parameters are not: SYNC_KDF_PARAMETERS still uses them, where the
+ * cost is immaterial because the input is already a 256-bit shared secret.
  */
-const V1_PARAMETERS = {
+const SYNC_PARAMETERS = {
   parallelism: 1,
   iterations: 256,
   memorySize: 512,
 } as const
 
 /**
- * The storage-version-2 parameters, likewise spelled out. m = 64 MiB, t = 3,
- * p = 4 -- key-hierarchy-review/01-kdf-parameters.md. memorySize is in KiB.
+ * The password parameters, likewise spelled out. m = 64 MiB, t = 3, p = 4 --
+ * key-hierarchy-review/01-kdf-parameters.md. memorySize is in KiB.
  */
 const V2_PARAMETERS = {
   parallelism: 4,
@@ -52,14 +56,15 @@ const V2_PARAMETERS = {
   memorySize: 65536,
 } as const
 
-// Deliberately the password and salt of tests/fixtures/vault-v1.json, so this
-// vector isolates the argon2 step of the fixture vault the suite already opens:
-// when both go red, this one says which layer moved.
+// Deliberately the password and salt of tests/fixtures/vault-v1.json. That
+// vault is no longer readable, but keeping the inputs identical is what lets
+// these vectors be compared against every hash recorded elsewhere in the suite
+// -- the envelope-mac chain anchor among them.
 const FIXTURE_PASSWORD = 'fixture!Vault7#Frozen$v1' as Password
 const FIXTURE_SALT = 'O454a0A723g+U3MYcYoCFA==' as Salt
-const EXPECTED_V1_PASSWORD_HASH =
+const EXPECTED_SYNC_PASSWORD_HASH =
   'bd9c01dab08f03a906c7fd2c155bf14e8e2706d04f0afe8e7afa54508b7526447feb04fb14cf98dc6810e443bf8674d17cc65bf2d65ed7498ec2b9ec4974a0bd'
-// Same password and salt as the v1 vector, so the only thing that differs
+// Same password and salt as the vector above, so the only thing that differs
 // between the two is the cost parameters.
 const EXPECTED_V2_PASSWORD_HASH =
   '7b6da4164545def5fabbf2e0ed003074b9d692877a3a6de7d92531e20dd2606be63be1c2354d7e1d763b2f0e1e8b0c26de829ef47593e71c056dd071aa999f79'
@@ -72,26 +77,25 @@ const EXPECTED_SYNC_KEY = 'gqxjkuuaiZSdrIoaNUJ3QiDoNPsqkg8mVBglfvkBm2s='
 
 describe('argon2id test vectors', () => {
   describe('password hash (generatePasswordHash)', () => {
-    // The permanent anchor. 01-kdf-parameters.md has since moved new vaults to
-    // the stronger v2 parameters, and THESE parameters must still produce THIS
-    // hash, or no vault written before that change can be opened again. It
-    // also catches a hash-wasm upgrade that changes behaviour under fixed
-    // inputs. Do not delete it until the v1 read path itself goes (see
-    // src/version.mts on LEGACY_STORAGE_VERSION).
-    test('v1 parameters produce the known hash', async () => {
+    // The permanent anchor for the cheap parameters. Nothing derives a
+    // PASSWORD with them any more -- 01-kdf-parameters.md moved vaults to the
+    // stronger set and the old read path is gone -- but createSyncKey still
+    // derives with exactly these numbers, and this vector is what catches a
+    // hash-wasm upgrade that changes behaviour under fixed inputs.
+    test('the sync parameters produce the known hash', async () => {
       const hash = await argon2id({
         password: FIXTURE_PASSWORD,
         salt: FIXTURE_SALT,
-        ...V1_PARAMETERS,
+        ...SYNC_PARAMETERS,
         hashLength: 64,
         outputType: 'hex',
       })
 
-      expect(hash).toBe(EXPECTED_V1_PASSWORD_HASH)
+      expect(hash).toBe(EXPECTED_SYNC_PASSWORD_HASH)
     })
 
-    // The v2 anchor, on the same footing: an absolute value, reproduced
-    // independently, that the migration path depends on.
+    // The password anchor, on the same footing: an absolute value, reproduced
+    // independently, that every stored vault depends on.
     test('v2 parameters produce the known hash', async () => {
       const hash = await argon2id({
         password: FIXTURE_PASSWORD,
@@ -104,42 +108,41 @@ describe('argon2id test vectors', () => {
       expect(hash).toBe(EXPECTED_V2_PASSWORD_HASH)
     })
 
-    // The policy assertion, moved from v1 to v2 when 01-kdf-parameters.md
-    // landed. This is the test that goes red the moment someone edits
-    // `iterations`, `memorySize` or `parallelism` in browser/cryptoLib.mts --
-    // which is the entire point of the finding.
+    // The policy assertion. This is the test that goes red the moment someone
+    // edits `iterations`, `memorySize` or `parallelism` in
+    // browser/cryptoLib.mts -- which is the entire point of the finding.
     //
     // Whoever raises the parameters again must move THIS assertion
-    // consciously, to a v3 vector, and leave both anchors above in place for
-    // the migration path. Both providers run this exact function:
-    // node/cryptoLib.mts imports it from the browser one, so there is only one
-    // implementation.
+    // consciously, to a v3 vector, and leave both anchors above in place: a
+    // vault records the parameters it was written with, and must still open.
+    // Both providers run this exact function: node/cryptoLib.mts imports it
+    // from the browser one, so there is only one implementation.
     test('the shipped parameters are the v2 parameters', async () => {
       const hash = await generatePasswordHash(FIXTURE_SALT, FIXTURE_PASSWORD)
 
       expect(hash).toBe(EXPECTED_V2_PASSWORD_HASH)
     })
 
-    // ...and the v1 parameters are still reachable, explicitly, for the
-    // migration path. generatePasswordHash defaults to v2; decryptKeysV1 is
-    // what passes the v1 block.
-    test('the v1 parameters are still reachable explicitly', async () => {
+    // ...and a vault's own recorded parameters are still honoured, rather than
+    // the shipped default being applied to everything. generatePasswordHash
+    // defaults to the password set; the load path passes the stored kdf block.
+    test('explicit parameters override the shipped default', async () => {
       const hash = await generatePasswordHash(FIXTURE_SALT, FIXTURE_PASSWORD, {
         algorithm: 'argon2id',
-        ...V1_PARAMETERS,
+        ...SYNC_PARAMETERS,
         hashLength: 64,
       })
 
-      expect(hash).toBe(EXPECTED_V1_PASSWORD_HASH)
+      expect(hash).toBe(EXPECTED_SYNC_PASSWORD_HASH)
     })
   })
 
   describe('sync key (createSyncKey)', () => {
-    test('v1 parameters produce the known sync key', async () => {
+    test('the sync parameters produce the known sync key', async () => {
       const key = await argon2id({
         password: SHARED_KEY,
         salt: SYNC_SALT,
-        ...V1_PARAMETERS,
+        ...SYNC_PARAMETERS,
         hashLength: 32,
         outputType: 'binary',
       })

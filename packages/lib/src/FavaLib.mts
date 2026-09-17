@@ -46,7 +46,7 @@ import VaultDataManager from './subclasses/VaultDataManager.mjs'
 import VaultOperationsManager from './subclasses/VaultOperationsManager.mjs'
 import CommandManager from './subclasses/CommandManager.mjs'
 import StorageOperationsManager from './subclasses/StorageOperationsManager.mjs'
-import { LIB_VERSION, STORAGE_VERSION } from './version.mjs'
+import { LIB_VERSION } from './version.mjs'
 import ChangeDeviceInfoCommand from './Command/commands/ChangeDeviceInfoCommand.mjs'
 import RemoveSyncDeviceCommand from './Command/commands/RemoveSyncDeviceCommand.mjs'
 
@@ -383,37 +383,6 @@ class FavaLib extends TypedEventTarget<FavaLibEventMapEvents> {
    * @param severity - The severity of the message, either 'info' or 'warning'.
    * @param message - The message to log.
    */
-  /**
-   * Reports that this vault was read from an older storage version.
-   *
-   * Dispatched on a timeout, like the Ready event, because the consumer only
-   * attaches its listeners after loadFavaLibFromLockedRepesentation returns --
-   * a synchronous log here would be sent to nobody. The point of it is that
-   * the legacy read path stays visible in the field: while it exists, a v1
-   * blob dropped over a v2 vault opens and is migrated
-   * (key-hierarchy-review/18-anti-rollback.md).
-   * @param fromVersion - The storage version the vault was read at.
-   */
-  reportStorageUpgrade(fromVersion: number) {
-    const persisted = this.storage.persistentStorage.canSave
-    setTimeout(
-      () =>
-        this.log(
-          'warning',
-          `This vault was stored at storage version ${fromVersion} and has ` +
-            `been read through the legacy path. ` +
-            (persisted
-              ? `It has been re-encrypted at version ${STORAGE_VERSION}. ` +
-                `This device's keys were replaced as part of that upgrade -- ` +
-                `version ${fromVersion} used an RSA keypair that version ` +
-                `${STORAGE_VERSION} cannot use -- so any devices this one was ` +
-                `paired with have to be paired again.`
-              : `It was NOT upgraded, because no save function is configured.`),
-        ),
-      1,
-    )
-  }
-
   private log(severity: 'info' | 'warning' | 'error', message: string) {
     this.dispatchLibEvent(FavaLibEvent.Log, { severity, message })
   }

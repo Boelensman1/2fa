@@ -158,3 +158,7 @@ Two observations in this file survive the reversal, and are worth keeping:
 What remains RSA-shaped is the v1 read path, and only that: `decryptKeysV1` and
 the PBES2 unwrap beside it. Deleting it (item 1 of
 [18](18-anti-rollback.md)) removes RSA from the library entirely.
+
+**Amended 2026-09-17: done.** The v1 read path was deleted rather than kept
+until installs upgraded, and with it `node-forge` left the dependency tree.
+There is no RSA in favalib.

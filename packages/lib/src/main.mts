@@ -70,6 +70,7 @@ import {
   EntryNotFoundError,
   TokenGenerationError,
   StorageVersionError,
+  UnsupportedStorageVersionError,
   SyncPairingVersionError,
 } from './FavaLibError.mjs'
 import {
@@ -77,7 +78,7 @@ import {
   SESSION_VERSION,
   STORAGE_VERSION,
   PAIRING_VERSION,
-  V1_KDF_PARAMETERS,
+  SYNC_KDF_PARAMETERS,
   V2_KDF_PARAMETERS,
 } from './version.mjs'
 import { FavaLibEvent } from './FavaLibEvent.mjs'
@@ -96,12 +97,13 @@ export {
   EntryNotFoundError,
   TokenGenerationError,
   StorageVersionError,
+  UnsupportedStorageVersionError,
   SyncPairingVersionError,
   LIB_VERSION,
   SESSION_VERSION,
   STORAGE_VERSION,
   PAIRING_VERSION,
-  V1_KDF_PARAMETERS,
+  SYNC_KDF_PARAMETERS,
   V2_KDF_PARAMETERS,
   FavaLibEvent,
   URL_MATCHER_TYPES,

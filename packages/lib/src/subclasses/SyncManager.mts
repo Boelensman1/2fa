@@ -147,17 +147,6 @@ const REPLAY_RETENTION_MS = 30 * 24 * 60 * 60 * 1000
  */
 const MAX_PROCESSED_COMMANDS = 1000
 
-/**
- * How many verified-but-not-yet-applied command origins are held in memory.
- *
- * An origin is normally removed a moment later, when `processRemoteCommands`
- * reports what ran. One whose command threw during execution is never reported,
- * so without a bound the map would keep an entry per failing command for the
- * life of the process. Oldest out first, and losing one costs only the
- * persisted dedup entry for a command that did not apply.
- */
-const MAX_PENDING_COMMAND_ORIGINS = 1000
-
 const generateNonCryptographicRandomString = () => {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
   const length = Math.floor(Math.random() * 64) + 1
@@ -206,18 +195,11 @@ class SyncManager {
    */
   private replayFloors: Record<DeviceId, number>
 
-  /**
-   * Where a verified command came from, between verification and execution.
-   *
-   * In memory only, and deliberately: it exists for the few milliseconds
-   * between `receiveCommands` verifying a command and `processRemoteCommands`
-   * reporting whether it ran, because only commands that actually ran are worth
-   * recording.
-   */
-  private pendingCommandOrigins = new Map<
-    string,
-    { from: DeviceId; timestamp: number }
-  >()
+  /** Serializes incoming batches, including their replay-state saves. */
+  private commandReceiveQueue: Promise<void> = Promise.resolve()
+
+  /** Remains set after a failed save; no acknowledgments may bypass that save. */
+  private replayStateDirty = false
 
   private get deviceId() {
     return this.favaMeta.deviceId
@@ -593,7 +575,13 @@ class SyncManager {
       }
       case 'syncCommands': {
         const { data: commands } = message
-        void this.receiveCommands(commands)
+        void this.receiveCommands(commands).catch((err: unknown) => {
+          // The message listener's synchronous catch cannot see this rejection.
+          // Keep the server's rows for redelivery if replay-state saving failed.
+          // eslint-disable-next-line no-restricted-globals
+          const detail = err instanceof Error ? err.message : 'unknown error'
+          this.log('error', `Could not process remote commands: ${detail}`)
+        })
         break
       }
       case 'startResilver': {
@@ -1315,8 +1303,7 @@ class SyncManager {
   }
 
   /**
-   * Refuses a command this device has already applied, or one old enough that
-   * it can no longer prove it has not.
+   * Classifies an authenticated command against the persisted replay record.
    *
    * Two checks, because the record of what has been applied is deliberately
    * bounded (see `recordProcessedCommands`):
@@ -1338,36 +1325,20 @@ class SyncManager {
    * in-memory set that a restart emptied.
    * @param from - The peer that signed the command.
    * @param command - The verified command.
-   * @throws {SyncError} If the command has been applied before.
+   * @returns Whether to execute, acknowledge a duplicate, or discard old data.
    */
-  private assertNotReplayed(from: DeviceId, command: SyncCommand): void {
+  private getReplayStatus(
+    from: DeviceId,
+    command: SyncCommand,
+  ): 'new' | 'duplicate' | 'below-floor' {
     if (this.processedCommands.some((seen) => seen.id === command.id)) {
-      throw new SyncError('Command has already been applied')
+      return 'duplicate'
     }
     const floor = this.replayFloors[from]
     if (floor !== undefined && (command.timestamp ?? 0) <= floor) {
-      throw new SyncError("Command is older than this peer's replay floor")
+      return 'below-floor'
     }
-  }
-
-  /**
-   * Notes where a verified command came from until it has been applied.
-   * @param commandId - The command's id.
-   * @param origin - The peer that signed it and the timestamp it carried.
-   */
-  private rememberCommandOrigin(
-    commandId: string,
-    origin: { from: DeviceId; timestamp: number },
-  ): void {
-    this.pendingCommandOrigins.set(commandId, origin)
-    // Map iterates in insertion order, so the first key is the oldest.
-    while (this.pendingCommandOrigins.size > MAX_PENDING_COMMAND_ORIGINS) {
-      const oldest = this.pendingCommandOrigins.keys().next()
-      if (oldest.done) {
-        break
-      }
-      this.pendingCommandOrigins.delete(oldest.value)
-    }
+    return 'new'
   }
 
   /**
@@ -1379,22 +1350,16 @@ class SyncManager {
    * entry raises its sender's floor to that entry's timestamp, so forgetting an
    * id never makes it acceptable again -- the set shrinks without the
    * protection weakening.
-   * @param executedIds - The ids `processRemoteCommands` reported as applied.
+   * @param applied - Every command successfully applied in this batch.
    */
-  private async recordProcessedCommands(executedIds: string[]): Promise<void> {
-    let changed = false
-    for (const id of executedIds) {
-      const origin = this.pendingCommandOrigins.get(id)
-      this.pendingCommandOrigins.delete(id)
-      if (!origin) {
-        // A locally issued command, or one this device did not verify. Only
-        // remote commands can be replayed at it.
-        continue
-      }
-      this.processedCommands.push({ id, ...origin })
-      changed = true
+  private async recordProcessedCommands(
+    applied: Iterable<ProcessedCommand>,
+  ): Promise<void> {
+    for (const record of applied) {
+      this.processedCommands.push(record)
+      this.replayStateDirty = true
     }
-    if (!changed) {
+    if (!this.replayStateDirty) {
       return
     }
 
@@ -1427,6 +1392,7 @@ class SyncManager {
     // the record of what has been applied is itself the thing that must survive
     // a restart.
     await this.persistentStorageManager.save()
+    this.replayStateDirty = false
   }
 
   /**
@@ -1486,13 +1452,17 @@ class SyncManager {
    * revocation rather than bookkeeping.
    * @param commandId - The id the server delivered the command under.
    * @param envelope - The decrypted envelope, which may be anything at all.
-   * @returns The command and the id of the peer that signed it.
+   * @returns The command and the peer identity used for verification.
    * @throws {SyncError} If the envelope is not a command from a known peer.
    */
   private async verifyCommandEnvelope(
     commandId: string,
     envelope: Partial<SignedCommandEnvelope>,
-  ): Promise<{ command: SyncCommand; from: DeviceId }> {
+  ): Promise<{
+    command: SyncCommand
+    from: DeviceId
+    signingPublicKey: SigningPublicKey
+  }> {
     const { from, signature, payload } = envelope
     if (
       typeof from !== 'string' ||
@@ -1511,8 +1481,9 @@ class SyncManager {
       throw new SyncError('Command is from a device that is not a peer')
     }
 
+    const signingPublicKey = sender.signingPublicKey
     const signatureIsValid = await this.cryptoLib.verify(
-      sender.signingPublicKey,
+      signingPublicKey,
       buildCommandSignatureMessage(commandId, from, this.deviceId, payload),
       signature,
     )
@@ -1524,74 +1495,149 @@ class SyncManager {
     // The signed payload carries the id, and the server's envelope carries it
     // too. They have to agree, because only the signed one is authenticated and
     // only the envelope one is what the dedup set and the AAD were built from.
-    if (command.id !== commandId) {
+    if (typeof command?.id !== 'string' || command.id !== commandId) {
       throw new SyncError('Command id does not match its envelope')
     }
 
-    return { command, from }
+    return { command, from, signingPublicKey }
   }
 
   /**
-   * Receives and processes commands from other devices.
-   * @param encryptedCommands - The commands
-   * @throws {CryptoError} If decryption fails.
+   * Receives commands in batch arrival order, without overlapping execution.
+   * @param encryptedCommands - The commands.
+   * @returns A promise resolving after the batch is processed and saved.
+   * @throws {Error} If the replay state cannot be saved.
    */
   async receiveCommands(encryptedCommands: SyncCommandFromServer[]) {
-    await Promise.all(
+    const received = this.commandReceiveQueue.then(() =>
+      this.processReceivedCommands(encryptedCommands),
+    )
+    // A failed batch must reject its caller without poisoning later deliveries.
+    this.commandReceiveQueue = received.catch(() => undefined)
+    return received
+  }
+
+  /**
+   * Logs the same refusal for all malformed or unauthenticated commands.
+   * @param commandId - The id supplied by the server.
+   */
+  private reportRejectedCommand(commandId: string): void {
+    this.log(
+      'warning',
+      `Dropping remote command ${commandId}: it could not be decrypted, ` +
+        `was not authentic, or was malformed. It will be retried if the ` +
+        `sending device is still on a compatible version.`,
+    )
+  }
+
+  /**
+   * Processes one batch, authenticating against the peer list at execution time.
+   * @param encryptedCommands - The commands in this batch.
+   */
+  private async processReceivedCommands(
+    encryptedCommands: SyncCommandFromServer[],
+  ): Promise<void> {
+    const decrypted = await Promise.all(
       encryptedCommands.map(async (data) => {
-        // Per-command, deliberately. These run inside a Promise.all, so
-        // without this one undecryptable command -- a peer that has not
-        // upgraded past the v1 envelope, a row the server has held since
-        // before the upgrade, or an outright hostile one -- would reject the
-        // whole batch and take processRemoteCommands and the ready event down
-        // with it. Dropping one command loses nothing permanently: it is never
-        // reported in syncCommandsExecuted, so the server redelivers it.
         try {
           const symmetricKey = await this.cryptoLib.decrypt(
             this.secretKeys.privateKey,
             data.encryptedSymmetricKey,
           )
 
-          const { command, from } = await this.verifyCommandEnvelope(
-            data.commandId,
-            JSON.parse(
-              await this.cryptoLib.decryptSymmetric(
-                symmetricKey,
-                data.encryptedCommand,
-                buildCommandAad(data.commandId, this.deviceId),
-              ),
-            ) as Partial<SignedCommandEnvelope>,
-          )
-          this.assertNotReplayed(from, command)
-          this.rememberCommandOrigin(command.id, {
-            from,
+          const envelope = JSON.parse(
+            await this.cryptoLib.decryptSymmetric(
+              symmetricKey,
+              data.encryptedCommand,
+              buildCommandAad(data.commandId, this.deviceId),
+            ),
+          ) as Partial<SignedCommandEnvelope> | null
+          if (typeof envelope?.payload !== 'string') {
+            throw new SyncError('Missing command payload')
+          }
+          const command = JSON.parse(envelope.payload) as SyncCommand | null
+          if (
+            !command ||
+            typeof command !== 'object' ||
+            Array.isArray(command) ||
+            (command.timestamp !== undefined &&
+              !Number.isFinite(command.timestamp))
+          ) {
+            throw new SyncError('Invalid command timestamp or payload')
+          }
+
+          // Only use this unauthenticated parse to order the batch. In
+          // particular, an unknown sender may be enrolled by an earlier command.
+          return {
+            commandId: data.commandId,
+            envelope,
             timestamp: command.timestamp ?? 0,
-          })
-          this.commandManager.receiveRemoteCommand(command)
+          }
         } catch {
-          // No detail in the message: which of the several possible causes it
-          // was -- undecryptable, unsigned, signed by a device this vault does
-          // not know, or a replay -- is exactly what an attacker probing the
-          // sync path wants told.
-          this.log(
-            'warning',
-            `Dropping remote command ${data.commandId}: it could not be ` +
-              `decrypted, was not authentic, or had already been applied. It ` +
-              `will be retried if the sending device is still on a compatible ` +
-              `version.`,
-          )
+          this.reportRejectedCommand(data.commandId)
+          return undefined
         }
       }),
     )
 
-    const commandsExecutedIds =
-      await this.commandManager.processRemoteCommands()
+    const ordered = decrypted
+      .filter((command) => command !== undefined)
+      .sort((a, b) => a.timestamp - b.timestamp)
+    const applied = new Map<string, ProcessedCommand>()
+    const acknowledgedIds = new Set<string>()
 
-    // Recorded only for commands that actually ran, so a command dropped for
-    // any other reason is still redeliverable, and persisted because the point
-    // of the record is to outlive the process. See
-    // key-hierarchy-review/15-sync-replay-protection.md.
-    await this.recordProcessedCommands(commandsExecutedIds)
+    for (const pending of ordered) {
+      try {
+        const { command, from, signingPublicKey } =
+          await this.verifyCommandEnvelope(pending.commandId, pending.envelope)
+
+        // Verification yields. A local removal or key replacement during it
+        // must take effect before we enqueue and synchronously start executing.
+        if (
+          !this.syncDevices.some(
+            (device) =>
+              device.deviceId === from &&
+              device.deviceId !== this.deviceId &&
+              device.signingPublicKey === signingPublicKey,
+          )
+        ) {
+          throw new SyncError('Command sender is no longer a peer')
+        }
+
+        const replayStatus = applied.has(command.id)
+          ? 'duplicate'
+          : this.getReplayStatus(from, command)
+        if (replayStatus !== 'new') {
+          acknowledgedIds.add(command.id)
+          if (replayStatus === 'below-floor') {
+            this.log(
+              'warning',
+              `Discarding remote command ${command.id}: it is at or below ` +
+                `this peer's replay floor and will not be applied.`,
+            )
+          }
+          continue
+        }
+
+        this.commandManager.receiveRemoteCommand(command)
+        const executedIds = await this.commandManager.processRemoteCommands()
+        if (executedIds.includes(command.id)) {
+          applied.set(command.id, {
+            id: command.id,
+            from,
+            timestamp: pending.timestamp,
+          })
+          acknowledgedIds.add(command.id)
+        }
+      } catch {
+        this.reportRejectedCommand(pending.commandId)
+      }
+    }
+
+    // Keep every successful origin until it is recorded. Prune only after the
+    // batch, so raising a floor cannot suppress its remaining equal timestamps.
+    // This also retries a previous failed save even for a duplicate-only batch.
+    await this.recordProcessedCommands(applied.values())
 
     // if this was the first time we received commands,
     // we can signal that we're done loading after the commands where processed
@@ -1600,9 +1646,9 @@ class SyncManager {
       this.dispatchLibEvent(FavaLibEvent.Ready)
     }
 
-    if (commandsExecutedIds.length > 0) {
+    if (acknowledgedIds.size > 0) {
       this.sendToServer('syncCommandsExecuted', {
-        commandIds: commandsExecutedIds,
+        commandIds: [...acknowledgedIds],
       })
     }
   }

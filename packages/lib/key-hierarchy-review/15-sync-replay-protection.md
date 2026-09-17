@@ -122,6 +122,27 @@ Listed in [13](13-sync-command-authentication.md)'s table, since the two
 changes landed together: disabling the persisted duplicate check, the floor, or
 the recording each reddens exactly one test.
 
+### Batch delivery and acknowledgment follow-up
+
+Incoming batches are serialized, and each command is authenticated immediately
+before execution against the current peer list. Enrollment and revocation from
+earlier commands therefore apply to later commands in the same batch. A peer's
+signing key is checked again after asynchronous verification.
+
+Applied commands retain their origins until the whole batch is recorded; there
+is no capped pending-origin map that can forget commands before they execute.
+Pruning happens after the batch, so equal timestamps cannot prematurely raise
+a floor past unprocessed commands. A failed replay-state save is retried before
+acknowledgment, including when the next delivery contains only duplicates.
+
+Authenticated duplicates are acknowledged without re-execution or a warning.
+Authenticated commands at or below their peer's floor are also acknowledged,
+with a warning: the client has permanently refused them, so the server should
+delete them. Authentication failures and unsuccessful new commands remain
+unacknowledged. These behaviors are covered by
+`tests/subclasses/sync-command-delivery.test.mts`, including batches exceeding
+1000 commands, restarts, overlapping deliveries, and failed saves.
+
 ### Not closed by this
 
 Ordering. Commands are still applied in sender-timestamp order

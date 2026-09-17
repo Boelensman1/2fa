@@ -111,6 +111,10 @@ export interface SyncCommandsClientMessage {
 export interface SyncCommandsExecutedClientMessage {
   type: 'syncCommandsExecuted'
   data: {
+    /**
+     * Commands the server may delete: newly applied commands, authenticated
+     * duplicates, and authenticated commands permanently refused by replay floors.
+     */
     commandIds: string[]
   }
 }

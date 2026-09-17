@@ -1010,6 +1010,13 @@ describe('SyncManager', () => {
       await registerSenderAsPeer()
     })
 
+    const captureAcknowledgments = (lib: FavaLib) => {
+      const send = vi.fn<(type: string, data: unknown) => void>()
+      // @ts-expect-error Capture acknowledgments from the offline test instance.
+      lib.sync!.sendToServer = send
+      return send
+    }
+
     it('applies a redelivered command only once', async () => {
       const command = await encryptCommandFor(
         'replay-once',
@@ -1086,11 +1093,15 @@ describe('SyncManager', () => {
         'replay-restarted',
         'replay-restarted' as EntryId,
       )
+      const acknowledge = captureAcknowledgments(restarted)
       await restarted.sync!.receiveCommands([command])
 
       expect(() =>
         restarted.vault.getEntryMeta('replay-restarted' as EntryId),
       ).toThrow()
+      expect(acknowledge).toHaveBeenCalledWith('syncCommandsExecuted', {
+        commandIds: ['replay-restarted'],
+      })
       restarted.sync?.closeServerConnection()
     })
 
@@ -1136,11 +1147,15 @@ describe('SyncManager', () => {
         'replay-below-floor',
         'replay-below-floor' as EntryId,
       )
+      const acknowledge = captureAcknowledgments(withFloor)
       await withFloor.sync!.receiveCommands([command])
 
       expect(() =>
         withFloor.vault.getEntryMeta('replay-below-floor' as EntryId),
       ).toThrow()
+      expect(acknowledge).toHaveBeenCalledWith('syncCommandsExecuted', {
+        commandIds: ['replay-below-floor'],
+      })
       withFloor.sync?.closeServerConnection()
     })
   })

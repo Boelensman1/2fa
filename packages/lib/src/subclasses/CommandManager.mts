@@ -131,10 +131,10 @@ class CommandManager {
    * Receives a remote command and enqueues it for processing.
    *
    * A command whose major version is newer than this build understands is
-   * dropped with a warning rather than thrown on: receiveCommands calls this
-   * inside a Promise.all, so throwing would abort the whole batch. Dropping is
-   * safe because the command is never reported as executed, so the server
-   * keeps it queued and redelivers it once this device is upgraded.
+   * dropped with a warning and is never reported as executed, so the server
+   * keeps it queued and redelivers it once this device is upgraded. SyncManager
+   * authenticates and drains one command at a time, so each command sees the
+   * peer list left by the previous one.
    * @param remoteCommand - The remote command to process.
    * @throws {InvalidCommandError} If the command type is unknown or data is invalid.
    */

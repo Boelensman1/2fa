@@ -194,10 +194,12 @@ export async function connectDevices({
   // this flaked. A waitUntil returns the moment its condition holds, so a
   // generous ceiling costs a passing run nothing; it only bounds how long a
   // genuinely stuck pairing takes to report.
-  await vi.waitUntil(() => !receiverFavaLib.sync?.inAddDeviceFlow, {
-    timeout: 5000,
-    interval: 5,
-  })
+  await vi.waitUntil(
+    () =>
+      !receiverFavaLib.sync?.inAddDeviceFlow &&
+      !senderFavaLib.sync?.inAddDeviceFlow,
+    { timeout: 5000, interval: 5 },
+  )
 
   // Verify connection was successful
   if (

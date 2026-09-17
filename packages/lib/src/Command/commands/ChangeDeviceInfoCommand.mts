@@ -65,16 +65,15 @@ class ChangeDeviceInfoCommand extends Command<ChangeDeviceInfoData> {
 
     const syncManager = mediator.getComponent('syncManager')
     if (syncManager) {
-      // eslint-disable-next-line @typescript-eslint/dot-notation
-      const device = syncManager['syncDevices'].find(
-        (d) => d.deviceId === this.data.deviceId,
-      )
-      if (!device) {
+      // Through SyncManager rather than into `syncDevices` directly, so the
+      // rename announces itself like every other change to the device list.
+      if (
+        !syncManager.setDeviceInfo(this.data.deviceId, this.data.newDeviceInfo)
+      ) {
         throw new InvalidCommandError(
           'Trying to change info of device that is not found',
         )
       }
-      device.deviceInfo = this.data.newDeviceInfo
     }
 
     await mediator.getComponent('persistentStorageManager').save()

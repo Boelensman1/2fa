@@ -1953,6 +1953,7 @@ class SyncManager {
         existing.publicKey = device.publicKey
         existing.signingPublicKey = device.signingPublicKey
         existing.deviceInfo = device.deviceInfo
+        this.dispatchLibEvent(FavaLibEvent.Changed)
         if (saveAfter) {
           await this.persistentStorageManager.save()
         }
@@ -2005,6 +2006,12 @@ class SyncManager {
     }
     this.log('info', `Adding syncdevice ${device.deviceId} to ${this.deviceId}`)
     this.syncDevices.push(enrolled)
+    // The device list is vault state like any other, and `Changed` is the only
+    // event a consumer can re-read it on. `SyncDeviceAdded` below is narrower
+    // -- peer introductions only, and informational -- so it is not a
+    // substitute for this: without it a device added by pairing, or by a peer,
+    // shows up in a list only once something unrelated changes an entry.
+    this.dispatchLibEvent(FavaLibEvent.Changed)
 
     if (via === 'peer') {
       const fingerprint = deviceFingerprint(enrolled)
@@ -2047,9 +2054,38 @@ class SyncManager {
       return
     }
     device.acknowledgedAt = Date.now()
+    // `acknowledged` is part of what getSyncDevices reports, so this is a
+    // change to the list even though nothing about the device itself moved.
+    this.dispatchLibEvent(FavaLibEvent.Changed)
     if (saveAfter) {
       await this.persistentStorageManager.save()
     }
+  }
+
+  /**
+   * Records what a device now says about itself.
+   *
+   * The write half of a rename; who may rename whom is decided in
+   * `ChangeDeviceInfoCommand.validate`, both for the local route and for a
+   * peer's. It lives here rather than in that command so that every mutation
+   * of the device list is in one place with its `Changed` dispatch -- a rename
+   * applied straight to `syncDevices` left every list built on that event
+   * showing the old name.
+   *
+   * Does not save: the command that calls it does, together with the rest of
+   * what it changed.
+   * @param deviceId - The device being renamed.
+   * @param deviceInfo - What it now says about itself.
+   * @returns Whether a device with that id was in the list.
+   */
+  setDeviceInfo(deviceId: DeviceId, deviceInfo: DeviceInfo): boolean {
+    const device = this.syncDevices.find((d) => d.deviceId === deviceId)
+    if (!device) {
+      return false
+    }
+    device.deviceInfo = deviceInfo
+    this.dispatchLibEvent(FavaLibEvent.Changed)
+    return true
   }
 
   /**
@@ -2088,6 +2124,7 @@ class SyncManager {
     const [removed] = this.syncDevices.splice(index, 1)
     this.removedDevices[deviceId] = Date.now()
     this.pruneRemovedDevices()
+    this.dispatchLibEvent(FavaLibEvent.Changed)
 
     if (saveAfter) {
       await this.persistentStorageManager.save()

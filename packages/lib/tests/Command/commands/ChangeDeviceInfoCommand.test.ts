@@ -6,6 +6,7 @@ import type {
   DeviceId,
   DeviceType,
   DeviceFriendlyName,
+  DeviceInfo,
 } from '../../../src/interfaces/SyncTypes.mjs'
 
 describe('ChangeDeviceInfoCommand', () => {
@@ -23,16 +24,27 @@ describe('ChangeDeviceInfoCommand', () => {
     },
   }
 
-  const mockSyncManager = {
-    syncDevices: [
-      {
-        deviceId: mockDeviceId,
-        deviceInfo: {
-          deviceType: mockDeviceType,
-          deviceFriendlyName: 'Old Device Name',
-        },
+  const mockSyncDevices: { deviceId: DeviceId; deviceInfo: DeviceInfo }[] = [
+    {
+      deviceId: mockDeviceId,
+      deviceInfo: {
+        deviceType: mockDeviceType,
+        deviceFriendlyName: 'Old Device Name' as DeviceFriendlyName,
       },
-    ],
+    },
+  ]
+
+  const mockSyncManager = {
+    syncDevices: mockSyncDevices,
+    // Stands in for SyncManager.setDeviceInfo, which also announces the
+    // change with a Changed event; here only the write and the
+    // found/not-found answer are of interest.
+    setDeviceInfo: (deviceId: DeviceId, deviceInfo: DeviceInfo) => {
+      const device = mockSyncDevices.find((d) => d.deviceId === deviceId)
+      if (!device) return false
+      device.deviceInfo = deviceInfo
+      return true
+    },
   }
 
   const mockPersistentStorageManager = {
@@ -85,7 +97,7 @@ describe('ChangeDeviceInfoCommand', () => {
       deviceId: remoteDeviceId,
       deviceInfo: {
         deviceType: mockDeviceType,
-        deviceFriendlyName: 'Old Remote Name',
+        deviceFriendlyName: 'Old Remote Name' as DeviceFriendlyName,
       },
     })
 

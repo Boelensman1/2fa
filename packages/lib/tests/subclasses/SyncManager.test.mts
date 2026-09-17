@@ -1707,6 +1707,50 @@ describe('SyncManager', () => {
       ).toBe(pinned)
     })
 
+    it('announces every change it makes to the device list', async () => {
+      // A consumer listing devices re-reads getSyncDevices on Changed and on
+      // nothing else, so without these the list only catches up when
+      // something unrelated changes an entry: a device enrolled by a peer, or
+      // renamed, or removed, stays invisible or stays listed.
+      const changed = vi.fn()
+      receiverFavaLib.addEventListener(FavaLibEvent.Changed, changed)
+
+      await sync().addSyncDevice(peer(), 'peer', 'alice' as DeviceId, false)
+      expect(changed).toHaveBeenCalledTimes(1)
+
+      await sync().acknowledgeSyncDevice(peer().deviceId, false)
+      expect(changed).toHaveBeenCalledTimes(2)
+
+      sync().setDeviceInfo(peer().deviceId, {
+        deviceType: 'test' as DeviceType,
+        deviceFriendlyName: 'the phone' as DeviceFriendlyName,
+      })
+      expect(changed).toHaveBeenCalledTimes(3)
+
+      await sync().removeSyncDevice(peer().deviceId, false)
+      expect(changed).toHaveBeenCalledTimes(4)
+    })
+
+    it('stays quiet when nothing about the list changed', async () => {
+      await sync().addSyncDevice(peer(), 'pairing', undefined, false)
+      const changed = vi.fn()
+      receiverFavaLib.addEventListener(FavaLibEvent.Changed, changed)
+
+      // Every resilver replays the whole device list, and a device enrolled
+      // by pairing is acknowledged already, so both of these are the common
+      // case rather than an edge one.
+      await sync().addSyncDevice(peer(), 'peer', 'alice' as DeviceId, false)
+      await sync().acknowledgeSyncDevice(peer().deviceId, false)
+      expect(
+        sync().setDeviceInfo('never-here' as DeviceId, {
+          deviceType: 'test' as DeviceType,
+        }),
+      ).toBe(false)
+      await sync().removeSyncDevice('never-here' as DeviceId, false)
+
+      expect(changed).not.toHaveBeenCalled()
+    })
+
     it('forgets the oldest removals once past the cap, and says so', async () => {
       // Pruning here WEAKENS the record, which is why it is loud: a forgotten
       // tombstone is a device a peer may introduce again. There is no

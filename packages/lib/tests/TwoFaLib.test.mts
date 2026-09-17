@@ -17,6 +17,7 @@ import {
   FavaLibEvent,
   DeviceId,
   DeviceFriendlyName,
+  type DeviceInfo,
   PlatformProviders,
   getFavaLibVaultCreationUtils,
   type LockedRepresentationString,
@@ -374,19 +375,33 @@ describe('2falib', () => {
     // minimal mock so setDeviceFriendlyName can run. serverUrl is left
     // undefined so reloading from the saved state does not try to connect.
     const registerMockSyncManager = (lib: FavaLib, publicKey: PublicKey) => {
+      const syncDevices: {
+        deviceId: DeviceId
+        publicKey: PublicKey
+        signingPublicKey: SigningPublicKey
+        deviceInfo: DeviceInfo
+      }[] = [
+        {
+          // The publicKey is not decoration. A real SyncManager
+          // self-registers with one, and the load path now refuses a device
+          // record without it, so a mock that omits it saves a vault that
+          // cannot be reopened.
+          deviceId: lib.meta.deviceId,
+          publicKey,
+          signingPublicKey,
+          deviceInfo: { deviceType },
+        },
+      ]
       const mockSyncManager = {
-        syncDevices: [
-          {
-            // The publicKey is not decoration. A real SyncManager
-            // self-registers with one, and the load path now refuses a device
-            // record without it, so a mock that omits it saves a vault that
-            // cannot be reopened.
-            deviceId: lib.meta.deviceId,
-            publicKey,
-            signingPublicKey,
-            deviceInfo: { deviceType },
-          },
-        ],
+        syncDevices,
+        // ChangeDeviceInfoCommand renames through SyncManager rather than
+        // writing to syncDevices itself, so that the change announces itself.
+        setDeviceInfo: (deviceId: DeviceId, deviceInfo: DeviceInfo) => {
+          const device = syncDevices.find((d) => d.deviceId === deviceId)
+          if (!device) return false
+          device.deviceInfo = deviceInfo
+          return true
+        },
         serverUrl: undefined,
         getCommandSendQueue: () => [],
         getProcessedCommands: () => ({ commands: [], floors: {} }),

@@ -1,4 +1,11 @@
 export enum FavaLibEvent {
+  /**
+   * Vault state a consumer may be displaying has changed: an entry was added,
+   * updated or deleted, or the sync device list changed -- a device enrolled,
+   * removed, renamed or acknowledged.
+   *
+   * It carries no detail of what changed; the listener re-reads what it shows.
+   */
   Changed = 'changed',
   /**
    * The vault password was changed and the new key material has been saved.

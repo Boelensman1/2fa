@@ -25,7 +25,8 @@ how to add tests. E2E tests are separate from the Node-based `make test` suite.
 
 - `src/index.tsx` — `render(<StoreProvider><App /></StoreProvider>, root)`
 - `src/App.tsx` — root component; gates on auth/vault state
-- `src/parameters.ts` — env-derived constants (`syncServerUrl`, `deviceType`, `version`)
+- `src/parameters.ts` — env-derived constants (`syncServerUrlPrefill`,
+  `syncServerSecretPrefill`, `deviceType`, `version`)
 - `src/index.css` — the only stylesheet: `@import 'tailwindcss'` plus a `.loader`
 - `src/components/` — 15 flat `PascalCase.tsx` files, no subfolders
 - `src/store/` — flux layer over `solid-js/store`
@@ -77,13 +78,19 @@ TypeScript is `strict` with `moduleResolution: 'bundler'` and
 imports are relative and extensionless. Tailwind v4 is configured CSS-first in
 `src/index.css`; there is no `tailwind.config.js` and there should not be one.
 
-The app reaches the sync server at `/api/sync` on whatever origin serves it, and
-`vite.config.mts` proxies that path to `SYNC_SERVER_TARGET` (default
+`vite.config.mts` proxies `/api/sync` to `SYNC_SERVER_TARGET` (default
 `ws://localhost:8080`) — `preview.proxy` falls back to `server.proxy`, so this
-holds for `make preview` as well as `make dev`. `VITE_SYNCSERVERURL` overrides
-the url the app uses: a path is resolved against the page's origin, an absolute
-`ws://` or `wss://` url is used as-is. To exercise sync locally, start the
-server with `make -C ../server dev`.
+holds for `make preview` as well as `make dev`. To exercise sync locally, start
+the server with `make -C ../server dev`.
+
+**The sync server is not configured at build time.** A vault is created with
+sync switched off; `SyncServerForm` asks for the server address and the secret
+the server is configured with, and `FavaLib.setSyncServerUrl` stores both in the
+vault. The secret cannot be compiled in, because this app is served publicly and
+`import.meta.env` ends up in the bundle. `VITE_DEVSYNCSERVERURL` (default
+`/api/sync`, a path being resolved against the page's origin) and
+`VITE_DEVSERVERSECRET` only **prefill that form** — the `DEV` is the warning, and
+milly.nix sets the second for the container dev server.
 
 ## Conventions
 

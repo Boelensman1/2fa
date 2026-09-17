@@ -11,11 +11,14 @@ import WS from 'vitest-websocket-mock'
 
 import type ServerMessage from '../../src/interfaces/protocol/ServerMessage.mjs'
 import type {
+  AuthProofClientMessage,
   ConnectClientMessage,
+  SyncCommandFromClient,
   SyncCommandsClientMessage,
   StartResilverClientMessage,
 } from '../../src/interfaces/protocol/ClientMessage.mjs'
 import {
+  Encrypted,
   EncryptedSecretKeys,
   EncryptedSymmetricKey,
   Salt,
@@ -54,9 +57,14 @@ import {
   totpEntry,
   send,
   connectDevices,
+  completeHandshake,
   handleSyncCommands,
   password,
+  testServerNonce,
+  testServerSecret,
 } from '../testUtils.mjs'
+import { createConnectProof } from '../../src/utils/connectAuth.mjs'
+import { ConnectionStatus } from '../../src/subclasses/SyncManager.mjs'
 import { Client as WsClient } from 'mock-socket'
 import {
   SyncAddDeviceFlowConflictError,
@@ -94,6 +102,20 @@ describe('SyncManager', () => {
   let receiverFavaLib: FavaLib
   let senderWsInstance: WsClient
   let receiverWsInstance: WsClient
+  let clients: WsClient[]
+
+  /**
+   * Waits for the nth client to connect to the mock server.
+   * @param index - Zero-based position in connection order.
+   * @returns That client.
+   */
+  const nthClient = async (index: number) => {
+    await vi.waitUntil(() => clients.length > index, {
+      timeout: 2000,
+      interval: 10,
+    })
+    return clients[index]
+  }
 
   beforeAll(async () => {
     const result = await createFavaLibForTests()
@@ -114,9 +136,13 @@ describe('SyncManager', () => {
 
   beforeEach(async () => {
     server = new WS(serverUrl, { jsonProtocol: true })
+    clients = []
     // server.connected is broken, so we have to use this workaround
     const allConnected = new Promise<void>((resolve) => {
       server.on('connection', (client) => {
+        // Every client, not just the first two: a reconnect opens a third, and
+        // it has to be handed a challenge like any other.
+        clients.push(client)
         if (!senderWsInstance) {
           senderWsInstance = client
         } else if (!receiverWsInstance) {
@@ -144,9 +170,9 @@ describe('SyncManager', () => {
       },
       [],
     )
-    void senderFavaLib.setSyncServerUrl(serverUrl)
+    void senderFavaLib.setSyncServerUrl(serverUrl, testServerSecret)
     await server.connected
-    await server.nextMessage // wait for the hello message
+    await completeHandshake(server, senderWsInstance)
 
     await senderFavaLib.vault.addEntry(newTotpEntry)
 
@@ -168,9 +194,9 @@ describe('SyncManager', () => {
       },
       [],
     )
-    void receiverFavaLib.setSyncServerUrl(serverUrl)
+    void receiverFavaLib.setSyncServerUrl(serverUrl, testServerSecret)
     await allConnected
-    await server.nextMessage // wait for the hello message
+    await completeHandshake(server, receiverWsInstance)
   })
 
   afterEach(() => {
@@ -216,7 +242,12 @@ describe('SyncManager', () => {
       { deviceId: 'disconnectedDeviceId' as DeviceId },
       [],
       undefined,
-      { serverUrl: temporaryServerUrl, devices: [], commandSendQueue: [] },
+      {
+        serverUrl: temporaryServerUrl,
+        serverSecret: testServerSecret,
+        devices: [],
+        commandSendQueue: [],
+      },
     )
 
     // await temporaryServer.connected
@@ -1066,6 +1097,7 @@ describe('SyncManager', () => {
         undefined,
         {
           serverUrl,
+          serverSecret: testServerSecret,
           devices: [
             {
               deviceId: 'senderDeviceId' as DeviceId,
@@ -1126,6 +1158,7 @@ describe('SyncManager', () => {
         undefined,
         {
           serverUrl,
+          serverSecret: testServerSecret,
           devices: [
             {
               deviceId: 'senderDeviceId' as DeviceId,
@@ -1180,10 +1213,20 @@ describe('SyncManager', () => {
       { deviceId: 'newSenderDeviceId' as DeviceId },
       [],
       undefined,
-      { serverUrl, devices: [], commandSendQueue: [] },
+      {
+        serverUrl,
+        serverSecret: testServerSecret,
+        devices: [],
+        commandSendQueue: [],
+      },
     )
 
-    await server.nextMessage // wait for the connect message
+    // A third client, which has to get through the gate like the other two
+    // before it will say `connect`.
+    await completeHandshake(server, await nthClient(2))
+
+    // Ready is asserted on senderFavaLib, so it is senderFavaLib that has to
+    // receive the syncCommands message.
     send(senderWsInstance, 'syncCommands', [])
 
     // syncCommands message has been send, readyPromise should resolve soon
@@ -1225,14 +1268,16 @@ describe('SyncManager', () => {
 
     // Add an entry while disconnected
     const addedEntryId = await senderFavaLib.vault.addEntry(anotherNewTotpEntry)
-    send(senderWsInstance, 'syncCommands', [])
     expect(server.messagesToConsume.pendingItems).toHaveLength(0)
 
-    // Simulate reconnection
-    // @ts-expect-error Accessing private property for testing
-    senderFavaLib.sync.ws.readyState = WebSocket.OPEN
+    // The client reconnects on its own, and the new socket has to prove the
+    // shared secret again -- a socket's standing does not outlive the socket.
+    // Nothing is re-sent before the server accepts it, which is the point of
+    // moving processCommandSendQueue behind the handshake.
+    senderWsInstance = await nthClient(2)
+    wsInstancesMap.set(senderFavaLib.meta.deviceId, senderWsInstance)
 
-    const connectMessage = (await server.nextMessage) as ConnectClientMessage
+    const connectMessage = await completeHandshake(server, senderWsInstance)
     expect(connectMessage.type).toBe('connect')
     send(senderWsInstance, 'syncCommands', [])
 
@@ -1270,6 +1315,145 @@ describe('SyncManager', () => {
     expect(senderFavaLib.vault.getEntryMeta(addedEntryId)).toBeTruthy()
     expect(receiverFavaLib.vault.getEntryMeta(addedEntryId)).toBeTruthy()
   }, 10000) // long running test, the re-connect itself takes 5 seconds
+
+  describe('the sync server connection gate', () => {
+    // key-hierarchy-review/16-server-authentication.md. An open socket is no
+    // longer a usable one: the server speaks first, and nothing this device has
+    // to say happens until its proof of the shared secret is accepted.
+    const gateSyncState = (commandSendQueue: SyncCommandFromClient[] = []) => ({
+      serverUrl,
+      serverSecret: testServerSecret,
+      devices: [],
+      commandSendQueue,
+    })
+
+    const makeGatedLib = (
+      deviceId: string,
+      commandSendQueue?: SyncCommandFromClient[],
+    ) =>
+      new FavaLib(
+        'gated' as DeviceType,
+        platformProviders,
+        ['test'],
+        { privateKey, signingSecretKey },
+        symmetricKey,
+        encryptedSecretKeys,
+        encryptedSymmetricKey,
+        salt,
+        macKey,
+        kdf,
+        { publicKey, signingPublicKey },
+        { deviceId: deviceId as DeviceId },
+        [],
+        undefined,
+        gateSyncState(commandSendQueue),
+      )
+
+    it('proves the secret without ever sending it', async () => {
+      const lib = makeGatedLib('gate-proof')
+      const client = await nthClient(2)
+
+      send(client, 'authChallenge', { nonce: testServerNonce })
+      const proof = (await server.nextMessage) as AuthProofClientMessage
+
+      expect(proof.type).toBe('authProof')
+      expect(proof.data.proof).toBe(
+        createConnectProof(testServerSecret, testServerNonce),
+      )
+      // The thing itself stays on the device. A plain ws:// link in development
+      // would otherwise hand it to anyone watching.
+      expect(JSON.stringify(proof)).not.toContain(testServerSecret)
+
+      lib.sync?.closeServerConnection()
+    })
+
+    it('does not report itself connected until the proof is accepted', async () => {
+      const statuses: ConnectionStatus[] = []
+      const lib = makeGatedLib('gate-status')
+      lib.addEventListener(
+        FavaLibEvent.ConnectionToSyncServerStatusChanged,
+        (event) => {
+          statuses.push(event.detail.newStatus)
+        },
+      )
+
+      const client = await nthClient(2)
+      send(client, 'authChallenge', { nonce: testServerNonce })
+      await server.nextMessage // the proof
+
+      expect(statuses).not.toContain(ConnectionStatus.CONNECTED)
+
+      send(client, 'authAccepted', {})
+      const connectMessage = (await server.nextMessage) as ConnectClientMessage
+      expect(connectMessage.type).toBe('connect')
+
+      await vi.waitUntil(() => statuses.includes(ConnectionStatus.CONNECTED), {
+        timeout: 1000,
+        interval: 10,
+      })
+
+      lib.sync?.closeServerConnection()
+    })
+
+    it('does not flush the send queue until the proof is accepted', async () => {
+      const queued: SyncCommandFromClient = {
+        commandId: 'queued-before-the-gate',
+        deviceId: 'some-peer' as DeviceId,
+        encryptedCommand: 'v2:AAAA:AAAA:AAAA' as Encrypted<string>,
+        encryptedSymmetricKey: 'v2:AAAA:AAAA:AAAA' as EncryptedSymmetricKey,
+      }
+      const lib = makeGatedLib('gate-queue', [queued])
+
+      const client = await nthClient(2)
+      send(client, 'authChallenge', { nonce: testServerNonce })
+      const proof = (await server.nextMessage) as AuthProofClientMessage
+      expect(proof.type).toBe('authProof')
+
+      // Nothing else has been said yet -- an unproven socket that could still
+      // push its queue would be handing commands to a server that has not let
+      // it in.
+      expect(server.messagesToConsume.pendingItems).toHaveLength(0)
+
+      send(client, 'authAccepted', {})
+      await server.nextMessage // the connect message
+
+      const flushed = (await server.nextMessage) as SyncCommandsClientMessage
+      expect(flushed.type).toBe('syncCommands')
+      expect(flushed.data.commands[0].commandId).toBe(queued.commandId)
+
+      lib.sync?.closeServerConnection()
+    })
+
+    it('stops reconnecting when the server refuses the connection', async () => {
+      const statuses: ConnectionStatus[] = []
+      const lib = makeGatedLib('gate-refused')
+      lib.addEventListener(
+        FavaLibEvent.ConnectionToSyncServerStatusChanged,
+        (event) => {
+          statuses.push(event.detail.newStatus)
+        },
+      )
+
+      const client = await nthClient(2)
+      const clientsBefore = clients.length
+
+      // 4401 is the server's one refusal, whatever the cause. A wrong secret
+      // does not fix itself, so retrying every five seconds would only bury the
+      // message that says what is wrong.
+      client.close({ code: 4401, reason: 'Unauthorized', wasClean: true })
+
+      await vi.waitUntil(() => statuses.includes(ConnectionStatus.FAILED), {
+        timeout: 1000,
+        interval: 10,
+      })
+
+      // Well past the 100ms reconnect interval tests run with.
+      await new Promise((resolve) => setTimeout(resolve, 400))
+      expect(clients).toHaveLength(clientsBefore)
+
+      lib.sync?.closeServerConnection()
+    })
+  })
 
   describe('sync device validation', () => {
     // The single chokepoint every route a peer device arrives by has to pass:
@@ -1487,12 +1671,18 @@ describe('SyncManager', () => {
       { deviceId: 'otherReceiverDeviceId' as DeviceId },
       [],
       undefined,
-      { serverUrl, devices: [], commandSendQueue: [] },
+      {
+        serverUrl,
+        serverSecret: testServerSecret,
+        devices: [],
+        commandSendQueue: [],
+      },
     )
 
     await connectionPromise
 
-    await server.nextMessage // wait for the hello message
+    // The third device gets through the gate like the other two.
+    await completeHandshake(server, otherReceiverWsInstance!)
 
     const wsInstancesMap = new Map([
       [senderFavaLib.meta.deviceId, senderWsInstance],

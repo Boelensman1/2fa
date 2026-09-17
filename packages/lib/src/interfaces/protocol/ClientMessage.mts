@@ -8,6 +8,22 @@ import type {
 } from '../BrandedTypes.mjs'
 import type JsonifiedUint8Array from './JsonifiedUint8Array.mjs'
 
+/**
+ * Answers the server's `authChallenge`, and must be the first message a socket
+ * sends: every other type is refused until this one is accepted.
+ *
+ * Note what is absent. There is no `deviceId` here, because the proof cannot
+ * speak about one -- the secret behind it belongs to the deployment, not to a
+ * device. See key-hierarchy-review/16-server-authentication.md.
+ */
+export interface AuthProofClientMessage {
+  type: 'authProof'
+  data: {
+    /** base64 HMAC-SHA256 over buildConnectAuthMessage(nonce). */
+    proof: string
+  }
+}
+
 export interface ConnectClientMessage {
   type: 'connect'
   data: {
@@ -127,6 +143,7 @@ export interface StartResilverClientMessage {
 }
 
 type IncomingMessage =
+  | AuthProofClientMessage
   | ConnectClientMessage
   | AddSyncDeviceInitialiseDataClientMessage
   | JPAKEPass2ClientMessage

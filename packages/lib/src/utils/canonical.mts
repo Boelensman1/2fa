@@ -300,3 +300,30 @@ export const buildEnvelopeMacMessage = (fields: EnvelopeMacFields): string =>
     fields.encryptedSymmetricKey,
     fields.encryptedVaultState,
   ])
+
+/**
+ * Builds the message a client HMACs to prove it holds the sync server's shared
+ * secret.
+ *
+ * One field, and the omissions are the design. There is no `deviceId` here on
+ * purpose: the secret is held by every device of a deployment, so an HMAC under
+ * it proves membership of that deployment and nothing about which device
+ * computed it. Binding a device id would make the proof LOOK like device
+ * authentication while remaining a statement anyone holding the secret can make
+ * about any id, which is the misreading
+ * key-hierarchy-review/16-server-authentication.md exists to prevent.
+ *
+ * Freshness is the nonce's whole job: the server draws it per socket and
+ * accepts it once, so a captured proof is worth nothing on the next connection.
+ * That is also why the secret itself never travels -- a plain `ws://` link in
+ * development would otherwise hand it to anyone watching.
+ *
+ * `v1` rather than `v2`: the other separators here take their version from the
+ * storage format they belong to, and this one belongs to no stored format at
+ * all. It is the first version of a wire handshake, and it moves when that
+ * handshake does.
+ * @param nonce - The server's per-socket challenge, base64 of 32 random bytes.
+ * @returns The canonical message to HMAC.
+ */
+export const buildConnectAuthMessage = (nonce: string): string =>
+  encodeFields(['favalib:connectauth:v1', nonce])

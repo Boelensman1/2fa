@@ -33,12 +33,14 @@ import {
   buildVaultDataAad,
   buildVaultDataSignatureMessage,
 } from '../utils/canonical.mjs'
+import { createConnectProof } from '../utils/connectAuth.mjs'
 import { validateEntryFatal } from '../utils/entryValidation.mjs'
 import {
   MAX_SYNC_DEVICES,
   parseDevicePublicKeys,
   validateSyncDevice,
 } from '../utils/syncDeviceValidation.mjs'
+import type { ServerSecret } from '../interfaces/BrandedTypes.mjs'
 import type {
   DevicePublicKeys,
   DeviceSecretKeys,
@@ -157,6 +159,18 @@ const generateNonCryptographicRandomString = () => {
 }
 
 /**
+ * The close code the sync server refuses a connection with.
+ *
+ * In the 4000-4999 range the WebSocket spec leaves to applications. One code
+ * for every way the handshake can fail -- a wrong secret, a message sent before
+ * the proof, a proof that never arrived -- because a server that distinguishes
+ * them is answering questions for whoever is probing it. The client cannot tell
+ * those apart either, which is why the message it logs names the likeliest
+ * cause rather than the actual one.
+ */
+const SYNC_SERVER_UNAUTHORIZED_CLOSE_CODE = 4401
+
+/**
  * Manages synchronization of 2FA devices and communication with the server.
  */
 class SyncManager {
@@ -164,7 +178,20 @@ class SyncManager {
   private activeAddDeviceFlow?: ActiveAddDeviceFlow
   private readonly reconnectInterval: number = IN_TESTING ? 100 : 5000 // 5 seconds
   readonly serverUrl: string
+  readonly serverSecret: ServerSecret
   private syncDevices: SyncDevice[]
+
+  /**
+   * How far this socket has got through the server's connection gate.
+   *
+   * Reset on every `initServerConnection`, so a reconnect proves itself again
+   * rather than inheriting the last socket's standing. Nothing but `authProof`
+   * is sent while this is not `authenticated`
+   * (key-hierarchy-review/16-server-authentication.md).
+   */
+  private authState:
+    'awaiting-challenge' | 'awaiting-accept' | 'authenticated' =
+    'awaiting-challenge'
 
   private readyEventEmitted = false
 
@@ -261,8 +288,13 @@ class SyncManager {
     private readonly deviceType: DeviceType,
     private connectionEnabled = true,
   ) {
-    const { serverUrl, devices, commandSendQueue, processedCommands } =
-      syncState
+    const {
+      serverUrl,
+      serverSecret,
+      devices,
+      commandSendQueue,
+      processedCommands,
+    } = syncState
 
     if (!serverUrl.startsWith('wss://')) {
       if (!serverUrl.startsWith('ws://') && !(IN_DEV || IN_TESTING)) {
@@ -276,6 +308,7 @@ class SyncManager {
     this.processedCommands = processedCommands?.commands ?? []
     this.replayFloors = processedCommands?.floors ?? {}
     this.serverUrl = serverUrl
+    this.serverSecret = serverSecret
     if (this.connectionEnabled) {
       this.initServerConnection()
     } else {
@@ -344,17 +377,33 @@ class SyncManager {
   }
 
   /**
-   * @returns Whether the WebSocket connection is open.
+   * @returns Whether the socket is open, whatever it is allowed to say on it.
+   */
+  private get socketOpen(): boolean {
+    return this.ws?.readyState === WebSocket.OPEN
+  }
+
+  /**
+   * @returns Whether there is a usable connection to the sync server.
+   *
+   * Open is not enough any more. The server refuses every message from a socket
+   * that has not proved the shared secret, so a caller that started a pairing
+   * flow in the window between `open` and `authAccepted` would have its
+   * connection closed under it rather than get an error it could act on. This
+   * is what every caller gates on, and it means BOTH
+   * (key-hierarchy-review/16-server-authentication.md).
    */
   get webSocketConnected(): boolean {
-    return this.ws?.readyState === WebSocket.OPEN
+    return this.socketOpen && this.authState === 'authenticated'
   }
 
   private sendToServer<T extends ClientMessage['type']>(
     type: T,
     data: Extract<ClientMessage, { type: T }>['data'],
   ) {
-    if (!this.ws || !this.webSocketConnected) {
+    // Deliberately the socket-level check, not webSocketConnected: the proof
+    // that makes that one true has to travel through here first.
+    if (!this.ws || !this.socketOpen) {
       throw new SyncNoServerConnectionError()
     }
     this.ws.send(JSON.stringify({ type, data }))
@@ -408,24 +457,42 @@ class SyncManager {
       }
     })
 
+    this.authState = 'awaiting-challenge'
     ws.addEventListener('open', () => {
-      this.log('info', 'Connected to server.')
-      this.sendToServer('connect', { deviceId: syncManager.deviceId })
-      this.dispatchLibEvent(FavaLibEvent.ConnectionToSyncServerStatusChanged, {
-        newStatus: ConnectionStatus.CONNECTED,
-      })
-
-      clearTimeout(this.connectionFailedTimeout)
-      this.connectionFailedTimeout = undefined
-
-      // send any commands that were done while offline
-      this.processCommandSendQueue()
+      // An open socket is no longer a usable one. The server speaks first, with
+      // a nonce this device has to answer before it may say anything at all, so
+      // everything that used to happen here -- announcing the deviceId,
+      // reporting CONNECTED, draining the offline queue -- now happens in the
+      // `authAccepted` case below. See
+      // key-hierarchy-review/16-server-authentication.md.
+      this.log('info', 'Socket open, awaiting sync server challenge.')
     })
     ws.addEventListener('close', this.handleWebSocketClose.bind(this))
 
     this.ws = ws
   }
   private handleWebSocketClose(event: CloseEvent) {
+    if (event.code === SYNC_SERVER_UNAUTHORIZED_CLOSE_CODE) {
+      // Terminal, where every other close is temporary. The server refused this
+      // socket because it could not prove the shared secret, and reconnecting
+      // every five seconds would neither fix that nor let anyone notice it -- it
+      // would bury the one message that says what is wrong under a loop. The
+      // way out is setSyncServerUrl with a secret that works.
+      this.shouldReconnect = false
+      this.log(
+        'error',
+        'The sync server refused this connection: the server secret is ' +
+          'wrong or the server has changed it. Set the sync server again.',
+      )
+      this.dispatchLibEvent(FavaLibEvent.ConnectionToSyncServerStatusChanged, {
+        newStatus: ConnectionStatus.FAILED,
+      })
+      if (this.terminateTimeout) {
+        clearTimeout(this.terminateTimeout)
+      }
+      return
+    }
+
     if (this.shouldReconnect) {
       this.dispatchLibEvent(FavaLibEvent.ConnectionToSyncServerStatusChanged, {
         newStatus: ConnectionStatus.CONNECTING,
@@ -448,6 +515,40 @@ class SyncManager {
 
   private handleServerMessage(message: ServerMessage) {
     switch (message.type) {
+      case 'authChallenge': {
+        // Answered whatever this device thinks its state is. A server that
+        // challenges twice on one socket is not a case worth branching on: the
+        // proof is a function of the nonce and says nothing else, so answering
+        // a second one costs an HMAC and leaks nothing.
+        const { nonce } = message.data
+        if (typeof nonce !== 'string' || !nonce) {
+          throw new SyncError('Sync server sent a malformed challenge')
+        }
+        this.authState = 'awaiting-accept'
+        this.sendToServer('authProof', {
+          proof: createConnectProof(this.serverSecret, nonce),
+        })
+        break
+      }
+      case 'authAccepted': {
+        // Everything the 'open' handler used to do, moved behind the proof: the
+        // deviceId is announced, the connection is reported, and the offline
+        // queue is drained, in that order and not before.
+        this.authState = 'authenticated'
+        this.log('info', 'Connected to server.')
+        this.sendToServer('connect', { deviceId: this.deviceId })
+        this.dispatchLibEvent(
+          FavaLibEvent.ConnectionToSyncServerStatusChanged,
+          { newStatus: ConnectionStatus.CONNECTED },
+        )
+
+        clearTimeout(this.connectionFailedTimeout)
+        this.connectionFailedTimeout = undefined
+
+        // send any commands that were done while offline
+        this.processCommandSendQueue()
+        break
+      }
       case 'confirmAddSyncDeviceInitialiseData': {
         if (this.activeAddDeviceFlow?.state !== 'initiator:initiated') {
           throw new SyncInWrongStateError(

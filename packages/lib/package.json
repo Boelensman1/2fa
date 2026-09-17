@@ -20,6 +20,10 @@
       "types": "./build/interfaces/protocol/ServerMessage.d.mts",
       "import": "./build/interfaces/protocol/ServerMessage.mjs"
     },
+    "./protocol/connectAuth": {
+      "types": "./build/utils/connectAuth.d.mts",
+      "import": "./build/utils/connectAuth.mjs"
+    },
     "./platformProviders/browser": {
       "types": "./build/platformProviders/browser/index.d.mts",
       "import": "./build/platformProviders/browser/index.mjs"

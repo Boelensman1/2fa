@@ -44,19 +44,31 @@ the table above on purpose** — ranking them would imply a plan that has not be
 made. [12](12-sync-findings-index.md) is the group index and explains what this
 review did and did not do with them.
 
-| #                                       | Finding                                         | Verdict                             | Status |
-| --------------------------------------- | ----------------------------------------------- | ----------------------------------- | ------ |
-| [13](13-sync-command-authentication.md) | Sync commands have no sender authentication     | broken                              | done   |
-| [14](14-sync-device-injection.md)       | Unvalidated sync-device injection               | broken — most severe found anywhere | open   |
-| [15](15-sync-replay-protection.md)      | Replay protection is bypassable by construction | broken                              | done   |
-| [16](16-server-authentication.md)       | The sync server authenticates nothing           | weak by design, one real hijack     | open   |
-| [17](17-synckey-salt.md)                | `createSyncKey`'s salt is a public device id    | untidy                              | done   |
+| #                                       | Finding                                         | Verdict                             | Status          |
+| --------------------------------------- | ----------------------------------------------- | ----------------------------------- | --------------- |
+| [13](13-sync-command-authentication.md) | Sync commands have no sender authentication     | broken                              | done            |
+| [14](14-sync-device-injection.md)       | Unvalidated sync-device injection               | broken — most severe found anywhere | open            |
+| [15](15-sync-replay-protection.md)      | Replay protection is bypassable by construction | broken                              | done            |
+| [16](16-server-authentication.md)       | The sync server authenticates nothing           | weak by design, one real hijack     | open — narrowed |
+| [17](17-synckey-salt.md)                | `createSyncKey`'s salt is a public device id    | untidy                              | done            |
 
 `13` and `15` landed 2026-09-17 and took the asymmetric layer with them; see
 `13` first, then [10](10-rsa-layer.md)'s amendment. `14` is the one still worth
 reading closely: it is narrower than it was — enrolment is no longer open to
 anyone holding a public key — but a trusted peer can still enrol anything, and
 nothing surfaces a new device to the user.
+
+`16` was narrowed the same day and is **still open**. The sync server now refuses
+any socket that cannot prove a static secret shared by every device of a
+deployment — proved as an HMAC over a server nonce, so the secret never crosses
+the wire — which raises the hijack from "learn a leaked `deviceId`" to "learn a
+leaked `deviceId` and hold the deployment secret". It is not a fix: one secret
+held by every device gates the socket and says nothing about which `deviceId` is
+on it. The other half of its Direction, proving possession of the DEVICE key, was
+**declined** — its premise was wrong, since the server relays public keys sealed
+and has never held one in the clear, and satisfying it would have meant giving
+the server a device-key registry. That is the first change to the server since
+this review began.
 
 **Status vocabulary:** `open` · `in progress` · `done` · `closed — no action`
 (reviewed, deliberately nothing to do).

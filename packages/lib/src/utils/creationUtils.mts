@@ -184,9 +184,14 @@ export const validatePasswordStrength = async (
 
 /**
  * Creates a new FavaLib vault.
+ *
+ * A new vault is created with sync SWITCHED OFF, and there is no parameter for
+ * a server here on purpose. Configuring sync means supplying a url and the
+ * server's shared secret together -- neither is usable without the other, see
+ * `setSyncServerUrl` -- so creation cannot half-configure it, and the state
+ * "has a server url, cannot authenticate to it" has nowhere to come from.
  * @param libraryLoader - An instance of LibraryLoader.
  * @param deviceType - A unique identifier for the device type e.g. 2fa-cli.
- * @param serverUrl - The server URL for syncing.
  * @param passwordExtraDict - Additional words to be used for password strength evaluation.
  * @param saveFunction - The function to save the data.
  * @param password - The password to be used to encrypt the private key.
@@ -195,7 +200,6 @@ export const validatePasswordStrength = async (
 const createNewFavaLibVault = async (
   libraryLoader: LibraryLoader,
   deviceType: DeviceType,
-  serverUrl: string | undefined,
   passwordExtraDict: PasswordExtraDict,
   saveFunction: SaveFunction | undefined,
   password: Password,
@@ -240,7 +244,7 @@ const createNewFavaLibVault = async (
     [],
     saveFunction,
     {
-      serverUrl,
+      serverUrl: undefined,
       devices: [],
       commandSendQueue: [],
     },
@@ -875,7 +879,6 @@ const loadFavaLibFromUnlockedSession = async (
  * @param deviceType - A unique identifier for this device type (e.g. 2fa-cli).
  * @param passwordExtraDict - Additional words to be used for password strength evaluation.
  * @param saveFunction - The function to save the data.
- * @param serverUrl - The server URL for syncing.
  * @returns An object with methods to evaluate password strength and create a new FavaLib vault.
  */
 export const getFavaLibVaultCreationUtils = (
@@ -883,7 +886,6 @@ export const getFavaLibVaultCreationUtils = (
   deviceType: DeviceType,
   passwordExtraDict: PasswordExtraDict,
   saveFunction?: SaveFunction,
-  serverUrl?: string,
 ) => {
   const libraryLoader = new LibraryLoader(platformProviders)
 
@@ -897,7 +899,6 @@ export const getFavaLibVaultCreationUtils = (
       null,
       libraryLoader,
       deviceType,
-      serverUrl,
       passwordExtraDict,
       saveFunction,
     ),

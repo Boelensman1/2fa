@@ -70,10 +70,18 @@ terms, which is not that review. Read `14` first.
       public key" half, and what is left is enrolment by a peer that is trusted
       but hostile, key pinning on first receipt, and a confirmation the user can
       see. Most severe finding in the review.
-- [ ] **16** — prove possession of the device secret key on connect, and do not
-      evict a proven connection for an unproven one. The primitive it needs
-      (`CryptoLib.sign`/`verify`) now exists; a hijacker can already only
-      suppress and observe, never inject.
+- [ ] **16** — narrowed 2026-09-17, still open. The sync server now refuses any
+      socket that cannot prove a static shared secret (HMAC over a server nonce,
+      so the secret never travels), the secret lives per vault beside
+      `serverUrl` and is left out of peer-bound vault state, and `server.mts`
+      was split so the handler is importable and actually tested. **Not a fix**:
+      one secret held by every device gates the socket, not the `deviceId`, so a
+      hijacker who holds it can still suppress and observe. Both halves of the
+      original Direction were **declined**, with reasons in the file — proving
+      the DEVICE key needs a server-side key registry, which is the property
+      `13` was careful to avoid, and its premise (a public key "the server
+      already relays") was simply wrong; refusing eviction defends a live
+      connection, and the victim here is almost always offline.
 - [x] **17** — done 2026-09-17. Kept the device id: the JPAKE input is ephemeral
       and 256-bit, so a salt would add neither entropy nor uniqueness, only a
       field the sync server could tamper with. The parameter is now typed

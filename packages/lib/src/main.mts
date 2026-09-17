@@ -59,6 +59,7 @@ import type {
   UnlockedSession,
   UnlockedSessionString,
 } from './interfaces/Vault.mjs'
+import type { ServerSecret } from './interfaces/BrandedTypes.mjs'
 import type { SaveFunction } from './interfaces/SaveFunction.mjs'
 import type { PlatformProviders } from './interfaces/PlatformProviders.mjs'
 
@@ -158,6 +159,7 @@ export type {
   DeviceFriendlyName,
   DeviceInfo,
   PublicSyncDevice,
+  ServerSecret,
   SaveFunction,
   PlatformProviders,
   LoadFavaLibOptions,

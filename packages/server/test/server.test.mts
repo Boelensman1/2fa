@@ -1,180 +1,214 @@
+// The `expect(ws.close)` assertions below read a vi.fn off a plain object, not
+// a class method, so the `this` this rule is about does not exist here.
 /* eslint-disable @typescript-eslint/unbound-method */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import type { Mock } from 'vitest'
 import { randomUUID } from 'crypto'
 import { WebSocket } from 'ws'
-import ConnectedDevicesManager from '../src/ConnectedDevicesManager.mjs'
+
+import { createSyncServerCore } from '../src/createSyncServer.mjs'
+import { UNAUTHORIZED_CLOSE_CODE } from '../src/ConnectionAuthManager.mjs'
 import UnExecutedSyncCommand from '../src/models/UnExecutedSyncCommand.mjs'
+import { config } from '../src/config.mjs'
+
+import { createConnectProof } from 'favalib/protocol/connectAuth'
 import type ClientMessage from 'favalib/protocol/ClientMessage'
-import type { DeviceId, Encrypted, EncryptedSymmetricKey } from 'favalib/types'
+import type {
+  DeviceId,
+  Encrypted,
+  EncryptedSymmetricKey,
+  ServerSecret,
+} from 'favalib/types'
 import { cleanupTestDatabase, initializeTestDatabase } from './test-setup.mjs'
 
-vi.mock('../src/ConnectedDevicesManager.mjs')
+/**
+ * These drive the REAL handler, imported from src.
+ *
+ * They used to drive a hand-written copy of it, kept in this file, because
+ * `server.mts` opened a listener at module scope and could not be imported. A
+ * copy passes whatever the copy does: it had already drifted (no duplicate
+ * tolerance, no `vault`, no `startResilver`), and it could not have caught
+ * anything about the connection gate, since the gate would not have been in it.
+ * `createSyncServer.mts` exists so this file can stop guessing.
+ */
 
-interface AddDeviceRequest {
-  initiatorDeviceId: DeviceId
-  timestamp: number
-  wsInitiator: WebSocket
-  wsResponder?: WebSocket
+const sharedSecret = config.sync.sharedSecret as ServerSecret
+
+/**
+ * A socket that records what was sent to it and whether it was closed.
+ * @returns The fake socket.
+ */
+const makeWs = () => {
+  const ws = {
+    send: vi.fn<(data: string) => void>(),
+    close: vi.fn<(code?: number, reason?: string) => void>(),
+    on: vi.fn(),
+  }
+  return ws as unknown as WebSocket & typeof ws
 }
 
-describe('Server Message Handling', () => {
-  let mockWs: WebSocket
-  let mockConnectedDevices: ConnectedDevicesManager
-  let mockSend: Mock<(ws: WebSocket, type: string, data?: unknown) => void>
-  let handleMessage: (ws: WebSocket, message: ClientMessage) => void
-  let ongoingAddDeviceRequests: AddDeviceRequest[]
+/**
+ * Reads back the messages a socket was sent, decoded.
+ * @param ws - The socket to read.
+ * @returns The decoded messages, in order.
+ */
+const sentTo = (ws: ReturnType<typeof makeWs>) =>
+  ws.send.mock.calls.map(
+    ([data]) => JSON.parse(data) as { type: string; data?: unknown },
+  )
+
+describe('Server message handling', () => {
+  let core: ReturnType<typeof createSyncServerCore>
+  let ws: ReturnType<typeof makeWs>
+
+  /**
+   * Puts a socket through the connection gate, the way a real client does.
+   * @param socket - The socket to authenticate.
+   */
+  const authenticate = (socket: ReturnType<typeof makeWs>) => {
+    const nonce = core.connectionAuth.issueChallenge(socket)
+    core.handleMessage(socket, {
+      type: 'authProof',
+      data: { proof: createConnectProof(sharedSecret, nonce) },
+    })
+  }
 
   beforeEach(() => {
     initializeTestDatabase()
-    mockWs = {
-      send: vi.fn(),
-    } as unknown as WebSocket
-
-    mockConnectedDevices = {
-      addDevice: vi.fn(),
-      removeDeviceByWs: vi.fn(),
-      getDeviceId: vi.fn(),
-      getWs: vi.fn(),
-      size: 0,
-    } as unknown as ConnectedDevicesManager
-
-    mockSend = vi.fn<(ws: WebSocket, type: string, data?: unknown) => void>()
-    ongoingAddDeviceRequests = []
-
-    handleMessage = (ws: WebSocket, message: ClientMessage) => {
-      const send = <T extends string>(
-        ws: WebSocket,
-        type: T,
-        data?: unknown,
-      ) => {
-        mockSend(ws, type, data)
-        ws.send(JSON.stringify({ type, data }))
-      }
-
-      switch (message.type) {
-        case 'connect': {
-          const { deviceId } = message.data
-          mockConnectedDevices.addDevice(deviceId, ws)
-
-          void UnExecutedSyncCommand.query()
-            .where({ deviceId })
-            .then((unExecutedSyncCommands) => {
-              send(ws, 'syncCommands', unExecutedSyncCommands)
-            })
-          break
-        }
-        case 'addSyncDeviceInitialiseData': {
-          send(ws, 'confirmAddSyncDeviceInitialiseData', {})
-          ongoingAddDeviceRequests.push({ ...message.data, wsInitiator: ws })
-          break
-        }
-        case 'JPAKEPass2': {
-          const { initiatorDeviceId } = message.data
-          const request = ongoingAddDeviceRequests.find(
-            (r) => r.initiatorDeviceId === initiatorDeviceId,
-          )
-          if (!request) {
-            console.error('Request not found')
-            return
-          }
-          send(request.wsInitiator, 'JPAKEPass2', message.data)
-          request.wsResponder = ws
-          break
-        }
-        case 'syncCommands': {
-          void Promise.all(
-            message.data.commands.map(async (data) => {
-              try {
-                await UnExecutedSyncCommand.query().insert({
-                  commandId: data.commandId,
-                  deviceId: data.deviceId,
-                  encryptedCommand: data.encryptedCommand,
-                  encryptedSymmetricKey: data.encryptedSymmetricKey,
-                })
-
-                const deviceWs = mockConnectedDevices.getWs(data.deviceId)
-                if (deviceWs) {
-                  send(deviceWs, 'syncCommands', [
-                    {
-                      commandId: data.commandId,
-                      encryptedSymmetricKey: data.encryptedSymmetricKey,
-                      encryptedCommand: data.encryptedCommand,
-                    },
-                  ])
-                }
-              } catch (error) {
-                console.error('Database error:', error)
-                throw error
-              }
-            }),
-          )
-            .then(() => {
-              send(ws, 'syncCommandsReceived', {
-                commandIds: message.data.commands.map(
-                  (command) => command.commandId,
-                ),
-              })
-            })
-            .catch((error: unknown) => {
-              console.error('Promise rejection:', error)
-            })
-          break
-        }
-        case 'syncCommandsExecuted': {
-          const deviceId = mockConnectedDevices.getDeviceId(ws)
-          const { commandIds } = message.data
-          void UnExecutedSyncCommand.query()
-            .where({ deviceId })
-            .whereIn('commandId', commandIds)
-            .del()
-            .execute()
-          break
-        }
-        case 'addSyncDeviceCancelled': {
-          const { initiatorDeviceId } = message.data
-          const request = ongoingAddDeviceRequests.find(
-            (r) => r.initiatorDeviceId === initiatorDeviceId,
-          )
-          if (!request) {
-            console.error('Request not found')
-            return
-          }
-          ongoingAddDeviceRequests.splice(
-            ongoingAddDeviceRequests.indexOf(request),
-            1,
-          )
-
-          if (ws === request.wsResponder) {
-            send(request.wsInitiator, 'addSyncDeviceCancelled', undefined)
-          } else {
-            send(request.wsInitiator, 'addSyncDeviceCancelled', undefined)
-          }
-          break
-        }
-      }
-    }
+    core = createSyncServerCore(sharedSecret)
+    ws = makeWs()
+    authenticate(ws)
+    ws.send.mockClear()
   })
 
   afterEach(async () => {
+    core.connectionAuth.clear()
     vi.clearAllMocks()
-    ongoingAddDeviceRequests.length = 0
     await cleanupTestDatabase()
+  })
+
+  describe('the connection gate', () => {
+    // key-hierarchy-review/16-server-authentication.md. The secret is proved,
+    // not sent: what crosses the wire is an HMAC over a nonce the server drew.
+    it('accepts a proof made with the configured secret', () => {
+      const fresh = makeWs()
+      const nonce = core.connectionAuth.issueChallenge(fresh)
+
+      core.handleMessage(fresh, {
+        type: 'authProof',
+        data: { proof: createConnectProof(sharedSecret, nonce) },
+      })
+
+      expect(sentTo(fresh)).toEqual([{ type: 'authAccepted', data: {} }])
+      expect(fresh.close).not.toHaveBeenCalled()
+      expect(core.connectionAuth.isAuthenticated(fresh)).toBe(true)
+    })
+
+    it('closes a socket whose proof was made with another secret', () => {
+      const fresh = makeWs()
+      const nonce = core.connectionAuth.issueChallenge(fresh)
+
+      core.handleMessage(fresh, {
+        type: 'authProof',
+        data: {
+          proof: createConnectProof(
+            'a-completely-different-shared-secret!' as ServerSecret,
+            nonce,
+          ),
+        },
+      })
+
+      expect(fresh.close).toHaveBeenCalledWith(
+        UNAUTHORIZED_CLOSE_CODE,
+        'Unauthorized',
+      )
+      expect(core.connectionAuth.isAuthenticated(fresh)).toBe(false)
+    })
+
+    it('gives a socket one guess per connection, not one per message', () => {
+      const fresh = makeWs()
+      const nonce = core.connectionAuth.issueChallenge(fresh)
+
+      core.handleMessage(fresh, { type: 'authProof', data: { proof: 'wrong' } })
+      // The nonce is consumed by the first attempt, so even the right answer to
+      // it is refused afterwards. Guessing means reconnecting.
+      core.handleMessage(fresh, {
+        type: 'authProof',
+        data: { proof: createConnectProof(sharedSecret, nonce) },
+      })
+
+      expect(core.connectionAuth.isAuthenticated(fresh)).toBe(false)
+      expect(sentTo(fresh)).toEqual([])
+    })
+
+    it('refuses a connect from a socket that has not proved itself', () => {
+      // The hijack this finding is about: claiming someone else's deviceId used
+      // to displace them and hand over their queued commands.
+      const fresh = makeWs()
+      core.connectionAuth.issueChallenge(fresh)
+
+      core.handleMessage(fresh, {
+        type: 'connect',
+        data: { deviceId: 'device-1' as DeviceId },
+      })
+
+      expect(fresh.close).toHaveBeenCalledWith(
+        UNAUTHORIZED_CLOSE_CODE,
+        'Unauthorized',
+      )
+      expect(
+        core.connectedDevices.getWs('device-1' as DeviceId),
+      ).toBeUndefined()
+      expect(sentTo(fresh)).toEqual([])
+    })
+
+    it.each([
+      ['syncCommands', { commands: [] }],
+      ['syncCommandsExecuted', { commandIds: [] }],
+      ['startResilver', { deviceIds: [] }],
+      ['addSyncDeviceInitialiseData', { initiatorDeviceId: 'd', timestamp: 0 }],
+    ])('refuses an unauthenticated %s', (type, data) => {
+      const fresh = makeWs()
+      core.connectionAuth.issueChallenge(fresh)
+
+      core.handleMessage(fresh, { type, data } as unknown as ClientMessage)
+
+      expect(fresh.close).toHaveBeenCalledWith(
+        UNAUTHORIZED_CLOSE_CODE,
+        'Unauthorized',
+      )
+      expect(sentTo(fresh)).toEqual([])
+    })
+
+    it('does not tell a prober which half it got wrong', () => {
+      // A wrong secret and a message sent too early are the same refusal, with
+      // the same code and the same reason.
+      const wrongSecret = makeWs()
+      core.connectionAuth.issueChallenge(wrongSecret)
+      core.handleMessage(wrongSecret, {
+        type: 'authProof',
+        data: { proof: 'wrong' },
+      })
+
+      const tooEarly = makeWs()
+      core.connectionAuth.issueChallenge(tooEarly)
+      core.handleMessage(tooEarly, {
+        type: 'connect',
+        data: { deviceId: 'device-1' as DeviceId },
+      })
+
+      expect(wrongSecret.close.mock.calls).toEqual(tooEarly.close.mock.calls)
+    })
   })
 
   describe('connect message', () => {
     it('should add device to connected devices manager', () => {
-      const message: ClientMessage = {
+      core.handleMessage(ws, {
         type: 'connect',
         data: { deviceId: 'device-1' as DeviceId },
-      }
+      })
 
-      handleMessage(mockWs, message)
-
-      expect(mockConnectedDevices.addDevice).toHaveBeenCalledWith(
-        'device-1' as DeviceId,
-        mockWs,
-      )
+      expect(core.connectedDevices.getWs('device-1' as DeviceId)).toBe(ws)
+      expect(core.connectedDevices.getDeviceId(ws)).toBe('device-1')
     })
 
     it('should query for unexecuted sync commands', async () => {
@@ -182,97 +216,83 @@ describe('Server Message Handling', () => {
       const commandId = randomUUID()
 
       await UnExecutedSyncCommand.query().insert({
-        commandId: commandId,
-        deviceId: deviceId,
+        commandId,
+        deviceId,
         encryptedCommand: randomUUID() as Encrypted<string>,
         encryptedSymmetricKey: 'test-key' as EncryptedSymmetricKey,
       })
 
-      const message: ClientMessage = {
-        type: 'connect',
-        data: { deviceId: deviceId },
-      }
-
-      handleMessage(mockWs, message)
+      core.handleMessage(ws, { type: 'connect', data: { deviceId } })
 
       await new Promise((resolve) => setTimeout(resolve, 100))
 
-      expect(mockSend).toHaveBeenCalledWith(
-        mockWs,
-        'syncCommands',
-        expect.arrayContaining([
+      expect(sentTo(ws)).toContainEqual({
+        type: 'syncCommands',
+        data: expect.arrayContaining([
           expect.objectContaining({
-            commandId: commandId,
-            encryptedCommand: expect.any(String) as Encrypted<string>,
+            commandId,
             encryptedSymmetricKey: 'test-key',
           }),
-        ]),
-      )
+        ]) as unknown,
+      })
     })
   })
 
   describe('addSyncDeviceInitialiseData message', () => {
     it('should send confirmation and add to ongoing requests', () => {
-      const message: ClientMessage = {
+      core.handleMessage(ws, {
         type: 'addSyncDeviceInitialiseData',
         data: {
           initiatorDeviceId: 'device-1' as DeviceId,
           timestamp: Date.now(),
         },
-      }
+      })
 
-      handleMessage(mockWs, message)
-
-      expect(mockSend).toHaveBeenCalledWith(
-        mockWs,
-        'confirmAddSyncDeviceInitialiseData',
-        {},
-      )
-      expect(ongoingAddDeviceRequests).toHaveLength(1)
-      expect(ongoingAddDeviceRequests[0]).toMatchObject({
+      expect(sentTo(ws)).toEqual([
+        { type: 'confirmAddSyncDeviceInitialiseData', data: {} },
+      ])
+      expect(core.ongoingAddDeviceRequests).toHaveLength(1)
+      expect(core.ongoingAddDeviceRequests[0]).toMatchObject({
         initiatorDeviceId: 'device-1',
-        wsInitiator: mockWs,
+        wsInitiator: ws,
       })
     })
   })
 
   describe('JPAKEPass2 message', () => {
+    const pass2Data = {
+      pass2Result: {
+        round1Result: {
+          G1: { 0: 1, 1: 2, 2: 3 },
+          G2: { 0: 4, 1: 5, 2: 6 },
+          ZKPx1: { 0: 7, 1: 8, 2: 9 },
+          ZKPx2: { 0: 10, 1: 11, 2: 12 },
+        },
+        round2Result: {
+          A: { 0: 13, 1: 14, 2: 15 },
+          ZKPx2s: { 0: 16, 1: 17, 2: 18 },
+        },
+      },
+      responderDeviceId: 'device-2' as DeviceId,
+      initiatorDeviceId: 'device-1' as DeviceId,
+    }
+
     it('should forward message to initiator and set responder', () => {
-      const mockInitiatorWs = { send: vi.fn() } as unknown as WebSocket
-      ongoingAddDeviceRequests.push({
+      const initiatorWs = makeWs()
+      authenticate(initiatorWs)
+      core.ongoingAddDeviceRequests.push({
         initiatorDeviceId: 'device-1' as DeviceId,
-        wsInitiator: mockInitiatorWs,
+        wsInitiator: initiatorWs,
         timestamp: Date.now(),
       })
 
-      const message: ClientMessage = {
+      core.handleMessage(ws, { type: 'JPAKEPass2', data: pass2Data })
+
+      expect(sentTo(initiatorWs)).toContainEqual({
         type: 'JPAKEPass2',
-        data: {
-          pass2Result: {
-            round1Result: {
-              G1: { 0: 1, 1: 2, 2: 3 },
-              G2: { 0: 4, 1: 5, 2: 6 },
-              ZKPx1: { 0: 7, 1: 8, 2: 9 },
-              ZKPx2: { 0: 10, 1: 11, 2: 12 },
-            },
-            round2Result: {
-              A: { 0: 13, 1: 14, 2: 15 },
-              ZKPx2s: { 0: 16, 1: 17, 2: 18 },
-            },
-          },
-          responderDeviceId: 'device-2' as DeviceId,
-          initiatorDeviceId: 'device-1' as DeviceId,
-        },
-      }
-
-      handleMessage(mockWs, message)
-
-      expect(mockSend).toHaveBeenCalledWith(
-        mockInitiatorWs,
-        'JPAKEPass2',
-        message.data,
-      )
-      expect(ongoingAddDeviceRequests[0].wsResponder).toBe(mockWs)
+        data: pass2Data,
+      })
+      expect(core.ongoingAddDeviceRequests[0].wsResponder).toBe(ws)
     })
 
     it('should handle request not found error', () => {
@@ -280,27 +300,13 @@ describe('Server Message Handling', () => {
         .spyOn(console, 'error')
         .mockImplementation(() => undefined)
 
-      const message: ClientMessage = {
+      core.handleMessage(ws, {
         type: 'JPAKEPass2',
         data: {
-          pass2Result: {
-            round1Result: {
-              G1: { 0: 1, 1: 2, 2: 3 },
-              G2: { 0: 4, 1: 5, 2: 6 },
-              ZKPx1: { 0: 7, 1: 8, 2: 9 },
-              ZKPx2: { 0: 10, 1: 11, 2: 12 },
-            },
-            round2Result: {
-              A: { 0: 13, 1: 14, 2: 15 },
-              ZKPx2s: { 0: 16, 1: 17, 2: 18 },
-            },
-          },
-          responderDeviceId: 'device-2' as DeviceId,
+          ...pass2Data,
           initiatorDeviceId: 'non-existent-device' as DeviceId,
         },
-      }
-
-      handleMessage(mockWs, message)
+      })
 
       expect(consoleSpy).toHaveBeenCalledWith('Request not found')
       consoleSpy.mockRestore()
@@ -309,41 +315,45 @@ describe('Server Message Handling', () => {
 
   describe('syncCommands message', () => {
     it('should insert commands and send to target devices', async () => {
-      const mockTargetWs = { send: vi.fn() } as unknown as WebSocket
-      vi.mocked(mockConnectedDevices.getWs).mockReturnValue(mockTargetWs)
+      const targetWs = makeWs()
+      authenticate(targetWs)
+      core.handleMessage(targetWs, {
+        type: 'connect',
+        data: { deviceId: 'device-1' as DeviceId },
+      })
 
       const commandId = randomUUID()
-      const message: ClientMessage = {
+      core.handleMessage(ws, {
         type: 'syncCommands',
         data: {
           commands: [
             {
-              commandId: commandId,
+              commandId,
               deviceId: 'device-1' as DeviceId,
               encryptedCommand: randomUUID() as Encrypted<string>,
               encryptedSymmetricKey: 'encrypted-key' as EncryptedSymmetricKey,
             },
           ],
         },
-      }
-
-      handleMessage(mockWs, message)
+      })
 
       await new Promise((resolve) => setTimeout(resolve, 100))
 
       const insertedCommand = await UnExecutedSyncCommand.query()
-        .where({
-          commandId: commandId,
-          deviceId: 'device-1',
-        })
+        .where({ commandId, deviceId: 'device-1' })
         .first()
 
       expect(insertedCommand).toBeDefined()
       expect(insertedCommand!.encryptedCommand).toBeDefined()
       expect(insertedCommand!.encryptedSymmetricKey).toBe('encrypted-key')
 
-      expect(mockSend).toHaveBeenCalledWith(mockWs, 'syncCommandsReceived', {
-        commandIds: [commandId],
+      expect(sentTo(ws)).toContainEqual({
+        type: 'syncCommandsReceived',
+        data: { commandIds: [commandId] },
+      })
+      expect(sentTo(targetWs)).toContainEqual({
+        type: 'syncCommands',
+        data: [expect.objectContaining({ commandId }) as unknown],
       })
     })
   })
@@ -351,41 +361,25 @@ describe('Server Message Handling', () => {
   describe('syncCommandsExecuted message', () => {
     it('should delete executed commands from database', async () => {
       const deviceId = 'device-1' as DeviceId
-      vi.mocked(mockConnectedDevices.getDeviceId).mockReturnValue(deviceId)
+      core.handleMessage(ws, { type: 'connect', data: { deviceId } })
 
       const cmd1Id = randomUUID()
       const cmd2Id = randomUUID()
       const cmd3Id = randomUUID()
 
-      await UnExecutedSyncCommand.query().insert([
-        {
-          commandId: cmd1Id,
+      await UnExecutedSyncCommand.query().insert(
+        [cmd1Id, cmd2Id, cmd3Id].map((commandId, index) => ({
+          commandId,
           deviceId,
           encryptedCommand: randomUUID() as Encrypted<string>,
-          encryptedSymmetricKey: 'key1' as EncryptedSymmetricKey,
-        },
-        {
-          commandId: cmd2Id,
-          deviceId,
-          encryptedCommand: randomUUID() as Encrypted<string>,
-          encryptedSymmetricKey: 'key2' as EncryptedSymmetricKey,
-        },
-        {
-          commandId: cmd3Id,
-          deviceId,
-          encryptedCommand: randomUUID() as Encrypted<string>,
-          encryptedSymmetricKey: 'key3' as EncryptedSymmetricKey,
-        },
-      ])
+          encryptedSymmetricKey: `key${index}` as EncryptedSymmetricKey,
+        })),
+      )
 
-      const message: ClientMessage = {
+      core.handleMessage(ws, {
         type: 'syncCommandsExecuted',
-        data: {
-          commandIds: [cmd1Id, cmd2Id],
-        },
-      }
-
-      handleMessage(mockWs, message)
+        data: { commandIds: [cmd1Id, cmd2Id] },
+      })
 
       await new Promise((resolve) => setTimeout(resolve, 100))
 
@@ -397,30 +391,24 @@ describe('Server Message Handling', () => {
 
   describe('addSyncDeviceCancelled message', () => {
     it('should remove request and notify initiator', () => {
-      const mockInitiatorWs = { send: vi.fn() } as unknown as WebSocket
-      const request = {
+      const initiatorWs = makeWs()
+      authenticate(initiatorWs)
+      core.ongoingAddDeviceRequests.push({
         initiatorDeviceId: 'device-1' as DeviceId,
-        wsInitiator: mockInitiatorWs,
-        wsResponder: mockWs,
+        wsInitiator: initiatorWs,
+        wsResponder: ws,
         timestamp: Date.now(),
-      }
-      ongoingAddDeviceRequests.push(request)
+      })
 
-      const message: ClientMessage = {
+      core.handleMessage(ws, {
         type: 'addSyncDeviceCancelled',
-        data: {
-          initiatorDeviceId: 'device-1' as DeviceId,
-        },
-      }
+        data: { initiatorDeviceId: 'device-1' as DeviceId },
+      })
 
-      handleMessage(mockWs, message)
-
-      expect(ongoingAddDeviceRequests).toHaveLength(0)
-      expect(mockSend).toHaveBeenCalledWith(
-        mockInitiatorWs,
-        'addSyncDeviceCancelled',
-        undefined,
-      )
+      expect(core.ongoingAddDeviceRequests).toHaveLength(0)
+      expect(sentTo(initiatorWs)).toContainEqual({
+        type: 'addSyncDeviceCancelled',
+      })
     })
 
     it('should handle request not found', () => {
@@ -428,14 +416,10 @@ describe('Server Message Handling', () => {
         .spyOn(console, 'error')
         .mockImplementation(() => undefined)
 
-      const message: ClientMessage = {
+      core.handleMessage(ws, {
         type: 'addSyncDeviceCancelled',
-        data: {
-          initiatorDeviceId: 'non-existent-device' as DeviceId,
-        },
-      }
-
-      handleMessage(mockWs, message)
+        data: { initiatorDeviceId: 'non-existent-device' as DeviceId },
+      })
 
       expect(consoleSpy).toHaveBeenCalledWith('Request not found')
       consoleSpy.mockRestore()
@@ -444,24 +428,23 @@ describe('Server Message Handling', () => {
 
   describe('edge cases and error handling', () => {
     it('should handle missing device connections gracefully', () => {
-      vi.mocked(mockConnectedDevices.getWs).mockReturnValue(undefined)
-
       const commandId = randomUUID()
-      const message: ClientMessage = {
-        type: 'syncCommands',
-        data: {
-          commands: [
-            {
-              commandId: commandId,
-              deviceId: 'offline-device' as DeviceId,
-              encryptedCommand: randomUUID() as Encrypted<string>,
-              encryptedSymmetricKey: 'encrypted-key' as EncryptedSymmetricKey,
-            },
-          ],
-        },
-      }
 
-      expect(() => handleMessage(mockWs, message)).not.toThrow()
+      expect(() =>
+        core.handleMessage(ws, {
+          type: 'syncCommands',
+          data: {
+            commands: [
+              {
+                commandId,
+                deviceId: 'offline-device' as DeviceId,
+                encryptedCommand: randomUUID() as Encrypted<string>,
+                encryptedSymmetricKey: 'encrypted-key' as EncryptedSymmetricKey,
+              },
+            ],
+          },
+        }),
+      ).not.toThrow()
     })
 
     it('should handle database constraint violations gracefully', async () => {
@@ -478,25 +461,25 @@ describe('Server Message Handling', () => {
         encryptedSymmetricKey: 'encrypted-key' as EncryptedSymmetricKey,
       })
 
-      const message: ClientMessage = {
-        type: 'syncCommands',
-        data: {
-          commands: [
-            {
-              commandId: duplicateCommandId,
-              deviceId: 'device-1' as DeviceId,
-              encryptedCommand: randomUUID() as Encrypted<string>,
-              encryptedSymmetricKey: 'encrypted-key-2' as EncryptedSymmetricKey,
-            },
-          ],
-        },
-      }
-
-      expect(() => handleMessage(mockWs, message)).not.toThrow()
+      expect(() =>
+        core.handleMessage(ws, {
+          type: 'syncCommands',
+          data: {
+            commands: [
+              {
+                commandId: duplicateCommandId,
+                deviceId: 'device-1' as DeviceId,
+                encryptedCommand: randomUUID() as Encrypted<string>,
+                encryptedSymmetricKey:
+                  'encrypted-key-2' as EncryptedSymmetricKey,
+              },
+            ],
+          },
+        }),
+      ).not.toThrow()
 
       await new Promise((resolve) => setTimeout(resolve, 50))
 
-      expect(consoleSpy).toHaveBeenCalled()
       consoleSpy.mockRestore()
     })
   })

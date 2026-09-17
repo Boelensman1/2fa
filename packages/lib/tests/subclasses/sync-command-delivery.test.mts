@@ -33,7 +33,7 @@ import {
 } from '../../src/utils/canonical.mjs'
 import { getFavaLibVaultCreationUtils } from '../../src/utils/creationUtils.mjs'
 import { COMMAND_VERSION } from '../../src/version.mjs'
-import { password, totpEntry } from '../testUtils.mjs'
+import { password, testServerSecret, totpEntry } from '../testUtils.mjs'
 
 const crypto = new nodeProviders.CryptoLib()
 const receiverId = 'receiver' as DeviceId
@@ -80,6 +80,7 @@ const makeVault = (peers = [alice, bob]) =>
     undefined,
     {
       serverUrl: 'ws://localhost:9771',
+      serverSecret: testServerSecret,
       devices: peers.map((peer) => structuredClone(peer.device)),
       commandSendQueue: [],
     },

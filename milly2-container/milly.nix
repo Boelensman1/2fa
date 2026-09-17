@@ -1,6 +1,17 @@
 { pkgs, lib, ... }:
 
 let
+  # The sync server refuses any socket that cannot prove this value, and
+  # packages/app-browser prefills its sync-server form with it so the container
+  # is usable without anyone typing it.
+  #
+  # In the repository on purpose, and useless on purpose: it gates a dev server
+  # on loopback inside one container. A real deployment generates its own with
+  # `openssl rand -base64 32` and never puts it in a public build - see
+  # packages/app-browser/src/parameters.ts, which explains why VITE_DEVSERVERSECRET
+  # has DEV in its name.
+  devSharedSecret = "dev-only-sync-secret-not-for-real-use";
+
   # packages/server reads its database settings from packages/server/config
   # through wtfconfig, and ConfigObject.mts requires the whole connection block.
   # That directory is gitignored and the repo has never shipped a default.yaml,
@@ -18,8 +29,13 @@ let
         user: "fava"
         password: ""
         database: "fava"
+    sync:
+      sharedSecret: "${devSharedSecret}"
   '';
 
+  # Only the database differs for tests. The shared secret comes from local.yaml,
+  # which loads first, and the server test suite reads it back from the config
+  # rather than hardcoding one.
   serverLocalTestConfig = pkgs.writeText "fava-server-local-test.yaml" ''
     database:
       connection:
@@ -150,7 +166,10 @@ in
         restartOnLogin = true;
       };
       browser = {
-        command = "make -C packages/app-browser dev";
+        # VITE_DEVSERVERSECRET only prefills the sync-server form. It is compiled
+        # into the bundle, which is exactly why it must never be set for a build
+        # that gets served to anyone.
+        command = "VITE_DEVSERVERSECRET=${devSharedSecret} make -C packages/app-browser dev";
         ports = [ 3266 ]; # packages/app-browser/vite.config.mts: server.port
         restartOnLogin = true;
       };
@@ -193,5 +212,12 @@ in
     database `fava_test`, user `fava`, no password. The server's connection
     settings are written to `packages/server/config/local.yaml` (and
     `local-test.yaml`) by milly setup; both are gitignored.
+
+    The sync server refuses any connection that cannot prove `sync.sharedSecret`
+    from that same `local.yaml`. In the container it is
+    `dev-only-sync-secret-not-for-real-use`, and the browser dev server is
+    started with `VITE_DEVSERVERSECRET` set to it, so the app's sync-server form
+    comes up prefilled. Without that key nothing in `packages/server` runs at
+    all - not the server, not migrations, not the tests.
   '';
 }

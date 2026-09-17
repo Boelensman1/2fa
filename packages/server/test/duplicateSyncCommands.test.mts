@@ -7,8 +7,15 @@ import { WebSocket } from 'ws'
 import UnExecutedSyncCommand from '../src/models/UnExecutedSyncCommand.mjs'
 import { cleanupTestDatabase, initializeTestDatabase } from './test-setup.mjs'
 
+import { createConnectProof } from 'favalib/protocol/connectAuth'
 import type { SyncCommandFromClient } from 'favalib/protocol/ClientMessage'
-import type { DeviceId, Encrypted, EncryptedSymmetricKey } from 'favalib/types'
+import type {
+  DeviceId,
+  Encrypted,
+  EncryptedSymmetricKey,
+  ServerSecret,
+} from 'favalib/types'
+import { config } from '../src/config.mjs'
 
 /**
  * These tests drive the real `src/server.mts` in a child process, rather than a
@@ -16,6 +23,10 @@ import type { DeviceId, Encrypted, EncryptedSymmetricKey } from 'favalib/types'
  * process dying: a rejected insert that nothing catches becomes an unhandled
  * rejection, which takes the whole sync server down for every connected device.
  */
+
+// The same secret the spawned server reads from config/, because both this
+// process and that one load the test config.
+const SHARED_SECRET = config.sync.sharedSecret as ServerSecret
 
 const TEST_PORT = 8282
 const SERVER_URL = `ws://127.0.0.1:${TEST_PORT}`
@@ -96,14 +107,20 @@ interface TestClient {
   /** Messages received from the server that have not been taken yet. */
   inbox: ServerMessage[]
   take: (type: string, timeoutMs?: number) => Promise<ServerMessage>
+  /** Resolves with the close code, once the server or the client closes. */
+  closed: Promise<number>
 }
 
-const connectClient = async (deviceId: DeviceId): Promise<TestClient> => {
+const openClient = async (): Promise<TestClient> => {
   const ws = new WebSocket(SERVER_URL)
   const inbox: ServerMessage[] = []
 
   ws.on('message', (data) => {
     inbox.push(JSON.parse((data as Buffer).toString()) as ServerMessage)
+  })
+
+  const closed = new Promise<number>((resolve) => {
+    ws.once('close', (code) => resolve(code))
   })
 
   await new Promise<void>((resolve, reject) => {
@@ -145,12 +162,41 @@ const connectClient = async (deviceId: DeviceId): Promise<TestClient> => {
       }, timeoutMs)
     })
 
-  const client: TestClient = { ws, inbox, take }
+  return { ws, inbox, take, closed }
+}
+
+/**
+ * Opens a client, proves the shared secret, and announces a device.
+ *
+ * The proof is what the server asks for before it will act on anything: the
+ * secret itself never crosses the wire, only an HMAC over the nonce the server
+ * opens with. See key-hierarchy-review/16-server-authentication.md.
+ * @param deviceId - The device to announce once the server lets us in.
+ * @param secret - The secret to prove, so a test can get it wrong on purpose.
+ * @returns The connected, authenticated client.
+ */
+const connectClient = async (
+  deviceId: DeviceId,
+  secret: ServerSecret = SHARED_SECRET,
+): Promise<TestClient> => {
+  const client = await openClient()
+
+  const challenge = (await client.take('authChallenge')) as {
+    type: string
+    data: { nonce: string }
+  }
+  client.ws.send(
+    JSON.stringify({
+      type: 'authProof',
+      data: { proof: createConnectProof(secret, challenge.data.nonce) },
+    }),
+  )
+  await client.take('authAccepted')
 
   // every client announces itself first, and the server answers with the
   // commands it still has stored for that device
-  ws.send(JSON.stringify({ type: 'connect', data: { deviceId } }))
-  await take('syncCommands')
+  client.ws.send(JSON.stringify({ type: 'connect', data: { deviceId } }))
+  await client.take('syncCommands')
 
   return client
 }
@@ -268,6 +314,138 @@ describe('re-sent sync commands', () => {
       expect(stored.map((command) => command.commandId).sort()).toEqual(
         [alreadySent.commandId, fresh.commandId].sort(),
       )
+    },
+    TEST_TIMEOUT,
+  )
+})
+
+describe('the connection gate', () => {
+  let server: RunningServer
+  let clients: TestClient[] = []
+
+  beforeEach(async () => {
+    initializeTestDatabase()
+    await cleanupTestDatabase()
+    server = await startServer()
+  }, STARTUP_TIMEOUT)
+
+  afterEach(async () => {
+    clients.forEach((client) => client.ws.close())
+    clients = []
+    await stopServer(server)
+    await cleanupTestDatabase()
+  })
+
+  it(
+    'challenges a socket before it has said anything',
+    async () => {
+      const client = await openClient()
+      clients.push(client)
+
+      const challenge = (await client.take('authChallenge')) as {
+        data: { nonce: string }
+      }
+      // 32 bytes of base64. The nonce is what keeps the secret off the wire and
+      // a captured proof worthless on the next connection.
+      expect(challenge.data.nonce).toMatch(/^[A-Za-z0-9+/]{43}=$/)
+    },
+    TEST_TIMEOUT,
+  )
+
+  it(
+    'issues a different nonce to each connection',
+    async () => {
+      const first = await openClient()
+      const second = await openClient()
+      clients.push(first, second)
+
+      const nonceOf = async (client: TestClient) =>
+        ((await client.take('authChallenge')) as { data: { nonce: string } })
+          .data.nonce
+
+      expect(await nonceOf(first)).not.toBe(await nonceOf(second))
+    },
+    TEST_TIMEOUT,
+  )
+
+  it(
+    'closes a connection whose proof is made with the wrong secret',
+    async () => {
+      const client = await openClient()
+      clients.push(client)
+
+      const challenge = (await client.take('authChallenge')) as {
+        data: { nonce: string }
+      }
+      client.ws.send(
+        JSON.stringify({
+          type: 'authProof',
+          data: {
+            proof: createConnectProof(
+              'the-wrong-shared-secret-entirely!!!!' as ServerSecret,
+              challenge.data.nonce,
+            ),
+          },
+        }),
+      )
+
+      await expect(client.closed).resolves.toBe(4401)
+      expect(
+        server.isRunning(),
+        `server process died:\n${server.output()}`,
+      ).toBe(true)
+    },
+    TEST_TIMEOUT,
+  )
+
+  it(
+    'refuses a connect that skips the handshake, and hands over nothing',
+    async () => {
+      // The hijack finding 16 is about: claiming a deviceId used to evict
+      // whoever held it and ship them that device's queued commands.
+      const deviceId = 'gated-device' as DeviceId
+      await UnExecutedSyncCommand.query().insert({
+        commandId: randomUUID(),
+        deviceId,
+        encryptedCommand: `encrypted-${randomUUID()}` as Encrypted<string>,
+        encryptedSymmetricKey: `key-${randomUUID()}` as EncryptedSymmetricKey,
+      })
+
+      const client = await openClient()
+      clients.push(client)
+      await client.take('authChallenge')
+
+      client.ws.send(JSON.stringify({ type: 'connect', data: { deviceId } }))
+
+      await expect(client.closed).resolves.toBe(4401)
+      expect(
+        client.inbox.some((message) => message.type === 'syncCommands'),
+      ).toBe(false)
+
+      // And the queue is untouched, so the real device still gets it.
+      const stored = await UnExecutedSyncCommand.query().where({ deviceId })
+      expect(stored).toHaveLength(1)
+    },
+    TEST_TIMEOUT,
+  )
+
+  it(
+    'survives a frame that is not JSON at all',
+    async () => {
+      const client = await openClient()
+      clients.push(client)
+      await client.take('authChallenge')
+
+      client.ws.send('{not json')
+
+      // The parse used to throw inside the message listener. Nothing about one
+      // client's malformed frame should reach anybody else's connection.
+      const other = await connectClient('still-working' as DeviceId)
+      clients.push(other)
+      expect(
+        server.isRunning(),
+        `server process died:\n${server.output()}`,
+      ).toBe(true)
     },
     TEST_TIMEOUT,
   )

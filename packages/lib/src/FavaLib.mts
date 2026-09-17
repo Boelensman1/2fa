@@ -21,6 +21,7 @@ import type {
   FavaLibEventMapEvents,
 } from './interfaces/Events.mjs'
 import type { PasswordExtraDict } from './interfaces/PasswordExtraDict.js'
+import type { ServerSecret } from './interfaces/BrandedTypes.mjs'
 import type {
   Vault,
   VaultSyncState,
@@ -183,7 +184,19 @@ class FavaLib extends TypedEventTarget<FavaLibEventMapEvents> {
       this.mediator.getComponent('vaultDataManager').replaceVault(vault)
     }
 
-    if (syncState?.serverUrl) {
+    if (syncState?.serverUrl && !syncState.serverSecret) {
+      // A url with no secret cannot get past the sync server's connection gate
+      // (key-hierarchy-review/16-server-authentication.md), so there is nothing
+      // a SyncManager could do here but fail the handshake on a loop. Say what
+      // is missing and carry on unsynced; setSyncServerUrl takes both.
+      this.log(
+        'warning',
+        'Sync is configured with a server url but no server secret, so it is ' +
+          'switched off. Set the sync server again to supply both.',
+      )
+    }
+
+    if (syncState?.serverUrl && syncState.serverSecret) {
       // Initiate the syncManager
       this.mediator.registerComponent(
         'syncManager',
@@ -260,11 +273,28 @@ class FavaLib extends TypedEventTarget<FavaLibEventMapEvents> {
   }
 
   /**
-   * Sets a server url, this will allow syncing with the server.
+   * Sets a sync server, this will allow syncing with the server.
+   *
+   * The two arguments are one setting. A sync server will not accept a socket
+   * without its shared secret, so a url on its own configures nothing, and
+   * there is no way to supply the secret afterwards -- which is why this
+   * replaces the whole sync state rather than patching a url into an existing
+   * one.
+   *
+   * What "connected" means here changed with the secret: the promise below
+   * resolves on the CONNECTED event, and a client only reports that once the
+   * server has accepted its proof. So a wrong secret surfaces here, as a
+   * refusal to set the server, rather than as a connection that quietly never
+   * works.
    * @param serverUrl - The server url.
-   * @param force - Force setting the sync server url, even if no connection can be made
+   * @param serverSecret - The static secret the server is configured with.
+   * @param force - Force setting the sync server, even if no connection can be made
    */
-  async setSyncServerUrl(serverUrl: string, force = false) {
+  async setSyncServerUrl(
+    serverUrl: string,
+    serverSecret: ServerSecret,
+    force = false,
+  ) {
     const oldSyncManager = this.sync
     if (oldSyncManager) {
       // close connection so no data is send to the old syncServer
@@ -273,6 +303,7 @@ class FavaLib extends TypedEventTarget<FavaLibEventMapEvents> {
 
     const newSyncState: VaultSyncStateWithServerUrl = {
       serverUrl,
+      serverSecret,
       devices: [],
       commandSendQueue: [],
     }

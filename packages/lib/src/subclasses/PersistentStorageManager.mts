@@ -170,6 +170,16 @@ class PersistentStorageManager {
         // eslint-disable-next-line @typescript-eslint/dot-notation
         devices: this.syncManager ? this.syncManager['syncDevices'] : [],
         serverUrl: this.syncManager?.serverUrl,
+        // Stored, never sent. `forDeviceId` is what tells the two apart: it is
+        // undefined for the at-rest blob and set for the two peer-bound ones
+        // (the initial vault of a pairing flow, and a resilver). Leaving the
+        // secret out of those is what makes "the shared secret appears in no
+        // message on this wire" true rather than nearly true -- a peer gains
+        // nothing from it (importVaultState reads only `sync.devices`, the same
+        // reason `serverUrl` cannot be redirected by a forged vault state) and
+        // it would put a deployment credential inside a message the server
+        // relays, sealed but present.
+        serverSecret: forDeviceId ? undefined : this.syncManager?.serverSecret,
         commandSendQueue: this.syncManager?.getCommandSendQueue() ?? [],
         processedCommands: this.syncManager?.getProcessedCommands(),
       },

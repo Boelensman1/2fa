@@ -9,6 +9,15 @@ const pairingVersion = '2.0'
 
 const vaultPassword = 'e2e!Pairing7#Errors$vault'
 
+// What milly2-container/milly.nix configures the container's sync server with.
+// A vault is created with sync switched off now, so this screen asks for the
+// server and its secret before it will take a pairing payload at all -- see
+// lib/key-hierarchy-review/16-server-authentication.md. Typed rather than left
+// to VITE_DEVSERVERSECRET's prefill, so the test does not depend on how the dev
+// server happens to have been started.
+const syncServerUrl = '/api/sync'
+const syncServerSecret = 'dev-only-sync-secret-not-for-real-use'
+
 /**
  * Encodes a pairing payload the way an initiator hands it out.
  * @param payload - The pairing payload to encode.
@@ -18,7 +27,7 @@ const connectionString = (payload: Record<string, unknown>) =>
   Buffer.from(JSON.stringify(payload)).toString('base64url')
 
 /**
- * Creates a local vault in connect mode and waits for its sync socket.
+ * Creates a local vault in connect mode, configures sync, and waits for it.
  * @param page - The page to drive.
  */
 const openConnectScreen = async (page: Page) => {
@@ -27,32 +36,26 @@ const openConnectScreen = async (page: Page) => {
     .getByRole('button', { name: 'Or connect to Existing Vault', exact: true })
     .click()
   await page.getByLabel('New password', { exact: true }).fill(vaultPassword)
-
-  // respondToAddDeviceFlow checks the server connection before it looks at the
-  // payload at all, and favalib sends its hello frame as soon as the socket is
-  // open -- so the first frame sent on the sync socket is the signal that a
-  // submit will reach the pairing checks. This screen shows no connection state
-  // to wait on instead.
-  //
-  // Both listeners are attached BEFORE the click, and the frame one is attached
-  // when the socket appears rather than awaited afterwards. Awaiting the socket
-  // first used to work only because creating a vault meant an RSA-4096 keygen:
-  // once that became a pair of curve keygens the socket opened and sent inside
-  // the same moment, and the test subscribed to `framesent` after the frame it
-  // was waiting for had already gone.
-  const helloSent = new Promise<void>((resolve) => {
-    page.on('websocket', (socket) => {
-      if (!socket.url().includes('/api/sync')) return
-      socket.on('framesent', () => resolve())
-    })
-  })
-
   await page
     .getByRole('button', { name: 'Connect to Vault', exact: true })
     .click()
-  await helloSent
 
-  await expect(page.getByPlaceholder('Or enter text here')).toBeVisible()
+  // A new vault has no sync server, so this screen offers the form instead of
+  // the pairing input. Filling it in is what creates the socket at all.
+  await page
+    .getByPlaceholder('wss://sync.example.com or /api/sync')
+    .fill(syncServerUrl)
+  await page.getByPlaceholder('Server secret').fill(syncServerSecret)
+  await page.getByRole('button', { name: 'Connect', exact: true }).click()
+
+  // The pairing input appears only once setSyncServerUrl has resolved, and that
+  // now means the server has accepted the shared secret -- so this doubles as
+  // the wait for a usable connection. It replaces a `framesent` listener that
+  // watched for favalib's first frame, which is no longer the first thing on
+  // the wire: the server speaks first now, with its challenge.
+  await expect(page.getByPlaceholder('Or enter text here')).toBeVisible({
+    timeout: 15_000,
+  })
 }
 
 /**

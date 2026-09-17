@@ -12,7 +12,10 @@ import type {
 import type Entry from './Entry.mjs'
 import type { DeviceFriendlyName, DeviceId, SyncDevice } from './SyncTypes.mjs'
 import type { SyncCommandFromClient } from './protocol/ClientMessage.mjs'
-import type { EncryptedVaultStateString } from './BrandedTypes.mjs'
+import type {
+  EncryptedVaultStateString,
+  ServerSecret,
+} from './BrandedTypes.mjs'
 
 export type {
   EncryptedVaultStateString,
@@ -128,6 +131,20 @@ export interface ProcessedCommandRecord {
 export interface VaultSyncState {
   devices: SyncDevice[]
   serverUrl: string | undefined
+  /**
+   * The static secret this vault authenticates to its sync server with.
+   *
+   * Optional for the same reason `serverUrl` is nullable: a vault with sync
+   * switched off has neither. Absent WITH a `serverUrl` present means a vault
+   * written before the server grew a connection gate, and it gets no
+   * SyncManager at all (FavaLib) rather than a connection that fails at the
+   * handshake -- the user sets the server again, url and secret together.
+   *
+   * It is stored, never sent. `PersistentStorageManager` leaves it out of the
+   * peer-bound form of this struct, so the secret appears in no message on this
+   * wire, sealed or otherwise.
+   */
+  serverSecret?: ServerSecret
   commandSendQueue: SyncCommandFromClient[]
   /**
    * Absent in vaults written before replay protection was persisted, which is
@@ -136,8 +153,20 @@ export interface VaultSyncState {
    */
   processedCommands?: ProcessedCommandRecord
 }
-export type VaultSyncStateWithServerUrl = Omit<VaultSyncState, 'serverUrl'> & {
+/**
+ * A sync state that is actually configured: both halves present.
+ *
+ * The two are required together because neither is usable alone -- a url with
+ * no secret cannot get past the server's handshake, and a secret with no url
+ * has nothing to authenticate to. Requiring them as a pair is what lets
+ * `SyncManager` treat both as non-null for its whole lifetime.
+ */
+export type VaultSyncStateWithServerUrl = Omit<
+  VaultSyncState,
+  'serverUrl' | 'serverSecret'
+> & {
   serverUrl: NonNullable<VaultSyncState['serverUrl']>
+  serverSecret: NonNullable<VaultSyncState['serverSecret']>
 }
 export interface VaultState {
   deviceId: DeviceId

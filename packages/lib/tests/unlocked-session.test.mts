@@ -23,7 +23,11 @@ import type { PlatformProviders } from '../src/interfaces/PlatformProviders.mjs'
 import type { PasswordExtraDict } from '../src/interfaces/PasswordExtraDict.js'
 import { nodeProviders } from '../src/platformProviders/node/index.mjs'
 import { browserProviders } from '../src/platformProviders/browser/index.mjs'
-import { createFavaLibForTests, newTotpEntry } from './testUtils.mjs'
+import {
+  createFavaLibForTests,
+  newTotpEntry,
+  testServerSecret,
+} from './testUtils.mjs'
 
 // The browser CryptoLib reads window.crypto inside its method bodies only, so
 // this shim cannot perturb the node half of this file. Same trick as
@@ -531,7 +535,11 @@ describe('unlocked session (07-session-key-api.md)', () => {
       const result = await createFavaLibForTests((representation) => {
         saved = representation
       })
-      await result.favaLib.setSyncServerUrl('wss://example.com', true)
+      await result.favaLib.setSyncServerUrl(
+        'wss://example.com',
+        testServerSecret,
+        true,
+      )
       await result.favaLib.storage.forceSave()
       const session = result.favaLib.storage.exportUnlockedSession()
       result.favaLib.sync?.closeServerConnection()

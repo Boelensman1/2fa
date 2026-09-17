@@ -25,11 +25,13 @@ import { nodeProviders } from '../src/platformProviders/node/index.mjs'
 
 import {
   clearEntries,
+  completeHandshake,
   createFavaLibForTests,
   deviceType,
   deviceId,
   password,
   passwordExtraDict,
+  testServerSecret,
 } from './testUtils.mjs'
 
 describe('2falib', () => {
@@ -257,13 +259,16 @@ describe('2falib', () => {
         mockExistingSyncManager,
       )
 
-      await favaLib.setSyncServerUrl(newServerUrl)
+      const setting = favaLib.setSyncServerUrl(newServerUrl, testServerSecret)
+
+      // The server speaks first now, and setSyncServerUrl only resolves once
+      // its challenge has been answered -- so the handshake has to be played
+      // out before the await, not after it.
+      await completeHandshake(server)
+      await setting
 
       // Should close existing connection
       expect(mockCloseServerConnection).toHaveBeenCalledOnce()
-
-      // Wait for connection and hello message
-      await server.nextMessage // wait for the hello message
 
       // Should have created a new sync manager with correct url
       const syncManager = favaLib.sync
@@ -305,11 +310,15 @@ describe('2falib', () => {
       )
 
       // Set initial URL
-      await favaLib.setSyncServerUrl(originalUrl)
-      await server.nextMessage
+      const setting = favaLib.setSyncServerUrl(originalUrl, testServerSecret)
+      await completeHandshake(server)
+      await setting
 
-      // Attempt to set new URL without force
-      await expect(favaLib.setSyncServerUrl(newUrl)).rejects.toThrow(
+      // Attempt to set new URL without force. Nothing plays the handshake for
+      // the unreachable server, which is the point: it never connects.
+      await expect(
+        favaLib.setSyncServerUrl(newUrl, testServerSecret),
+      ).rejects.toThrow(
         'Failed to connect to server at ws://unreachable:1234, not setting',
       )
       expect(favaLib.sync?.serverUrl).toBe(originalUrl)
@@ -342,11 +351,12 @@ describe('2falib', () => {
       )
 
       // Set initial URL
-      await favaLib.setSyncServerUrl(originalUrl)
-      await server.nextMessage
+      const setting = favaLib.setSyncServerUrl(originalUrl, testServerSecret)
+      await completeHandshake(server)
+      await setting
 
       // Attempt to set new URL without force
-      await favaLib.setSyncServerUrl(newUrl, true)
+      await favaLib.setSyncServerUrl(newUrl, testServerSecret, true)
       expect(favaLib.sync?.serverUrl).toBe(newUrl)
 
       // Clean up

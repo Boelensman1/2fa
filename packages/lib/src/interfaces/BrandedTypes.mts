@@ -44,3 +44,19 @@ export type EncryptedPublicKeys = Encrypted<PublicKeysString>
 
 /** Represents an encrypted vault state (base64 encoded) */
 export type EncryptedVaultStateString = Encrypted<VaultStateString>
+
+/**
+ * Represents the static secret shared between a client and its sync server.
+ *
+ * A DEPLOYMENT gate, not a credential: every device that syncs with a server
+ * holds the same value, so it says who may open a socket and nothing whatsoever
+ * about which device is on the other end of one. See
+ * key-hierarchy-review/16-server-authentication.md, which stays open for
+ * exactly that reason.
+ *
+ * An opaque string, used as UTF-8 bytes for the HMAC key -- deliberately not
+ * base64, so an operator can paste whatever their password manager produced.
+ * It never crosses the wire: what travels is an HMAC over a server nonce, see
+ * utils/connectAuth.mts.
+ */
+export type ServerSecret = Tagged<string, 'ServerSecret'>

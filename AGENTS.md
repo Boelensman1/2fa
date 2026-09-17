@@ -84,12 +84,17 @@ PostgreSQL runs locally with trust auth over loopback: user `fava`, database
 
 `packages/server` reads its settings from `packages/server/config/` via
 wtfconfig, whose schema (`packages/server/src/types/ConfigObject.mts`) requires
-the full `database.connection` block. The repo ships no config — the whole
-directory is gitignored apart from a `default.yaml` that has never existed — so
-milly's `setup.command` writes:
+the full `database.connection` block **and `sync.sharedSecret`**, the static
+secret a client must prove before the server will act on anything it sends
+(`packages/lib/key-hierarchy-review/16-server-authentication.md`). Both are
+required, and `knexfile.ts` imports that config at module load, so a missing key
+means no server, no migrations and no test run — not a server with the gate
+switched off. The repo ships no config — the whole directory is gitignored apart
+from a `default.yaml` that has never existed — so milly's `setup.command`
+writes:
 
-- `packages/server/config/local.yaml` — the dev connection, loaded last in every
-  environment.
+- `packages/server/config/local.yaml` — the dev connection and the dev
+  `sync.sharedSecret`, loaded last in every environment.
 - `packages/server/config/local-test.yaml` — overrides the database to
   `fava_test`, loaded after `local.yaml` when `NODE_ENV=test`.
 
@@ -124,6 +129,16 @@ browser on your own machine without pointing anything at port 8080. Vite falls
 back to `server.proxy` for the preview server, so this covers
 `make -C packages/app-browser preview` as well as `make -C packages/app-browser dev`.
 
-Two env vars override that: `VITE_SYNCSERVERURL` points the app somewhere else
-(a path is resolved against the page's origin, an absolute `ws://` or `wss://`
-url is used as-is), and `SYNC_SERVER_TARGET` changes where the proxy forwards to.
+The sync server refuses any socket that cannot prove `sync.sharedSecret`, so the
+app asks for the server address and that secret together and stores both in the
+vault — a new vault is created with sync switched off. In the container the
+secret is `dev-only-sync-secret-not-for-real-use`.
+
+Three env vars, and only the last one configures anything at runtime.
+`VITE_DEVSYNCSERVERURL` and `VITE_DEVSERVERSECRET` **prefill the form** and
+nothing more; milly.nix sets the second for the dev service. They have `DEV` in
+their names because anything reachable from `import.meta.env` is compiled into
+the bundle, and this PWA is meant to be served publicly — setting
+`VITE_DEVSERVERSECRET` for a real build publishes the secret to everyone who
+loads the app. `SYNC_SERVER_TARGET` changes where the vite proxy forwards to and
+is server-side, so it is unaffected.

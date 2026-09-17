@@ -19,11 +19,20 @@ class GetInfoCommand extends BaseCommand {
     const connected = this.favaLib.sync.webSocketConnected || false
     const friendlyName = this.favaLib.meta.deviceFriendlyName || '(none)'
     const serverUrl = this.favaLib.sync.serverUrl || '(none)'
+    // Whether, never what. A secret that is printed on request is a secret that
+    // ends up in a terminal scrollback, a screenshot or a support ticket.
+    const serverSecretSet = Boolean(this.favaLib.sync.serverSecret)
 
     this.output(`Connected: ${connected ? 'yes' : 'no'}\n`)
     this.output(`Device friendly name: ${friendlyName}\n`)
     this.output(`Sync server URL: ${serverUrl}\n`)
-    return Promise.resolve({ connected, friendlyName, serverUrl })
+    this.output(`Sync server secret: ${serverSecretSet ? 'set' : '(none)'}\n`)
+    return Promise.resolve({
+      connected,
+      friendlyName,
+      serverUrl,
+      serverSecretSet,
+    })
   }
 }
 

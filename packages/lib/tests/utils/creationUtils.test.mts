@@ -31,6 +31,7 @@ import {
   deviceId,
   password,
   passwordExtraDict,
+  testServerSecret,
 } from '../testUtils.mjs'
 import { nodeProviders } from '../../src/platformProviders/node/index.mjs'
 
@@ -229,6 +230,7 @@ describe('creationUtils', () => {
       },
       {
         serverUrl: 'ws://offline.test',
+        serverSecret: testServerSecret,
         devices: [
           {
             deviceId: 'other-device' as DeviceId,

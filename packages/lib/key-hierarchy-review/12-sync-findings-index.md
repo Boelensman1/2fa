@@ -58,8 +58,16 @@ whole. What changed for the rest:
 - **`14`** — narrowed, not closed. Enrolment is no longer open to anyone holding
   a public key, but a trusted peer can still enrol anything, and there is still
   no key pinning and no user-visible confirmation.
-- **`16`** — unchanged as a finding. A hijacked socket can still suppress and
-  observe; it can no longer inject.
+- **`16`** — narrowed 2026-09-17, still open. A connection gate landed: the
+  server refuses any socket that cannot prove a static secret shared by every
+  device of a deployment, proved as an HMAC over a server nonce rather than
+  sent. That raises the hijack from "learn a leaked `deviceId`" to "learn a
+  leaked `deviceId` and hold the deployment secret", and it is not a fix,
+  because one secret held by every device says nothing about which device is on
+  a socket. The half of the Direction asking for proof of the DEVICE key was
+  **declined**, with the reasoning in the file: its premise was wrong — the
+  server relays public keys sealed, never in the clear — and doing it would have
+  meant giving the server a device-key registry.
 - **`17`** — untouched.
 
 **`17` closed 2026-09-17**, after the above was written: the device id stays —
@@ -68,7 +76,16 @@ neither entropy nor uniqueness, only a tamperable field crossing this very
 server — and the `as string as Salt` cast is gone, with the reasoning moved into
 `createSyncKey`'s doc comment. No wire change, so nothing here moves with it.
 
-The "what holds" list below is still accurate, with one addition: **the server
-was not changed at all**, and its test suite passes unedited. That was a design
-goal of `13`'s fix — the signature travels inside the ciphertext — and it is
-worth keeping true.
+The "what holds" list below is still accurate, with one change and one addition.
+
+**The server has been changed**, by `16`'s connection gate. That was a design
+goal of `13`'s fix — the signature travels inside the ciphertext, so the server
+needed no change and no migration — and it held until a finding about the server
+itself had to be answered. What `13` earned is still intact and was the reason
+`16` was answered the way it was: the server still cannot read a command, still
+cannot see who is talking to whom, and still holds no key material. The gate
+needed no migration either; the only new state is per socket and in memory.
+
+The addition: **the shared secret is stored and never sent.** It lives beside
+`serverUrl` in the vault, and is left out of the peer-bound vault state, so it
+appears in no message on this wire at all.

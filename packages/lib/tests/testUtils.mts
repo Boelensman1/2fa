@@ -18,10 +18,14 @@ import { PasswordExtraDict } from '../src/interfaces/PasswordExtraDict.js'
 
 import type ServerMessage from '../src/interfaces/protocol/ServerMessage.mjs'
 import type {
+  AuthProofClientMessage,
+  ConnectClientMessage,
   SyncCommandsClientMessage,
   SyncCommandsExecutedClientMessage,
 } from '../src/interfaces/protocol/ClientMessage.mjs'
 import type { SaveFunction } from '../src/interfaces/SaveFunction.mjs'
+import type { ServerSecret } from '../src/interfaces/BrandedTypes.mjs'
+import { verifyConnectProof } from '../src/utils/connectAuth.mjs'
 
 export const newTotpEntry: NewEntry = {
   name: 'Test TOTP',
@@ -72,6 +76,20 @@ export const anotherTotpEntry: Entry = {
 }
 
 export const deviceId = 'device-id' as DeviceId
+
+/** The shared secret the mock sync server in these tests is configured with. */
+export const testServerSecret =
+  'test-only-sync-secret-not-for-real-use' as ServerSecret
+
+/**
+ * A fixed nonce, where a real server draws a fresh one per socket.
+ *
+ * Fixed is fine and randomness would only make failures harder to read: what
+ * the nonce buys is freshness against a network attacker, and there is no
+ * network here. The single-use rule it enforces is the server's, and lives in
+ * the server's own tests.
+ */
+export const testServerNonce = 'dGVzdC1ub25jZS0zMi1ieXRlcy1sb25nLWVub3VnaCE='
 export const deviceType = 'test-device' as DeviceType
 export const password = 'w!22M@#GdRKqp#58#9&e' as Password
 
@@ -224,6 +242,45 @@ export const send = <T extends ServerMessage['type']>(
   data: unknown = {},
 ) => {
   ws.send(JSON.stringify({ type, data }))
+}
+
+/**
+ * Plays the sync server's side of the connection handshake.
+ *
+ * The proof is really checked rather than waved through, so these tests
+ * exercise the client's HMAC end to end: a client that computed it over the
+ * wrong message, or with the wrong key, fails here instead of quietly being
+ * let in by an obliging mock.
+ * @param server - The WebSocket mock server.
+ * @param ws - The client socket to run the handshake against. Omit it when the
+ * server has exactly one client, and it is awaited instead.
+ * @returns The `connect` message the client sends once it is let in.
+ * @throws {Error} If the client does not answer with a valid proof.
+ */
+export const completeHandshake = async (server: WS, ws?: WsClient) => {
+  // Omitting the client waits for the only one there is. A test with two
+  // clients on one server has to say which, or both get the same challenge.
+  const target = ws ?? (await server.connected)
+
+  send(target, 'authChallenge', { nonce: testServerNonce })
+
+  const message = (await server.nextMessage) as AuthProofClientMessage
+  if (message.type !== 'authProof') {
+    throw new Error(
+      `Expected authProof, got ${(message as { type: string }).type}`,
+    )
+  }
+  if (
+    !verifyConnectProof(testServerSecret, testServerNonce, message.data.proof)
+  ) {
+    throw new Error('Client sent an invalid connect proof')
+  }
+
+  send(target, 'authAccepted', {})
+
+  // The connect message, which only comes after this. Returned rather than
+  // swallowed so a caller can assert on it.
+  return (await server.nextMessage) as ConnectClientMessage
 }
 
 /**

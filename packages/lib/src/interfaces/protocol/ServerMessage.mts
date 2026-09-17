@@ -14,6 +14,37 @@ import type {
   DeviceId,
 } from '../BrandedTypes.mjs'
 
+/**
+ * The first thing a socket receives, before it has said anything at all.
+ *
+ * The client answers with an `authProof` over this nonce, which is what keeps
+ * the shared secret off the wire: a plain `ws://` link in development would
+ * otherwise hand it to anyone watching, and a token sent once is replayable
+ * forever. The nonce is drawn per socket and accepted once, so a captured proof
+ * is worth nothing on the next connection.
+ */
+export interface AuthChallengeServerMessage {
+  type: 'authChallenge'
+  data: {
+    /** base64 of 32 CSPRNG bytes, valid for this socket and one proof. */
+    nonce: string
+  }
+}
+
+/**
+ * Sent once a proof is accepted, and the signal the client waits for before it
+ * sends `connect`, reports itself connected or flushes its send queue.
+ *
+ * A refusal is not its counterpart: there is no `authRejected`. Every way this
+ * handshake can fail closes the socket with 4401 and the same reason, because a
+ * server that distinguishes "wrong secret" from "you spoke too early" is
+ * answering questions for whoever is probing it.
+ */
+export interface AuthAcceptedServerMessage {
+  type: 'authAccepted'
+  data: EmptyObject
+}
+
 export interface ConfirmAddSyncDeviceInitialiseServerMessage {
   type: 'confirmAddSyncDeviceInitialiseData'
   data: EmptyObject
@@ -60,6 +91,8 @@ export interface VaultServerMessage extends Omit<VaultClientMessage, 'data'> {
 }
 
 type OutgoingMessage =
+  | AuthChallengeServerMessage
+  | AuthAcceptedServerMessage
   | ConfirmAddSyncDeviceInitialiseServerMessage
   | JPAKEPass2ServerMessage
   | JPAKEPass3ServerMessage

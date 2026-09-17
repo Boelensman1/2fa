@@ -97,6 +97,27 @@ export class SyncNoServerConnectionError extends SyncError {
 export class SyncPairingVersionError extends SyncError {}
 
 /**
+ * Error thrown when a device record arrives carrying different public keys for
+ * a device id this vault already knows.
+ *
+ * Its own type because it is the one sync refusal that is evidence rather than
+ * noise. Every other reason a device is refused describes a peer on a different
+ * build or a malformed record; this one describes something trying to take over
+ * an identity the user has already seen and possibly already compared a
+ * fingerprint for. Keys are pinned on first receipt and never replaced -- see
+ * key-hierarchy-review/14-sync-device-injection.md.
+ */
+export class SyncDeviceKeyConflictError extends SyncError {}
+
+/**
+ * Error thrown when a device record arrives for a device this vault removed.
+ *
+ * A peer cannot undo a removal, which is what makes `removeSyncDevice` stick;
+ * re-pairing can, because that is a deliberate act at both ends.
+ */
+export class SyncDeviceRemovedError extends SyncError {}
+
+/**
  * Error thrown when an invalid command is being executed.
  */
 export class InvalidCommandError extends FavaLibError {}

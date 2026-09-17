@@ -77,7 +77,10 @@ import type {
   DeviceId,
   SyncDevice,
 } from '../../src/interfaces/SyncTypes.mjs'
-import { MAX_SYNC_DEVICES } from '../../src/utils/syncDeviceValidation.mjs'
+import {
+  MAX_REMOVED_DEVICES,
+  MAX_SYNC_DEVICES,
+} from '../../src/utils/syncDeviceValidation.mjs'
 import { FavaLibEvent } from '../../src/FavaLibEvent.mjs'
 import type { VaultServerMessage } from '../../src/interfaces/protocol/ServerMessage.mjs'
 
@@ -446,16 +449,44 @@ describe('SyncManager', () => {
     const receiverSyncDevices = receiverFavaLib.sync.getSyncDevices()
     expect(senderSyncDevices).toHaveLength(1)
     expect(receiverSyncDevices).toHaveLength(1)
+    // Both ends record the other as 'pairing', and both are acknowledged
+    // without anyone being asked: the user was standing in front of the two
+    // devices holding the out-of-band secret, which is the whole point of the
+    // distinction. Only a peer INTRODUCING a third device needs surfacing --
+    // key-hierarchy-review/14-sync-device-injection.md.
     expect(senderSyncDevices[0]).toEqual({
       deviceId: 'receiverDeviceId' as DeviceId,
       deviceFriendlyName: 'receiverFriendlyName' as DeviceFriendlyName,
       deviceType: 'receiver',
+      fingerprint: expect.any(String) as string,
+      enrolment: {
+        via: 'pairing',
+        by: undefined,
+        at: expect.any(Number) as number,
+      },
+      acknowledged: true,
     })
     expect(receiverSyncDevices[0]).toEqual({
       deviceId: 'senderDeviceId' as DeviceId,
       deviceFriendlyName: 'senderFriendlyName' as DeviceFriendlyName,
       deviceType: 'sender',
+      fingerprint: expect.any(String) as string,
+      enrolment: {
+        via: 'pairing',
+        by: undefined,
+        at: expect.any(Number) as number,
+      },
+      acknowledged: true,
     })
+    // Six groups of four uppercase hex: 96 bits, short enough to read aloud
+    // off one screen and check against another, which is the only thing a
+    // fingerprint is for.
+    for (const device of [senderSyncDevices[0], receiverSyncDevices[0]]) {
+      expect(device.fingerprint).toMatch(/^[0-9A-F]{4}(-[0-9A-F]{4}){5}$/)
+    }
+    expect(senderSyncDevices[0].fingerprint).not.toBe(
+      receiverSyncDevices[0].fingerprint,
+    )
   })
 
   it(
@@ -792,6 +823,8 @@ describe('SyncManager', () => {
         signingPublicKey,
         deviceInfo: { deviceType: 'sender' as DeviceType },
       },
+      'pairing',
+      undefined,
       false,
     )
 
@@ -1460,10 +1493,10 @@ describe('SyncManager', () => {
     // importVaultState, AddSyncDeviceCommand, and the constructor's own
     // registration. See key-hierarchy-review/05-load-path-validation.md.
     //
-    // A shape gate ONLY. A well formed record carrying an attacker's public
-    // keys still passes every one of these; what stops it reaching here is that
-    // an AddSyncDeviceCommand must now be signed by a device already in the
-    // peer list -- 14-sync-device-injection.md is still open for the rest.
+    // These are the shape gate ONLY. A well formed record carrying an
+    // attacker's public keys passes every one of them; what a signed command
+    // and the gates below it do about that is
+    // 14-sync-device-injection.md.
     const goodDevice = () => ({
       deviceId: 'shape-check-peer' as DeviceId,
       publicKey,
@@ -1483,10 +1516,13 @@ describe('SyncManager', () => {
       const before = receiverFavaLib.sync?.getSyncDevices().length
 
       await expect(
-        receiverFavaLib.sync?.addSyncDevice({
-          ...goodDevice(),
-          ...overrides,
-        } as unknown as SyncDevice),
+        receiverFavaLib.sync?.addSyncDevice(
+          {
+            ...goodDevice(),
+            ...overrides,
+          } as unknown as SyncDevice,
+          'pairing',
+        ),
       ).rejects.toThrow(/Refusing to add sync device/)
 
       expect(receiverFavaLib.sync?.getSyncDevices()).toHaveLength(before!)
@@ -1494,7 +1530,12 @@ describe('SyncManager', () => {
 
     it('adds a well-formed device', async () => {
       const before = receiverFavaLib.sync?.getSyncDevices().length ?? 0
-      await receiverFavaLib.sync?.addSyncDevice(goodDevice(), false)
+      await receiverFavaLib.sync?.addSyncDevice(
+        goodDevice(),
+        'pairing',
+        undefined,
+        false,
+      )
       expect(receiverFavaLib.sync?.getSyncDevices()).toHaveLength(before + 1)
     })
 
@@ -1516,6 +1557,8 @@ describe('SyncManager', () => {
             ...goodDevice(),
             deviceId: `cap-peer-${i}` as DeviceId,
           },
+          'pairing',
+          undefined,
           false,
         )
       }
@@ -1527,6 +1570,8 @@ describe('SyncManager', () => {
             ...goodDevice(),
             deviceId: 'one-too-many' as DeviceId,
           },
+          'pairing',
+          undefined,
           false,
         ),
       ).rejects.toThrow(new RegExp(`maximum of ${MAX_SYNC_DEVICES} devices`))
@@ -1570,6 +1615,119 @@ describe('SyncManager', () => {
         receiverFavaLib.sync?.getSyncDevices().map((d) => d.deviceId),
       ).not.toContain('hostile-peer')
       expect(warnings.join('\n')).toMatch(/Invalid AddSyncDevice command/)
+    })
+  })
+
+  describe('device enrolment and removal', () => {
+    const peer = () => ({
+      deviceId: 'enrolment-peer' as DeviceId,
+      publicKey,
+      signingPublicKey,
+      deviceInfo: { deviceType: 'test' as DeviceType },
+    })
+
+    const sync = () => receiverFavaLib.sync!
+
+    const has = (deviceId: string) =>
+      sync()
+        .getSyncDevices()
+        .some((device) => device.deviceId === deviceId)
+
+    it('remembers a removal, and refuses to let a peer undo it', async () => {
+      await sync().addSyncDevice(peer(), 'pairing', undefined, false)
+      await sync().removeSyncDevice(peer().deviceId, false)
+      expect(has(peer().deviceId)).toBe(false)
+
+      await expect(
+        sync().addSyncDevice(peer(), 'peer', 'alice' as DeviceId, false),
+      ).rejects.toThrow(/was removed from this vault/)
+      expect(has(peer().deviceId)).toBe(false)
+    })
+
+    it('lets pairing with a removed device again bring it back', async () => {
+      // A tombstone blocks introduction, never pairing: re-pairing costs the
+      // 60-byte out-of-band secret and a user standing in front of both
+      // devices, which is exactly the act being protected. Without this,
+      // "I removed it by mistake" would be unrecoverable.
+      await sync().addSyncDevice(peer(), 'pairing', undefined, false)
+      await sync().removeSyncDevice(peer().deviceId, false)
+      await sync().addSyncDevice(peer(), 'pairing', undefined, false)
+      expect(has(peer().deviceId)).toBe(true)
+
+      // And the tombstone is gone, not merely bypassed -- a device that is
+      // both listed and tombstoned is a contradiction the load path refuses.
+      expect(sync().getRemovedDevices()).toEqual({})
+    })
+
+    it('refuses to remove this device from its own vault', async () => {
+      // FavaLib.removeSyncDevice refuses this too, but covers only the local
+      // route; a peer's RemoveSyncDeviceCommand arrives here directly. This
+      // device's own record is what a NEWLY PAIRED device learns its keys
+      // from, so losing it presents much later as "pairing is broken".
+      await expect(
+        sync().removeSyncDevice(receiverFavaLib.meta.deviceId, false),
+      ).rejects.toThrow(/Cannot remove the current device/)
+    })
+
+    it('does not tombstone a device it never held', async () => {
+      // Otherwise a peer could inflate the bounded record with removals for
+      // ids this vault never had, and push real tombstones out of it.
+      await sync().removeSyncDevice('never-here' as DeviceId, false)
+      expect(sync().getRemovedDevices()).toEqual({})
+    })
+
+    it('is idempotent for a device it already holds', async () => {
+      // Every resilver replays the whole device list, so this is the common
+      // case rather than an edge one.
+      await sync().addSyncDevice(peer(), 'pairing', undefined, false)
+      const before = sync().getSyncDevices().length
+      await sync().addSyncDevice(peer(), 'peer', 'alice' as DeviceId, false)
+      expect(sync().getSyncDevices()).toHaveLength(before)
+    })
+
+    it('pins keys on first receipt and refuses a contradicting record', async () => {
+      await sync().addSyncDevice(peer(), 'pairing', undefined, false)
+      const pinned = sync()
+        .getSyncDevices()
+        .find((device) => device.deviceId === peer().deviceId)!.fingerprint
+
+      await expect(
+        sync().addSyncDevice(
+          { ...peer(), publicKey: ('B'.repeat(43) + '=') as PublicKey },
+          'peer',
+          'alice' as DeviceId,
+          false,
+        ),
+      ).rejects.toThrow(/contradicts the keys this vault already holds/)
+
+      expect(
+        sync()
+          .getSyncDevices()
+          .find((device) => device.deviceId === peer().deviceId)!.fingerprint,
+      ).toBe(pinned)
+    })
+
+    it('forgets the oldest removals once past the cap, and says so', async () => {
+      // Pruning here WEAKENS the record, which is why it is loud: a forgotten
+      // tombstone is a device a peer may introduce again. There is no
+      // equivalent of the replay floors to fall back on.
+      const warnings: string[] = []
+      receiverFavaLib.addEventListener(FavaLibEvent.Log, (event) => {
+        if (event.detail.severity === 'warning') {
+          warnings.push(event.detail.message)
+        }
+      })
+
+      for (let i = 0; i <= MAX_REMOVED_DEVICES; i++) {
+        const device = { ...peer(), deviceId: `gone-${i}` as DeviceId }
+        await sync().addSyncDevice(device, 'pairing', undefined, false)
+        await sync().removeSyncDevice(device.deviceId, false)
+      }
+
+      const removed = sync().getRemovedDevices()!
+      expect(Object.keys(removed)).toHaveLength(MAX_REMOVED_DEVICES)
+      expect(removed).not.toHaveProperty('gone-0')
+      expect(warnings.join('\n')).toMatch(/Forgetting that sync device gone-0/)
     })
   })
 

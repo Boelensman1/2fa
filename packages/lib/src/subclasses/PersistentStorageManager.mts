@@ -182,6 +182,7 @@ class PersistentStorageManager {
         serverSecret: forDeviceId ? undefined : this.syncManager?.serverSecret,
         commandSendQueue: this.syncManager?.getCommandSendQueue() ?? [],
         processedCommands: this.syncManager?.getProcessedCommands(),
+        removedDevices: this.syncManager?.getRemovedDevices(),
       },
     }
 

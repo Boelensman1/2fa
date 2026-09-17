@@ -247,6 +247,10 @@ describe('2falib', () => {
       const mockExistingSyncManager = {
         closeServerConnection: mockCloseServerConnection,
         initServerConnection: mockCloseServerConnection, // temporarily mock this too so we don't get an error when reconnecting after the connection fails
+        // Carried across to the new sync manager: the device list starts over
+        // when the server changes, but the record of what was REVOKED must not,
+        // or changing sync server would be a way to un-remove a device.
+        getRemovedDevices: () => ({}),
       }
       const mockSave = vi.fn()
       // @ts-expect-error Accessing private property for testing
@@ -386,6 +390,7 @@ describe('2falib', () => {
         serverUrl: undefined,
         getCommandSendQueue: () => [],
         getProcessedCommands: () => ({ commands: [], floors: {} }),
+        getRemovedDevices: () => ({}),
         sendCommand: vi.fn(),
       }
       // @ts-expect-error: registering a partial sync manager mock for testing

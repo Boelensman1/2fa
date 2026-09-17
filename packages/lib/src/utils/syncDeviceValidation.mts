@@ -2,7 +2,11 @@ import { base64ToUint8Array } from 'uint8array-extras'
 
 import { SyncError } from '../FavaLibError.mjs'
 import type { DevicePublicKeys } from '../interfaces/CryptoLib.mjs'
-import type { DeviceInfo, SyncDevice } from '../interfaces/SyncTypes.mjs'
+import type {
+  DeviceInfo,
+  SyncDevice,
+  SyncDeviceEnrolment,
+} from '../interfaces/SyncTypes.mjs'
 
 /**
  * The most devices a vault's stored device list may hold.
@@ -30,6 +34,21 @@ export const MAX_SYNC_DEVICES = 64
  * apart -- there is no length to tell them by.
  */
 export const PUBLIC_KEY_LENGTH = 44
+
+/**
+ * The most removal tombstones a vault may keep.
+ *
+ * Four times the device cap, and the slack is the point. Pruning a tombstone
+ * lets that device be introduced again, so unlike `15`'s replay floors -- where
+ * pruning an id raises a floor and never weakens anything -- there is nothing
+ * here to fall back on when an entry is dropped. A tight cap would therefore be
+ * a way to forget a revocation by making enough other removals.
+ *
+ * It is capped at all for the reason MAX_SYNC_DEVICES exists: the record is
+ * re-serialised and re-encrypted on every save, so an unbounded one is
+ * unbounded work per keystroke.
+ */
+export const MAX_REMOVED_DEVICES = 256
 
 /** The longest a device id may be. Ours are uuidv4, but a peer's is a string. */
 const MAX_DEVICE_ID_LENGTH = 256
@@ -95,6 +114,45 @@ const validateDeviceInfo = (deviceInfo: unknown): string | null => {
   return null
 }
 
+/** The three routes a device may record as its enrolment. */
+const ENROLMENT_ROUTES = ['self', 'pairing', 'peer'] as const
+
+/**
+ * Checks the optional enrolment block of a sync device.
+ *
+ * Absent is valid and means the record predates the field. There is no route
+ * meaning "unknown" precisely so that this stays true: a record whose
+ * provenance was never captured says nothing rather than claiming something.
+ * @param enrolment - The value to check, which may be anything at all.
+ * @returns Null when it is usable or absent, otherwise the reason it is not.
+ */
+const validateEnrolment = (enrolment: unknown): string | null => {
+  if (enrolment === undefined || enrolment === null) {
+    return null
+  }
+  if (typeof enrolment !== 'object') {
+    return 'device.enrolment is not an object'
+  }
+
+  const { via, by, at } = enrolment as Partial<SyncDeviceEnrolment>
+
+  if (!ENROLMENT_ROUTES.includes(via!)) {
+    return 'device.enrolment.via is not a known enrolment route'
+  }
+  if (typeof at !== 'number' || !Number.isFinite(at)) {
+    return 'device.enrolment.at is not a usable timestamp'
+  }
+  if (
+    by !== undefined &&
+    by !== null &&
+    !isBoundedString(by, MAX_DEVICE_ID_LENGTH)
+  ) {
+    return 'device.enrolment.by is not a usable deviceId'
+  }
+
+  return null
+}
+
 /**
  * Checks the parts of a sync device without which it is simply unusable.
  *
@@ -102,14 +160,16 @@ const validateDeviceInfo = (deviceInfo: unknown): string | null => {
  * are 32 raw bytes, so this checks the length and the base64 rather than
  * bounding a PEM the way it had to when the keys were RSA.
  *
- * It is still **not** the check that makes device enrolment safe. A well formed
- * record carrying an attacker's public keys passes every test here. What has
- * changed is who can get such a record in front of this function: an
- * `AddSyncDeviceCommand` now has to arrive signed by a device already in the
- * peer list, so enrolment is no longer open to anyone who has seen a public
- * key. Enrolment by a *trusted but hostile* peer, key pinning and a visible
- * new-device confirmation are still open --
- * key-hierarchy-review/14-sync-device-injection.md.
+ * It is still **not** the check that makes device enrolment safe, and it was
+ * never meant to be. A well formed record carrying an attacker's public keys
+ * passes every test here. What decides whether such a record gets this far, and
+ * what happens to it once it does, lives in `SyncManager.addSyncDevice` and in
+ * the signature check above it: the sender has to be a peer already in the
+ * list, the keys are pinned on first receipt, a removed device cannot be
+ * reintroduced, and a peer-introduced device is announced rather than added
+ * quietly. See key-hierarchy-review/14-sync-device-injection.md for the whole
+ * ladder, and for why a peer enrolling a device is in-model rather than
+ * refused.
  * @param raw - The device to check, which may be anything at all.
  * @returns Null when the device is usable, otherwise the reason it is not.
  */
@@ -129,8 +189,58 @@ export const validateSyncDevice = (raw: unknown): string | null => {
   if (!isPublicKey(device.signingPublicKey)) {
     return 'device has no usable signingPublicKey'
   }
+  if (
+    device.acknowledgedAt !== undefined &&
+    (typeof device.acknowledgedAt !== 'number' ||
+      !Number.isFinite(device.acknowledgedAt))
+  ) {
+    return 'device.acknowledgedAt is not a usable timestamp'
+  }
+
+  const enrolmentReason = validateEnrolment(device.enrolment)
+  if (enrolmentReason) {
+    return enrolmentReason
+  }
 
   return validateDeviceInfo(device.deviceInfo)
+}
+
+/**
+ * Checks a vault's removal tombstones.
+ *
+ * Refused rather than reset when malformed, the same call
+ * `05-load-path-validation.md` made for the replay record and for the same
+ * reason: silently starting over is the repair whose cost is invisible. A vault
+ * that has forgotten what it removed works perfectly and quietly accepts a
+ * device the user revoked.
+ * @param raw - The value to check, which may be anything at all.
+ * @returns Null when it is usable or absent, otherwise the reason it is not.
+ */
+export const validateRemovedDevices = (raw: unknown): string | null => {
+  if (raw === undefined || raw === null) {
+    return null
+  }
+  if (typeof raw !== 'object' || Array.isArray(raw)) {
+    return 'sync.removedDevices is not an object'
+  }
+
+  const entries = Object.entries(raw as Record<string, unknown>)
+  if (entries.length > MAX_REMOVED_DEVICES) {
+    return (
+      `sync.removedDevices holds ${entries.length} tombstones, more than ` +
+      `the ${MAX_REMOVED_DEVICES} allowed`
+    )
+  }
+  for (const [deviceId, removedAt] of entries) {
+    if (!isBoundedString(deviceId, MAX_DEVICE_ID_LENGTH)) {
+      return 'sync.removedDevices has an unusable deviceId'
+    }
+    if (typeof removedAt !== 'number' || !Number.isFinite(removedAt)) {
+      return `sync.removedDevices[${deviceId}] is not a usable timestamp`
+    }
+  }
+
+  return null
 }
 
 /**

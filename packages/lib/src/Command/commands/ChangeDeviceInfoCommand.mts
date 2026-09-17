@@ -30,8 +30,17 @@ class ChangeDeviceInfoCommand extends Command<ChangeDeviceInfoData> {
     timestamp?: number,
     version?: string,
     fromRemote = false,
+    fromDeviceId?: DeviceId,
   ) {
-    super('ChangeDeviceInfo', data, id, timestamp, version, fromRemote)
+    super(
+      'ChangeDeviceInfo',
+      data,
+      id,
+      timestamp,
+      version,
+      fromRemote,
+      fromDeviceId,
+    )
   }
 
   /**
@@ -80,22 +89,27 @@ class ChangeDeviceInfoCommand extends Command<ChangeDeviceInfoData> {
 
   /**
    * Validates the command data.
+   *
+   * A remote rename used to return true unconditionally -- "we can only
+   * validate this command locally" -- which made this the one ingest path with
+   * no bound at all: any peer could set any device's friendly name to anything
+   * of any length. Two things follow from that, and both are checked here now.
+   *
+   * **A peer may rename only itself.** `fromDeviceId` is the device whose
+   * signature SyncManager verified, so requiring it to equal the device being
+   * renamed is a real check rather than a comparison of two attacker-chosen
+   * strings. It matters more than it looks: the friendly name is what a user
+   * reads when deciding whether a device belongs, and a peer able to write
+   * anyone's name can dress its own device as the user's phone. That is why
+   * `getSyncDevices` reports a key fingerprint too -- a name is chosen, a
+   * fingerprint is derived.
+   *
+   * **The length bounds apply to both paths**, since a remote name lands in
+   * the same vault as a local one.
    * @inheritdoc
    */
   validate(mediator: FavaLibMediator): boolean {
     const lib = mediator.getComponent('lib')
-    if (this.fromRemote) {
-      // we can only validate this command locally
-      return true
-    }
-    if (this.data.deviceId !== lib.meta.deviceId) {
-      // device ids are not identical
-      return false
-    }
-    if (this.data.newDeviceInfo.deviceType !== lib.meta.deviceType) {
-      // Changing device type
-      return false
-    }
 
     const deviceFriendlyName = this.data.newDeviceInfo.deviceFriendlyName
     if (deviceFriendlyName !== undefined) {
@@ -105,6 +119,31 @@ class ChangeDeviceInfoCommand extends Command<ChangeDeviceInfoData> {
       if (deviceFriendlyName.length < 1) {
         return false
       }
+    }
+    if (
+      this.data.newDeviceInfo.deviceType.length < 1 ||
+      this.data.newDeviceInfo.deviceType.length > 256
+    ) {
+      return false
+    }
+
+    if (this.fromRemote) {
+      // A peer renames itself or nothing. deviceType is not compared against
+      // anything: only the sending device knows what it runs on, and it is the
+      // sending device saying so.
+      return (
+        this.fromDeviceId !== undefined &&
+        this.data.deviceId === this.fromDeviceId
+      )
+    }
+
+    if (this.data.deviceId !== lib.meta.deviceId) {
+      // device ids are not identical
+      return false
+    }
+    if (this.data.newDeviceInfo.deviceType !== lib.meta.deviceType) {
+      // Changing device type
+      return false
     }
 
     return true

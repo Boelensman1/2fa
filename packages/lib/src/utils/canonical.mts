@@ -222,6 +222,30 @@ export const buildVaultDataSignatureMessage = (
   ])
 
 /**
+ * Builds the message a device's key fingerprint is taken over.
+ *
+ * Both public keys, and the device id that claims them. The two keys are each
+ * 44 characters of base64 over 32 raw bytes, so nothing about their contents
+ * distinguishes the sealing key from the signing one -- only their position in
+ * this message does, which is why they go through `encodeFields` like
+ * everything else here rather than being concatenated.
+ *
+ * Including `deviceId` binds the fingerprint to the identity the keys are
+ * listed under, so a record that swaps in a different id does not keep the
+ * fingerprint a user already checked.
+ * @param deviceId - The device the keys belong to.
+ * @param publicKey - Its X25519 public key.
+ * @param signingPublicKey - Its Ed25519 public key.
+ * @returns The canonical message to digest.
+ */
+export const buildDeviceFingerprintMessage = (
+  deviceId: string,
+  publicKey: string,
+  signingPublicKey: string,
+): string =>
+  encodeFields(['favalib:devicefp:v2', deviceId, publicKey, signingPublicKey])
+
+/**
  * Builds the AAD for a full vault state sent to a peer, both for the initial
  * vault of an add-device flow and for a resilver.
  * @param fromDeviceId - The device sending the vault state.

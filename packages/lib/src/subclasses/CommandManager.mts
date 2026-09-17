@@ -5,6 +5,7 @@ import commandConstructors from '../Command/commandConstructors.mjs'
 import type Command from '../Command/BaseCommand.mjs'
 import CommandQueue from '../Command/CommandQueue.mjs'
 import { type SyncCommand } from '../interfaces/CommandTypes.mjs'
+import type { DeviceId } from '../interfaces/BrandedTypes.mjs'
 import { COMMAND_VERSION } from '../version.mjs'
 
 const currentCommandMajorVersion = Number.parseInt(
@@ -13,7 +14,7 @@ const currentCommandMajorVersion = Number.parseInt(
 )
 
 interface CommandConstructor {
-  fromJSON(input: unknown): Command
+  fromJSON(input: unknown, fromDeviceId?: DeviceId): Command
 }
 
 /**
@@ -136,9 +137,16 @@ class CommandManager {
    * authenticates and drains one command at a time, so each command sees the
    * peer list left by the previous one.
    * @param remoteCommand - The remote command to process.
+   * @param fromDeviceId - The peer whose signature the caller verified over
+   * this command. Passed down so a command can act on WHO sent it, not just on
+   * what it says: enrolment records its introducer, and a rename is refused
+   * unless the sender is the device being renamed.
    * @throws {InvalidCommandError} If the command type is unknown or data is invalid.
    */
-  receiveRemoteCommand(remoteCommand: SyncCommand): void {
+  receiveRemoteCommand(
+    remoteCommand: SyncCommand,
+    fromDeviceId?: DeviceId,
+  ): void {
     if (remoteCommand && !this.commandVersionIsSupported(remoteCommand)) {
       return
     }
@@ -147,7 +155,7 @@ class CommandManager {
         remoteCommand.type
       ] as CommandConstructor
       if (CommandClass) {
-        const command = CommandClass.fromJSON(remoteCommand)
+        const command = CommandClass.fromJSON(remoteCommand, fromDeviceId)
         this.remoteCommandQueue.enqueue(command)
       } else {
         throw new InvalidCommandError(

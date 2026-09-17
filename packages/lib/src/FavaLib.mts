@@ -306,6 +306,10 @@ class FavaLib extends TypedEventTarget<FavaLibEventMapEvents> {
       serverSecret,
       devices: [],
       commandSendQueue: [],
+      // Carried across, where the device list deliberately is not. Moving
+      // servers starts the peer list over, but forgetting WHICH devices were
+      // revoked would make changing sync server a way to un-remove one.
+      removedDevices: oldSyncManager?.getRemovedDevices(),
     }
     const newSyncManager = new SyncManager(
       this.mediator,
@@ -387,6 +391,10 @@ class FavaLib extends TypedEventTarget<FavaLibEventMapEvents> {
    * @throws {FavaLibError} If trying to remove the current device.
    */
   public async removeSyncDevice(deviceId: DeviceId) {
+    // SyncManager.removeSyncDevice refuses this too, and has to: that is the
+    // route a peer's RemoveSyncDeviceCommand takes. Kept here as well so the
+    // local caller gets a FavaLibError naming the thing it asked for, rather
+    // than a SyncError from two layers down.
     if (deviceId === this.favaMeta.deviceId) {
       throw new FavaLibError('Cannot remove the current device')
     }

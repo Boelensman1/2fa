@@ -2,7 +2,7 @@ import type { Tagged } from 'type-fest'
 import type { JPakeThreePass, Round1Result } from 'jpake-ts'
 import type { PublicKey, SigningPublicKey, SyncKey } from './CryptoLib.mjs'
 import type { Vault, VaultSyncState } from './Vault.mjs'
-import type { DeviceId } from './BrandedTypes.mjs'
+import type { DeviceFingerprint, DeviceId } from './BrandedTypes.mjs'
 
 export type { DeviceId } from './BrandedTypes.mjs'
 export type DeviceType = Tagged<string, 'DeviceType'>
@@ -29,12 +29,82 @@ export interface SyncDevice {
    */
   signingPublicKey: SigningPublicKey
   deviceInfo?: DeviceInfo
+  /**
+   * How this device came to be in the list.
+   *
+   * Local, and only ever written here: `SyncManager.addSyncDevice` builds the
+   * stored record from the four fields above plus the route it was called on,
+   * so an `enrolment` block arriving inside a peer's vault state is ignored
+   * rather than trusted. A peer does not get to describe its own introduction.
+   *
+   * Optional because a record written before the field existed is legitimate
+   * and cannot be reconstructed after the fact -- there is no fourth route
+   * meaning "unknown", the absence says it.
+   */
+  enrolment?: SyncDeviceEnrolment
+  /**
+   * When a consumer told us it had shown this device to the user.
+   *
+   * Informational, and deliberately gates nothing: a peer is a peer whether or
+   * not anyone has looked at it. See
+   * key-hierarchy-review/14-sync-device-injection.md for why enrolment is
+   * surfaced rather than blocked. Local, like `enrolment`.
+   */
+  acknowledgedAt?: number
 }
-export type PublicSyncDevice = Omit<
-  SyncDevice,
-  'publicKey' | 'signingPublicKey' | 'deviceInfo'
-> &
-  Partial<SyncDevice['deviceInfo']>
+
+/**
+ * The three ways a device can enter this vault's peer list.
+ *
+ * - `self` -- this device, registered by its own SyncManager constructor.
+ * - `pairing` -- a JPAKE flow this device took part in, so the user was
+ *   standing in front of both ends holding a 60-byte out-of-band secret.
+ * - `peer` -- a device already in the list said this one exists, either in an
+ *   `AddSyncDeviceCommand` or in the device list of a resilvered vault. Nobody
+ *   authorised this pair directly; it is trust arriving by delegation.
+ */
+export type SyncDeviceEnrolmentRoute = 'self' | 'pairing' | 'peer'
+
+/**
+ * How and when a device entered this vault's peer list.
+ *
+ * A type alias rather than an interface, and `PublicSyncDevice` likewise: an
+ * interface has no implicit index signature, so it does not satisfy
+ * `type-fest`'s `Jsonifiable` -- which is what `favacli` declares its command
+ * output as. The old `Omit<...>` alias satisfied it by accident, being an
+ * intersection; this says so on purpose. Both of these are JSON data crossing
+ * an API boundary, so being assignable to `Jsonifiable` is a property they
+ * should have rather than one they happen to have.
+ */
+// eslint-disable-next-line @typescript-eslint/consistent-type-definitions
+export type SyncDeviceEnrolment = {
+  via: SyncDeviceEnrolmentRoute
+  /** The peer that introduced it, as verified. Set only when `via` is 'peer'. */
+  by?: DeviceId
+  at: number
+}
+
+/**
+ * A sync device as a consumer may see it: no key material, plus a fingerprint.
+ *
+ * A type alias, for the reason given on SyncDeviceEnrolment.
+ */
+// eslint-disable-next-line @typescript-eslint/consistent-type-definitions
+export type PublicSyncDevice = {
+  deviceId: DeviceId
+  deviceType?: DeviceType
+  deviceFriendlyName?: DeviceFriendlyName
+  /**
+   * Both public keys, digested for a human to compare across two screens.
+   *
+   * This is what the friendly name cannot be: a peer chooses its own name, and
+   * until this change could choose anyone else's too.
+   */
+  fingerprint: DeviceFingerprint
+  enrolment?: SyncDeviceEnrolment
+  /** False for a device a peer introduced that no consumer has surfaced yet. */
+  acknowledged: boolean
+}
 
 export interface BaseAddDeviceFlow {
   jpak: JPakeThreePass

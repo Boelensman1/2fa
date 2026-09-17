@@ -89,6 +89,7 @@ describe('PersistentStorageManager', () => {
       serverUrl: 'serverUrlFromMock',
       getCommandSendQueue: () => 'syncCommandSendQueueFromMock',
       getProcessedCommands: () => 'processedCommandsFromMock',
+      getRemovedDevices: () => 'removedDevicesFromMock',
     } as unknown as SyncManager
     mediator.registerComponent('syncManager', mockedSyncManager)
 
@@ -157,6 +158,7 @@ describe('PersistentStorageManager', () => {
         serverUrl: 'serverUrlFromMock',
         commandSendQueue: 'syncCommandSendQueueFromMock',
         processedCommands: 'processedCommandsFromMock',
+        removedDevices: 'removedDevicesFromMock',
       },
       vault: [
         {

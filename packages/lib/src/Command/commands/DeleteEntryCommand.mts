@@ -1,5 +1,6 @@
 import { InvalidCommandError } from '../../FavaLibError.mjs'
 import Command from '../BaseCommand.mjs'
+import type { DeviceId } from '../../interfaces/BrandedTypes.mjs'
 import type FavaLibMediator from '../../FavaLibMediator.mjs'
 import type { EntryId } from '../../interfaces/Entry.mjs'
 
@@ -27,8 +28,9 @@ class DeleteEntryCommand extends Command<DeleteEntryData> {
     timestamp?: number,
     version?: string,
     fromRemote = false,
+    fromDeviceId?: DeviceId,
   ) {
-    super('DeleteEntry', data, id, timestamp, version, fromRemote)
+    super('DeleteEntry', data, id, timestamp, version, fromRemote, fromDeviceId)
   }
 
   /**

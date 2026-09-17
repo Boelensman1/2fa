@@ -149,3 +149,10 @@ Ordering. Commands are still applied in sender-timestamp order
 (`CommandQueue`), and a hostile peer can pick its own timestamps. That is a
 peer-trust question, not a freshness one, and it belongs with
 [14](14-sync-device-injection.md).
+
+**Amended 2026-09-17:** [14](14-sync-device-injection.md) closed, and this
+closed with it — as a decision rather than a fix. Peer trust is flat: a peer
+holds every decrypted seed in the vault already, so a peer choosing the
+timestamps its own commands are ordered by is a peer acting inside its trust,
+and is recorded as undefended in [11](11-threat-model.md) rather than tracked as
+open. Nothing about ordering changed in the code.

@@ -12,10 +12,12 @@ import FavaLib from '../../src/FavaLib.mjs'
 import { FavaLibEvent } from '../../src/FavaLibEvent.mjs'
 import { CryptoError } from '../../src/FavaLibError.mjs'
 import type { SyncCommand } from '../../src/interfaces/CommandTypes.mjs'
+import type { AddSyncDeviceData } from '../../src/Command/commands/AddSyncDeviceCommand.mjs'
 import type { SigningSecretKey } from '../../src/interfaces/CryptoLib.mjs'
 import type {
   SyncDevice,
   DeviceId,
+  DeviceInfo,
   DeviceType,
   DeviceFriendlyName,
 } from '../../src/interfaces/SyncTypes.mjs'
@@ -32,6 +34,7 @@ import {
   buildCommandSignatureMessage,
 } from '../../src/utils/canonical.mjs'
 import { getFavaLibVaultCreationUtils } from '../../src/utils/creationUtils.mjs'
+import { deviceFingerprint } from '../../src/utils/deviceFingerprint.mjs'
 import { COMMAND_VERSION } from '../../src/version.mjs'
 import { password, testServerSecret, totpEntry } from '../testUtils.mjs'
 
@@ -40,7 +43,7 @@ const receiverId = 'receiver' as DeviceId
 const deviceType = 'test' as DeviceType
 
 interface Peer {
-  device: Required<SyncDevice>
+  device: SyncDevice & { deviceInfo: DeviceInfo }
   signingSecretKey: SigningSecretKey
 }
 
@@ -60,6 +63,7 @@ const makePeer = (id: string): Peer => {
 
 const alice = makePeer('alice')
 const bob = makePeer('bob')
+const carol = makePeer('carol')
 let keys: Awaited<ReturnType<typeof crypto.createKeys>>
 
 const makeVault = (peers = [alice, bob]) =>
@@ -119,16 +123,44 @@ const addEntry = (id: string, timestamp = Date.now()): SyncCommand => ({
   data: { ...totpEntry, id: id as typeof totpEntry.id },
 })
 
-const rename = (id: string, timestamp: number): SyncCommand => ({
+/**
+ * A command whose effect is easy to observe, used throughout as a marker for
+ * "this one was applied, and in this order".
+ *
+ * A peer renames ITSELF: since finding 14 a remote ChangeDeviceInfo is refused
+ * unless the verified sender is the device being renamed, so the sender passed
+ * here and the one passed to `encryptCommand` have to agree.
+ * @param id - The name to set, also used as the command id.
+ * @param timestamp - The sender's timestamp.
+ * @param peer - The device doing the renaming, which is also its subject.
+ * @returns The command, unsealed.
+ */
+const rename = (
+  id: string,
+  timestamp: number,
+  peer: Peer = alice,
+): SyncCommand => ({
   id,
   timestamp,
   version: COMMAND_VERSION,
   type: 'ChangeDeviceInfo',
   data: {
-    deviceId: receiverId,
+    deviceId: peer.device.deviceId,
     newDeviceInfo: { deviceType, deviceFriendlyName: id as DeviceFriendlyName },
   },
 })
+
+/**
+ * Reads back the name a peer last gave itself.
+ * @param instance - The library to read from.
+ * @param peer - The peer whose name to read.
+ * @returns The friendly name, or undefined if it has none.
+ */
+const nameOf = (instance: FavaLib, peer: Peer = alice) =>
+  instance
+    .sync!.getSyncDevices()
+    .find((device) => device.deviceId === peer.device.deviceId)
+    ?.deviceFriendlyName
 
 const encryptCommand = async (command: SyncCommand, peer = alice) => {
   const payload = JSON.stringify(command)
@@ -186,19 +218,178 @@ describe('sync command delivery', () => {
   })
 
   it('applies enrollment before authenticating a later command from the new peer', async () => {
-    await lib.sync!.removeSyncDevice(bob.device.deviceId, false)
     const timestamp = Date.now()
     const enroll = await encryptCommand({
       id: 'enroll',
       timestamp,
       type: 'AddSyncDevice',
-      data: bob.device,
+      data: carol.device,
     })
-    const edit = await encryptCommand(addEntry('bob-entry', timestamp + 1), bob)
+    const edit = await encryptCommand(
+      addEntry('carol-entry', timestamp + 1),
+      carol,
+    )
     // Arrival order is intentionally reversed; execution follows timestamps.
     await lib.sync!.receiveCommands([edit, enroll])
-    expect(lib.vault.listEntries()).toContain('bob-entry')
-    expect(observed.acknowledgments()).toEqual([['enroll', 'bob-entry']])
+    expect(lib.vault.listEntries()).toContain('carol-entry')
+    expect(observed.acknowledgments()).toEqual([['enroll', 'carol-entry']])
+  })
+
+  it('records who introduced a peer-enrolled device, and announces it', async () => {
+    const added: { deviceId: string; fingerprint: string; via: string }[] = []
+    lib.addEventListener(FavaLibEvent.SyncDeviceAdded, (event) => {
+      added.push({
+        deviceId: event.detail.deviceId,
+        fingerprint: event.detail.fingerprint,
+        via: event.detail.enrolment.via,
+      })
+    })
+
+    await lib.sync!.receiveCommands([
+      await encryptCommand({
+        id: 'enroll',
+        timestamp: Date.now(),
+        type: 'AddSyncDevice',
+        data: carol.device,
+      }),
+    ])
+
+    const enrolled = lib
+      .sync!.getSyncDevices()
+      .find((device) => device.deviceId === carol.device.deviceId)!
+    // Alice said Carol exists. That is trust arriving by delegation, and a
+    // delegated peer is still a full peer -- so what the library does is say
+    // so, not refuse it. key-hierarchy-review/14-sync-device-injection.md.
+    expect(enrolled.enrolment).toEqual({
+      via: 'peer',
+      by: alice.device.deviceId,
+      at: expect.any(Number) as number,
+    })
+    expect(enrolled.acknowledged).toBe(false)
+    expect(added).toEqual([
+      {
+        deviceId: carol.device.deviceId,
+        fingerprint: enrolled.fingerprint,
+        via: 'peer',
+      },
+    ])
+    // 'warning', not 'error': 'error' is reserved for a refusal, and nothing
+    // was refused. Logged at all so that a consumer with no SyncDeviceAdded
+    // listener still surfaces it.
+    expect(
+      observed.logs.filter(
+        (log) =>
+          log.severity === 'warning' &&
+          log.message.includes('added sync device'),
+      ),
+    ).toHaveLength(1)
+
+    await lib.sync!.acknowledgeSyncDevice(carol.device.deviceId, false)
+    expect(
+      lib
+        .sync!.getSyncDevices()
+        .find((device) => device.deviceId === carol.device.deviceId)!
+        .acknowledged,
+    ).toBe(true)
+  })
+
+  it('ignores the provenance a peer writes into the record it sends', async () => {
+    // `enrolment` and `acknowledgedAt` are THIS device's opinion about how it
+    // came to trust a peer. A record arriving from the wire can carry anything,
+    // so addSyncDevice builds the stored one field by field rather than
+    // spreading: otherwise a peer could claim its introduction was a pairing
+    // and pre-acknowledge it, and the one signal this whole change adds would
+    // be writable by the party it is about.
+    await lib.sync!.receiveCommands([
+      await encryptCommand({
+        id: 'enroll',
+        timestamp: Date.now(),
+        type: 'AddSyncDevice',
+        data: {
+          ...carol.device,
+          enrolment: { via: 'pairing', at: 1 },
+          acknowledgedAt: 1,
+        } as unknown as AddSyncDeviceData,
+      }),
+    ])
+
+    const enrolled = lib
+      .sync!.getSyncDevices()
+      .find((device) => device.deviceId === carol.device.deviceId)!
+    expect(enrolled.enrolment).toEqual({
+      via: 'peer',
+      by: alice.device.deviceId,
+      at: expect.any(Number) as number,
+    })
+    expect(enrolled.enrolment!.at).not.toBe(1)
+    expect(enrolled.acknowledged).toBe(false)
+  })
+
+  it('does not announce a device this vault paired with itself', async () => {
+    const added: string[] = []
+    lib.addEventListener(FavaLibEvent.SyncDeviceAdded, (event) => {
+      added.push(event.detail.deviceId)
+    })
+    await lib.sync!.addSyncDevice(carol.device, 'pairing', undefined, false)
+    expect(added).toEqual([])
+    expect(
+      lib
+        .sync!.getSyncDevices()
+        .find((device) => device.deviceId === carol.device.deviceId)!
+        .acknowledged,
+    ).toBe(true)
+  })
+
+  it('refuses a peer reintroducing a device this vault removed', async () => {
+    // The regression this tombstone exists for: a peer offline when the
+    // removal happened still lists the device, and its next resilver -- or a
+    // stale AddSyncDevice -- used to put it straight back, at which point its
+    // commands verified again and the user's one lever had done nothing.
+    await lib.sync!.removeSyncDevice(bob.device.deviceId, false)
+    await lib.sync!.receiveCommands([
+      await encryptCommand({
+        id: 'reenroll',
+        timestamp: Date.now(),
+        type: 'AddSyncDevice',
+        data: bob.device,
+      }),
+    ])
+    expect(
+      lib.sync!.getSyncDevices().map((device) => device.deviceId),
+    ).not.toContain(bob.device.deviceId)
+    expect(
+      observed.logs.filter(
+        (log) =>
+          log.severity === 'error' &&
+          log.message.includes('it was removed from'),
+      ),
+    ).toHaveLength(1)
+  })
+
+  it('refuses a peer contradicting the keys it already holds for a device', async () => {
+    // Keys are pinned on first receipt. The refusal is loud because it is the
+    // one sync refusal that is evidence rather than noise: every other one
+    // describes a peer on a different build.
+    const imposter = makePeer(bob.device.deviceId)
+    await lib.sync!.receiveCommands([
+      await encryptCommand({
+        id: 'takeover',
+        timestamp: Date.now(),
+        type: 'AddSyncDevice',
+        data: imposter.device,
+      }),
+    ])
+    const stored = lib
+      .sync!.getSyncDevices()
+      .find((device) => device.deviceId === bob.device.deviceId)!
+    expect(stored.fingerprint).toBe(deviceFingerprint(bob.device))
+    expect(
+      observed.logs.filter(
+        (log) =>
+          log.severity === 'error' &&
+          log.message.includes('already holds different keys'),
+      ),
+    ).toHaveLength(1)
   })
 
   it('refuses a removed peer’s mutation and self-enrollment later in the batch', async () => {
@@ -238,7 +429,7 @@ describe('sync command delivery', () => {
       ),
     )
     await lib.sync!.receiveCommands(commands)
-    expect(lib.meta.deviceFriendlyName).toBe('third')
+    expect(nameOf(lib)).toBe('third')
     expect(observed.acknowledgments()).toEqual([['first', 'second', 'third']])
   })
 
@@ -289,8 +480,15 @@ describe('sync command delivery', () => {
       await verifying.promise
       await lib.sync!.removeSyncDevice(bob.device.deviceId, false)
       if (action === 'key replacement') {
+        // Via 'pairing', which is the only route that can do this now: the
+        // removal above left a tombstone, and a peer cannot undo one. Pairing
+        // with the device again is exactly the story -- it comes back, under
+        // fresh keys, and the command still in flight under the old ones must
+        // not apply.
         await lib.sync!.addSyncDevice(
           makePeer(bob.device.deviceId).device,
+          'pairing',
+          undefined,
           false,
         )
       }
@@ -307,16 +505,17 @@ describe('sync command delivery', () => {
       const timestamp = Date.now()
       const commands = []
       for (let i = 0; i < 1002; i++) {
+        const peer = i === 0 ? bob : alice
         commands.push(
           await encryptCommand(
-            rename(`burst-${i}`, timestamp + (order === 'equal' ? 0 : i)),
-            i === 0 ? bob : alice,
+            rename(`burst-${i}`, timestamp + (order === 'equal' ? 0 : i), peer),
+            peer,
           ),
         )
       }
       await lib.sync!.receiveCommands(commands)
       expect(observed.acknowledgments()[0]).toHaveLength(1002)
-      expect(lib.meta.deviceFriendlyName).toBe('burst-1001')
+      expect(nameOf(lib)).toBe('burst-1001')
       const record = lib.sync!.getProcessedCommands()!
       expect(record.commands).toHaveLength(1000)
       expect(record.floors[bob.device.deviceId]).toBe(timestamp)
@@ -332,7 +531,7 @@ describe('sync command delivery', () => {
         commands[1],
         commands[500],
       ])
-      expect(restarted.meta.deviceFriendlyName).toBe('burst-1001')
+      expect(nameOf(restarted)).toBe('burst-1001')
       expect(restartedObserved.acknowledgments()[0]).toHaveLength(3)
     },
   )
@@ -340,8 +539,8 @@ describe('sync command delivery', () => {
   it('prunes old records per peer without dropping other commands in the batch', async () => {
     const old = Date.now() - 31 * 24 * 60 * 60 * 1000
     const commands = await Promise.all([
-      encryptCommand(rename('old-1', old), bob),
-      encryptCommand(rename('old-2', old), bob),
+      encryptCommand(rename('old-1', old, bob), bob),
+      encryptCommand(rename('old-2', old, bob), bob),
       encryptCommand(rename('current', Date.now())),
     ])
     await lib.sync!.receiveCommands(commands)
@@ -354,7 +553,7 @@ describe('sync command delivery', () => {
     await lib.sync!.receiveCommands([
       await encryptCommand(rename('quiet-peer', old)),
     ])
-    expect(lib.meta.deviceFriendlyName).toBe('quiet-peer')
+    expect(nameOf(lib)).toBe('quiet-peer')
   })
 
   it('acknowledges duplicates within and across batches and after restart without executing again', async () => {
@@ -385,7 +584,7 @@ describe('sync command delivery', () => {
     observed.send.mockClear()
     const older = await encryptCommand(rename('older', old - 1))
     await lib.sync!.receiveCommands([original, older])
-    expect(lib.meta.deviceFriendlyName).toBe('old')
+    expect(nameOf(lib)).toBe('old')
     expect(observed.acknowledgments()).toEqual([['older', 'old']])
     expect(
       observed.logs.filter((log) => log.message.includes('replay floor')),
@@ -458,7 +657,7 @@ describe('sync command delivery', () => {
       ),
     }
     await lib.sync!.receiveCommands([valid, infinite, noTimestamp])
-    expect(lib.meta.deviceFriendlyName).toBe('finite')
+    expect(nameOf(lib)).toBe('finite')
     expect(observed.acknowledgments()).toEqual([
       ['missing-timestamp', 'finite'],
     ])

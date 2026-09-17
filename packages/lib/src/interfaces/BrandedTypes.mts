@@ -21,6 +21,16 @@ export type PublicKey = Tagged<string, 'PublicKey'>
 /** Represents a device's Ed25519 public key (base64 encoded, 32 raw bytes) */
 export type SigningPublicKey = Tagged<string, 'SigningPublicKey'>
 
+/**
+ * A device's key fingerprint: a short, human-comparable digest of both of its
+ * public keys.
+ *
+ * Rendered rather than raw, because its only consumer is a person reading it
+ * off one screen and checking it against another. See
+ * `utils/deviceFingerprint.mts` for the derivation and for why it is this long.
+ */
+export type DeviceFingerprint = Tagged<string, 'DeviceFingerprint'>
+
 /** Represents an Ed25519 signature (base64 encoded, 64 raw bytes) */
 export type Signature = Tagged<string, 'Signature'>
 

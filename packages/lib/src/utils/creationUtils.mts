@@ -46,6 +46,7 @@ import { SaveFunction } from '../interfaces/SaveFunction.mjs'
 import { validateEntryFatal } from './entryValidation.mjs'
 import {
   MAX_SYNC_DEVICES,
+  validateRemovedDevices,
   validateSyncDevice,
 } from './syncDeviceValidation.mjs'
 import {
@@ -566,6 +567,20 @@ const parseVaultState = (vaultStateString: string): VaultState => {
     }
   }
 
+  // Refused rather than reset, the same call this file makes for the replay
+  // record above and for the same reason: a vault that has quietly forgotten
+  // what it revoked works perfectly and accepts a device the user removed.
+  const removedDevicesReason = validateRemovedDevices(
+    vaultState.sync.removedDevices,
+  )
+  if (removedDevicesReason) {
+    throw new InitializationError(
+      `The stored vault's record of removed devices is unusable ` +
+        `(${removedDevicesReason}). ` +
+        DATA_IS_INTACT,
+    )
+  }
+
   if (vaultState.sync.devices.length > MAX_SYNC_DEVICES) {
     throw new InitializationError(
       `The stored vault lists ${vaultState.sync.devices.length} sync devices, ` +
@@ -580,6 +595,23 @@ const parseVaultState = (vaultStateString: string): VaultState => {
       throw new InitializationError(
         `The stored vault contains an unusable sync device ` +
           `(${typeof id === 'string' ? id : 'no deviceId'}): ${reason}. ` +
+          DATA_IS_INTACT,
+      )
+    }
+  }
+
+  // A device that is both listed and tombstoned is a contradiction this vault
+  // cannot have written: SyncManager.removeSyncDevice splices and tombstones
+  // together, and addSyncDevice refuses a tombstoned id. So it is either a
+  // vault edited outside the library or a bug, and the refusal is the same
+  // either way -- resolving it in favour of the device list would discard a
+  // revocation, which is the one repair whose cost is invisible.
+  const removedDevices = vaultState.sync.removedDevices ?? {}
+  for (const device of vaultState.sync.devices) {
+    if (device.deviceId in removedDevices) {
+      throw new InitializationError(
+        `The stored vault lists sync device ${device.deviceId} and also ` +
+          `records it as removed. ` +
           DATA_IS_INTACT,
       )
     }

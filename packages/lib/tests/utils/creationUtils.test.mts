@@ -23,7 +23,10 @@ import {
   buildEnvelopeMacMessage,
   buildVaultAad,
 } from '../../src/utils/canonical.mjs'
-import { MAX_SYNC_DEVICES } from '../../src/utils/syncDeviceValidation.mjs'
+import {
+  MAX_REMOVED_DEVICES,
+  MAX_SYNC_DEVICES,
+} from '../../src/utils/syncDeviceValidation.mjs'
 import {
   createFavaLibForTests,
   newTotpEntry,
@@ -496,6 +499,70 @@ describe('creationUtils', () => {
       )
       await favaLib.ready
       favaLib.sync?.closeServerConnection()
+    })
+
+    it('accepts a vault with no record of removed devices', async () => {
+      // Absent means "this vault has removed nothing", which is true of every
+      // vault written before tombstones existed.
+      const favaLib = await load(
+        await reseal((state) => {
+          delete state.sync.removedDevices
+        }),
+      )
+      await favaLib.ready
+      favaLib.sync?.closeServerConnection()
+    })
+
+    it.each([
+      [
+        'a record that is not an object',
+        (state: VaultState) => {
+          state.sync.removedDevices = 'old-phone' as never
+        },
+      ],
+      [
+        'a removal time that is not a number',
+        (state: VaultState) => {
+          state.sync.removedDevices = {
+            'old-phone': 'yesterday',
+          } as unknown as VaultState['sync']['removedDevices']
+        },
+      ],
+      [
+        'more tombstones than the cap',
+        (state: VaultState) => {
+          state.sync.removedDevices = Object.fromEntries(
+            Array.from({ length: MAX_REMOVED_DEVICES + 1 }, (_, i) => [
+              `gone-${i}`,
+              i,
+            ]),
+          )
+        },
+      ],
+    ])('refuses %s in the removed-device record', async (_label, mutate) => {
+      // Refused rather than reset, the same call the replay record gets and
+      // for the same reason: a vault that has quietly forgotten what it
+      // revoked works perfectly and accepts a device the user removed.
+      await expect(load(await reseal(mutate))).rejects.toThrow(
+        /record of removed devices is unusable/,
+      )
+    })
+
+    it('refuses a vault that both lists and tombstones a device', async () => {
+      // A contradiction this library cannot write: removal splices and
+      // tombstones together, and addSyncDevice refuses a tombstoned id. So it
+      // is a vault edited from outside, and resolving it in favour of the
+      // device list would silently discard a revocation.
+      const representation = await reseal((state) => {
+        state.sync.devices = [
+          { ...goodDevice(), deviceId: 'zombie' as DeviceId },
+        ]
+        state.sync.removedDevices = { ['zombie' as DeviceId]: 1 }
+      })
+
+      await expect(load(representation)).rejects.toThrow(
+        /lists sync device zombie and also records it as removed/,
+      )
     })
   })
 

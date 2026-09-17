@@ -22,8 +22,17 @@ class RemoveSyncDeviceCommand extends Command<RemoveSyncDeviceData> {
     timestamp?: number,
     version?: string,
     fromRemote = false,
+    fromDeviceId?: DeviceId,
   ) {
-    super('RemoveSyncDevice', data, id, timestamp, version, fromRemote)
+    super(
+      'RemoveSyncDevice',
+      data,
+      id,
+      timestamp,
+      version,
+      fromRemote,
+      fromDeviceId,
+    )
   }
 
   /**

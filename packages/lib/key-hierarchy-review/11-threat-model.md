@@ -43,6 +43,23 @@ Reference, not an action item. What each layer does and does not defend against.
 - **Sync-layer forgery and replay.** Undefended — see
   [12](12-sync-findings-index.md).
 
+- **A hostile or compromised peer.** Undefended, **by decision** rather than by
+  omission, and recorded here because
+  [13](13-sync-command-authentication.md)'s own argument is that a security
+  property nobody wrote down will not survive a refactor.
+
+  Peer trust is flat: a peer holds every decrypted seed in the vault already, so
+  it can read what it likes, and it can enrol further devices, remove the
+  others, and choose the timestamps its own commands are ordered by. What the
+  library does about that is say so — a peer-introduced device carries who
+  introduced it, a key fingerprint the peer did not choose, and an event —
+  rather than gate it. The reasoning, and what a gate would have cost, is in
+  [14](14-sync-device-injection.md).
+
+  Two things do hold against a peer, and they are the ones a flat model still
+  has to keep true: a removal converges and cannot be undone by a peer, and a
+  device's keys are pinned on first receipt and never replaced.
+
 ## Assumptions this model rests on
 
 - GPU/ASIC argon2 throughput at a 512 KiB working set was **not measured**; the

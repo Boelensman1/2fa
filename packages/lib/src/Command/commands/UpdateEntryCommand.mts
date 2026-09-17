@@ -1,6 +1,7 @@
 import { InvalidCommandError } from '../../FavaLibError.mjs'
 import type FavaLibMediator from '../../FavaLibMediator.mjs'
 import Command from '../BaseCommand.mjs'
+import type { DeviceId } from '../../interfaces/BrandedTypes.mjs'
 import type Entry from '../../interfaces/Entry.mjs'
 import { EntryId } from '../../interfaces/Entry.mjs'
 import {
@@ -31,8 +32,9 @@ class UpdateEntryCommand extends Command<UpdateEntryData> {
     timestamp?: number,
     version?: string,
     fromRemote = false,
+    fromDeviceId?: DeviceId,
   ) {
-    super('UpdateEntry', data, id, timestamp, version, fromRemote)
+    super('UpdateEntry', data, id, timestamp, version, fromRemote, fromDeviceId)
   }
 
   /**

@@ -19,6 +19,7 @@ import {
   ActiveAddDeviceFlow,
   InitiateAddDeviceFlowResult,
   SyncDevice,
+  SyncDeviceEnrolmentRoute,
   PublicSyncDevice,
   DeviceType,
   DeviceId,
@@ -36,11 +37,13 @@ import {
 import { createConnectProof } from '../utils/connectAuth.mjs'
 import { validateEntryFatal } from '../utils/entryValidation.mjs'
 import {
+  MAX_REMOVED_DEVICES,
   MAX_SYNC_DEVICES,
   parseDevicePublicKeys,
   validateSyncDevice,
 } from '../utils/syncDeviceValidation.mjs'
 import type { ServerSecret } from '../interfaces/BrandedTypes.mjs'
+import { deviceFingerprint } from '../utils/deviceFingerprint.mjs'
 import type {
   DevicePublicKeys,
   DeviceSecretKeys,
@@ -63,6 +66,8 @@ import {
   InitializationError,
   SyncAddDeviceFlowConflictError,
   SyncError,
+  SyncDeviceKeyConflictError,
+  SyncDeviceRemovedError,
   SyncInWrongStateError,
   SyncNoServerConnectionError,
   SyncPairingVersionError,
@@ -222,6 +227,13 @@ class SyncManager {
    */
   private replayFloors: Record<DeviceId, number>
 
+  /**
+   * Device ids this vault has removed, against when.
+   *
+   * What makes `removeSyncDevice` converge. See VaultSyncState.removedDevices.
+   */
+  private removedDevices: Record<DeviceId, number>
+
   /** Serializes incoming batches, including their replay-state saves. */
   private commandReceiveQueue: Promise<void> = Promise.resolve()
 
@@ -256,8 +268,26 @@ class SyncManager {
   }
 
   /**
-   * Public getter for the sync devices
-   * @returns The sync devices (without their public key)
+   * Public getter for the removal tombstones, for persistence.
+   * @returns The device ids this vault has removed, against when.
+   */
+  public getRemovedDevices(): VaultSyncState['removedDevices'] {
+    return this.removedDevices
+  }
+
+  /**
+   * Public getter for the sync devices.
+   *
+   * Carries no key material, but does carry a FINGERPRINT of it: the one
+   * property of a peer that the peer did not choose. `deviceFriendlyName` and
+   * `deviceType` are whatever the device said about itself, so they can
+   * describe anything; the fingerprint is derived from the keys this vault will
+   * actually seal to and verify against, and is short enough to read aloud.
+   *
+   * `acknowledged` is false only for a device a peer introduced and that no
+   * consumer has said it surfaced yet -- it gates nothing. See
+   * key-hierarchy-review/14-sync-device-injection.md.
+   * @returns The sync devices, without their public keys.
    */
   public getSyncDevices(): PublicSyncDevice[] {
     return this.syncDevices
@@ -265,6 +295,9 @@ class SyncManager {
       .map((d) => ({
         deviceId: d.deviceId,
         ...d.deviceInfo,
+        fingerprint: deviceFingerprint(d),
+        enrolment: d.enrolment,
+        acknowledged: d.acknowledgedAt !== undefined,
       }))
   }
 
@@ -294,6 +327,7 @@ class SyncManager {
       devices,
       commandSendQueue,
       processedCommands,
+      removedDevices,
     } = syncState
 
     if (!serverUrl.startsWith('wss://')) {
@@ -307,6 +341,7 @@ class SyncManager {
     this.commandSendQueue = commandSendQueue
     this.processedCommands = processedCommands?.commands ?? []
     this.replayFloors = processedCommands?.floors ?? {}
+    this.removedDevices = removedDevices ?? {}
     this.serverUrl = serverUrl
     this.serverSecret = serverSecret
     if (this.connectionEnabled) {
@@ -324,6 +359,8 @@ class SyncManager {
         signingPublicKey: this.publicKeys.signingPublicKey,
         deviceInfo: this.deviceInfo,
       },
+      'self',
+      undefined,
       false,
     )
 
@@ -1099,6 +1136,7 @@ class SyncManager {
       encryptedVaultState,
       this.activeAddDeviceFlow.syncKey,
       this.activeAddDeviceFlow.initiatorDeviceId,
+      true,
     )
 
     // Reset the active add device flow
@@ -1118,10 +1156,23 @@ class SyncManager {
     this.log('warning', `Could not import the ${what}: ${detail}`)
   }
 
+  /**
+   * Decrypts a peer's whole vault state and merges it into this one.
+   * @param encryptedVaultState - The sealed vault state.
+   * @param symmetricKey - The key it is sealed under.
+   * @param expectedDeviceId - The sender, as the caller established it.
+   * @param isPairing - True when this is the initial vault of a JPAKE flow this
+   * device just completed. It changes what the SENDER's own record counts as:
+   * a pairing, since the user was standing in front of both devices. Every
+   * other device in the list is a peer introduction either way -- the sender
+   * vouching for devices this vault has never met is delegation, not pairing,
+   * however the sender itself arrived.
+   */
   private async importVaultState(
     encryptedVaultState: EncryptedVaultStateString,
     symmetricKey: SymmetricKey,
     expectedDeviceId: DeviceId,
+    isPairing = false,
   ) {
     const vaultState = JSON.parse(
       await this.cryptoLib.decryptSymmetric(
@@ -1185,7 +1236,31 @@ class SyncManager {
     }
 
     for (const device of vaultState.sync.devices) {
-      await this.addSyncDevice(device, false)
+      // A device list replays in full on every resilver, so most of these are
+      // already held and return without doing anything. The ones that are not
+      // are what this loop is: a peer telling us devices exist.
+      //
+      // Refusals here are per device and non-fatal, unlike the validation
+      // above. A peer listing one device whose keys contradict ours, or one we
+      // revoked, must not cost us the entries in the same vault state -- and
+      // both refusals have already been logged by the time they reach here.
+      try {
+        await this.addSyncDevice(
+          device,
+          isPairing && device.deviceId === expectedDeviceId
+            ? 'pairing'
+            : 'peer',
+          expectedDeviceId,
+          false,
+        )
+      } catch (err: unknown) {
+        if (
+          !(err instanceof SyncDeviceRemovedError) &&
+          !(err instanceof SyncDeviceKeyConflictError)
+        ) {
+          throw err
+        }
+      }
     }
 
     const vaultDataManager = this.mediator.getComponent('vaultDataManager')
@@ -1720,7 +1795,7 @@ class SyncManager {
           continue
         }
 
-        this.commandManager.receiveRemoteCommand(command)
+        this.commandManager.receiveRemoteCommand(command, from)
         const executedIds = await this.commandManager.processRemoteCommands()
         if (executedIds.includes(command.id)) {
           applied.set(command.id, {
@@ -1792,38 +1867,164 @@ class SyncManager {
   }
 
   /**
-   * Add a sync device
-   * @param device - The device to add
-   * @param saveAfter - Whether to save the new vault after adding it (set to false when adding multiple devices)
+   * Adds a device to this vault's peer list.
+   *
+   * The single chokepoint for every route a peer device can arrive by:
+   * `importVaultState`, `AddSyncDeviceCommand`, and this device's own
+   * registration from the constructor. The load path is the one exception --
+   * it assigns `syncDevices` directly, so `creationUtils` runs the same checks
+   * itself.
+   *
+   * Four gates, in order, and the order is the point: a record has to be
+   * well formed before its id means anything, its id has to be one this vault
+   * has not revoked before its keys are worth comparing, and the keys have to
+   * match any it already holds before it is worth counting against the cap.
+   *
+   * 1. **Shape.** Unchanged, and still only a shape gate: a well formed record
+   *    carrying an attacker's keys passes it.
+   * 2. **Tombstone.** A device this vault removed cannot be introduced back by
+   *    a peer -- that is what makes a removal stick, given that a peer offline
+   *    at the time still lists it and will resilver it back. Pairing clears the
+   *    tombstone instead, because that is the user saying so at both ends.
+   * 3. **Key pinning.** Keys are fixed on first receipt. A second record for a
+   *    known id carrying different keys is refused loudly rather than dropped:
+   *    it is the only refusal here that is evidence of something rather than of
+   *    a peer on a different build.
+   * 4. **Cap.** As before.
+   *
+   * What it deliberately does NOT do is refuse a device merely because a peer
+   * rather than the user introduced it. A peer holds every seed in the vault
+   * already, so peer trust is flat by design; what this does instead is record
+   * WHO introduced it and announce it, so that trust arriving by delegation is
+   * at least visible. See key-hierarchy-review/14-sync-device-injection.md.
+   * @param device - The device to add. Only its four wire fields are read; any
+   * `enrolment` or `acknowledgedAt` on it is ignored, since those are this
+   * device's opinion and a peer does not get to write them.
+   * @param via - How this device came to be here. Required rather than
+   * defaulted, for the reason `getEncryptedVaultState` requires its `aad`: a
+   * default would make the wrong one the easy one to reach for.
+   * @param by - The verified peer that introduced it, when `via` is 'peer'.
+   * @param saveAfter - Whether to save after adding (false when adding several).
+   * @throws {SyncError} If the record is unusable or the vault is full.
+   * @throws {SyncDeviceRemovedError} If a peer is reintroducing a removed device.
+   * @throws {SyncDeviceKeyConflictError} If it contradicts keys already held.
    */
-  async addSyncDevice(device: SyncDevice, saveAfter = true) {
-    // The single chokepoint for every route a peer device can arrive by:
-    // importVaultState, AddSyncDeviceCommand, and this device's own
-    // registration from the constructor. The load path is the one exception --
-    // it assigns syncDevices directly, so creationUtils runs the same two
-    // checks itself.
-    //
-    // A shape gate only. It stops a garbage record; it does nothing about a
-    // well formed one carrying an attacker's key, which is
-    // key-hierarchy-review/14-sync-device-injection.md and still open.
+  async addSyncDevice(
+    device: SyncDevice,
+    via: SyncDeviceEnrolmentRoute,
+    by?: DeviceId,
+    saveAfter = true,
+  ) {
     const reason = validateSyncDevice(device)
     if (reason) {
       throw new SyncError(`Refusing to add sync device: ${reason}`)
     }
-    if (this.syncDevices.some((d) => d.deviceId === device.deviceId)) {
-      // we already have this device
-      return
+
+    if (via === 'peer' && device.deviceId in this.removedDevices) {
+      this.log(
+        'error',
+        `Refusing to add sync device ${device.deviceId}: it was removed from ` +
+          `this vault, and a peer cannot undo that. Pair with it again if you ` +
+          `want it back.`,
+      )
+      throw new SyncDeviceRemovedError(
+        `Refusing to add sync device ${device.deviceId}: it was removed from ` +
+          `this vault`,
+      )
     }
+
+    const existing = this.syncDevices.find(
+      (d) => d.deviceId === device.deviceId,
+    )
+    if (existing) {
+      if (
+        existing.publicKey === device.publicKey &&
+        existing.signingPublicKey === device.signingPublicKey
+      ) {
+        // Same device saying the same thing. Idempotent by design: every
+        // resilver replays the whole device list.
+        return
+      }
+      if (via === 'self') {
+        // Only the constructor passes 'self', always with this device's own
+        // keys, so there is no peer-reachable path to this branch. Updating
+        // rather than refusing keeps a key change made HERE from bricking this
+        // device's own record in its own vault.
+        existing.publicKey = device.publicKey
+        existing.signingPublicKey = device.signingPublicKey
+        existing.deviceInfo = device.deviceInfo
+        if (saveAfter) {
+          await this.persistentStorageManager.save()
+        }
+        return
+      }
+      this.log(
+        'error',
+        `Refusing to add sync device ${device.deviceId}: this vault already ` +
+          `holds different keys for that device id. Keys are pinned on first ` +
+          `receipt and never replaced; if that device really did change keys, ` +
+          `remove it and pair with it again.`,
+      )
+      throw new SyncDeviceKeyConflictError(
+        `Refusing to add sync device ${device.deviceId}: it contradicts the ` +
+          `keys this vault already holds for that device id`,
+      )
+    }
+
     if (this.syncDevices.length >= MAX_SYNC_DEVICES) {
       throw new SyncError(
         `Refusing to add sync device ${device.deviceId}: this vault already ` +
           `has the maximum of ${MAX_SYNC_DEVICES} devices`,
       )
     }
+
+    const at = Date.now()
+    // Built field by field rather than spread, so that a record arriving from a
+    // peer cannot carry its own provenance or pre-acknowledge itself.
+    const enrolled: SyncDevice = {
+      deviceId: device.deviceId,
+      publicKey: device.publicKey,
+      signingPublicKey: device.signingPublicKey,
+      deviceInfo: device.deviceInfo,
+      enrolment: { via, by: via === 'peer' ? by : undefined, at },
+      // Anything but a peer introduction is an act the user performed in
+      // person at both ends; asking them to confirm it afterwards would be
+      // noise, and noise is what stops the one that matters being read.
+      acknowledgedAt: via === 'peer' ? undefined : at,
+    }
+    // Cleared here rather than up with the tombstone check, so that a pairing
+    // refused further down -- by the cap, or by a key conflict -- does not
+    // leave the device un-listed AND un-tombstoned, which is the one state in
+    // which a peer could introduce it.
+    //
+    // Re-pairing is how a removal is undone, and the only how: it costs the
+    // 60-byte out-of-band secret and a user standing in front of both devices,
+    // which is exactly the act the tombstone exists to protect.
+    if (via === 'pairing') {
+      delete this.removedDevices[device.deviceId]
+    }
     this.log('info', `Adding syncdevice ${device.deviceId} to ${this.deviceId}`)
-    this.syncDevices.push({
-      ...device,
-    })
+    this.syncDevices.push(enrolled)
+
+    if (via === 'peer') {
+      const fingerprint = deviceFingerprint(enrolled)
+      // 'warning', not 'error': Events.mts reserves 'error' for a REFUSAL the
+      // user should be told about, and nothing was refused here -- under flat
+      // peer trust this is an ordinary thing that happened. It is logged at all
+      // so that a consumer with no SyncDeviceAdded listener still surfaces it.
+      this.log(
+        'warning',
+        `${by ?? 'A peer'} added sync device ${device.deviceId} ` +
+          `(${fingerprint}) to this vault. If you did not expect that, remove ` +
+          `it.`,
+      )
+      this.dispatchLibEvent(FavaLibEvent.SyncDeviceAdded, {
+        deviceId: enrolled.deviceId,
+        fingerprint,
+        deviceInfo: enrolled.deviceInfo,
+        enrolment: enrolled.enrolment!,
+      })
+    }
 
     if (saveAfter) {
       await this.persistentStorageManager.save()
@@ -1831,28 +2032,96 @@ class SyncManager {
   }
 
   /**
-   * Remove a sync device
-   * @param deviceId - The id of the device to remove
-   * @param saveAfter - Whether to save the vault after removing the device
-   * @returns The removed device, or undefined if it was not present
+   * Records that a consumer has surfaced a peer-introduced device to the user.
+   *
+   * Local and terminal: no command is sent, no peer is told, and nothing about
+   * the device changes. It exists so a consumer that was not running when
+   * `SyncDeviceAdded` fired can still find what it has not shown yet, by
+   * filtering `getSyncDevices()` on `acknowledged`.
+   * @param deviceId - The device that has been surfaced.
+   * @param saveAfter - Whether to save afterwards.
+   */
+  async acknowledgeSyncDevice(deviceId: DeviceId, saveAfter = true) {
+    const device = this.syncDevices.find((d) => d.deviceId === deviceId)
+    if (!device || device.acknowledgedAt !== undefined) {
+      return
+    }
+    device.acknowledgedAt = Date.now()
+    if (saveAfter) {
+      await this.persistentStorageManager.save()
+    }
+  }
+
+  /**
+   * Removes a device from this vault's peer list, and remembers that it did.
+   *
+   * The tombstone is the half that makes this a revocation rather than a
+   * deletion. Without it, a peer that was offline when the removal happened
+   * still lists the device, and its next resilver puts it straight back through
+   * `importVaultState` -- at which point its commands verify again and the one
+   * lever the user has has quietly done nothing.
+   * @param deviceId - The id of the device to remove.
+   * @param saveAfter - Whether to save the vault after removing the device.
+   * @returns The removed device, or undefined if it was not present.
+   * @throws {SyncError} If asked to remove this device from its own vault.
    */
   async removeSyncDevice(
     deviceId: DeviceId,
     saveAfter = true,
   ): Promise<SyncDevice | undefined> {
+    if (deviceId === this.deviceId) {
+      // FavaLib.removeSyncDevice refuses this too, but only covers the local
+      // route. A peer's RemoveSyncDeviceCommand reaches here directly, and this
+      // device's own record is what a NEWLY PAIRED device learns its keys from
+      // (see importInitialVault) -- so losing it presents, much later, as
+      // "pairing is broken" rather than as anything to do with the removal.
+      throw new SyncError('Cannot remove the current device from its own vault')
+    }
     const index = this.syncDevices.findIndex((d) => d.deviceId === deviceId)
     if (index === -1) {
-      // we don't have this device, nothing to remove
+      // We don't have this device, so nothing to remove -- and deliberately no
+      // tombstone either, or a peer could inflate the record with removals for
+      // ids this vault never held.
       return undefined
     }
     this.log('info', `Removing syncdevice ${deviceId} from ${this.deviceId}`)
     const [removed] = this.syncDevices.splice(index, 1)
+    this.removedDevices[deviceId] = Date.now()
+    this.pruneRemovedDevices()
 
     if (saveAfter) {
       await this.persistentStorageManager.save()
     }
 
     return removed
+  }
+
+  /**
+   * Keeps the tombstone record inside its bound, oldest removals first.
+   *
+   * Pruning here WEAKENS the record -- a forgotten tombstone is a device a peer
+   * may introduce again -- which is why this is loud and why the bound is loose.
+   * There is no equivalent of `15`'s replay floors available: device ids are not
+   * ordered, so a dropped entry leaves nothing behind that still refuses.
+   */
+  private pruneRemovedDevices() {
+    const entries = Object.entries(this.removedDevices) as [DeviceId, number][]
+    if (entries.length <= MAX_REMOVED_DEVICES) {
+      return
+    }
+    entries.sort((a, b) => a[1] - b[1])
+    for (const [deviceId] of entries.slice(
+      0,
+      entries.length - MAX_REMOVED_DEVICES,
+    )) {
+      delete this.removedDevices[deviceId]
+      this.log(
+        'warning',
+        `Forgetting that sync device ${deviceId} was removed: this vault is ` +
+          `at its limit of ${MAX_REMOVED_DEVICES} remembered removals. A peer ` +
+          `can introduce that device again.`,
+      )
+    }
   }
 
   /**

@@ -130,6 +130,24 @@ export interface ProcessedCommandRecord {
 
 export interface VaultSyncState {
   devices: SyncDevice[]
+  /**
+   * Device ids this vault has removed, against the time of removal.
+   *
+   * A tombstone, and the reason removal converges. `removeSyncDevice` used to
+   * splice an array, which a peer could undo without meaning to: a device
+   * removed here is still in the device list of a peer that was offline at the
+   * time, and that peer's next resilver carried it straight back in through
+   * `importVaultState`. A removed device would then verify again, so the one
+   * remediation the user has did not stick.
+   *
+   * It blocks *introduction*, never pairing. A JPAKE flow clears the tombstone
+   * and re-enrols, because that is the user standing in front of both devices
+   * saying so. See key-hierarchy-review/14-sync-device-injection.md.
+   *
+   * Absent in vaults written before tombstones existed, which is why it is
+   * optional: a vault that has removed nothing has nothing to record.
+   */
+  removedDevices?: Record<DeviceId, number>
   serverUrl: string | undefined
   /**
    * The static secret this vault authenticates to its sync server with.

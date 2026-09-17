@@ -30,8 +30,17 @@ class AddSyncDeviceCommand extends Command<AddSyncDeviceData> {
     timestamp?: number,
     version?: string,
     fromRemote = false,
+    fromDeviceId?: DeviceId,
   ) {
-    super('AddSyncDevice', data, id, timestamp, version, fromRemote)
+    super(
+      'AddSyncDevice',
+      data,
+      id,
+      timestamp,
+      version,
+      fromRemote,
+      fromDeviceId,
+    )
   }
 
   /**
@@ -45,7 +54,17 @@ class AddSyncDeviceCommand extends Command<AddSyncDeviceData> {
     if (reason) {
       throw new InvalidCommandError(`Invalid AddSyncDevice command: ${reason}`)
     }
-    await syncManager.addSyncDevice(this.data)
+    // `fromRemote` is the whole discriminator, and it is exact. This device
+    // only ever creates one of these at the end of a pairing flow it took part
+    // in (`SyncManager.sendFullVaultDataAndSetDeviceInfo`), so a locally
+    // created command IS a pairing. A remote one is a peer saying a device
+    // exists -- trust arriving by delegation, which is the case
+    // key-hierarchy-review/14-sync-device-injection.md is about.
+    await syncManager.addSyncDevice(
+      this.data,
+      this.fromRemote ? 'peer' : 'pairing',
+      this.fromDeviceId,
+    )
   }
 
   /**
@@ -62,12 +81,15 @@ class AddSyncDeviceCommand extends Command<AddSyncDeviceData> {
    * entry. It does **not** by itself make device enrolment safe: a well formed
    * record carrying an attacker's public keys passes every check here.
    *
-   * What changed with signed commands is who can get such a record this far.
-   * This command now has to arrive signed by a device already in the peer list,
-   * so enrolment is closed to anyone merely holding a public key -- but a
-   * trusted peer can still enrol whatever it likes, there is no key pinning and
-   * no visible confirmation. That is
-   * key-hierarchy-review/14-sync-device-injection.md, and it is still open.
+   * The checks that matter are elsewhere and deliberately so. This command has
+   * to arrive signed by a device already in the peer list
+   * (`SyncManager.verifyCommandEnvelope`), so enrolment is closed to anyone
+   * merely holding a public key; and `SyncManager.addSyncDevice` pins keys on
+   * first receipt, refuses a device this vault removed, and announces a
+   * peer-introduced device rather than letting it arrive silently. A trusted
+   * peer enrolling a device is in-model -- see
+   * key-hierarchy-review/14-sync-device-injection.md for why, and for what the
+   * library does instead of blocking it.
    * @returns Null when the data is usable, otherwise the reason it is not.
    */
   invalidReason(): string | null {

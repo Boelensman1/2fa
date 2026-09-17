@@ -47,16 +47,22 @@ review did and did not do with them.
 | #                                       | Finding                                         | Verdict                             | Status          |
 | --------------------------------------- | ----------------------------------------------- | ----------------------------------- | --------------- |
 | [13](13-sync-command-authentication.md) | Sync commands have no sender authentication     | broken                              | done            |
-| [14](14-sync-device-injection.md)       | Unvalidated sync-device injection               | broken — most severe found anywhere | open            |
+| [14](14-sync-device-injection.md)       | Unvalidated sync-device injection               | broken — most severe found anywhere | done            |
 | [15](15-sync-replay-protection.md)      | Replay protection is bypassable by construction | broken                              | done            |
 | [16](16-server-authentication.md)       | The sync server authenticates nothing           | weak by design, one real hijack     | open — narrowed |
 | [17](17-synckey-salt.md)                | `createSyncKey`'s salt is a public device id    | untidy                              | done            |
 
 `13` and `15` landed 2026-09-17 and took the asymmetric layer with them; see
-`13` first, then [10](10-rsa-layer.md)'s amendment. `14` is the one still worth
-reading closely: it is narrower than it was — enrolment is no longer open to
-anyone holding a public key — but a trusted peer can still enrol anything, and
-nothing surfaces a new device to the user.
+`13` first, then [10](10-rsa-layer.md)'s amendment. **`14` closed the same day,
+and it is the one still worth reading closely** — because the last third of it
+was decided rather than built. Peer trust is flat, now stated in
+[11](11-threat-model.md) rather than merely true: a peer holds every decrypted
+seed already, so a peer enrolling a device is in-model. A quarantine was designed
+and rejected, and the reasoning is in the file. What the library does instead is
+make enrolment legible — provenance, a key fingerprint, an event — and fix the
+three things that contradicted even a flat model: removal now converges, keys are
+pinned on first receipt, and a peer may rename only itself. `16` is the only sync
+finding left.
 
 `16` was narrowed the same day and is **still open**. The sync server now refuses
 any socket that cannot prove a static secret shared by every device of a
@@ -154,9 +160,18 @@ what made the migration not worth keeping. It was deleted instead; a v1 vault is
 refused, and the entries cross as an export. Paired devices still have to pair
 again, so nothing was lost that the migration preserved.)
 
+**`14` closed 2026-09-17**, and with it `15`'s leftover ordering item. It added
+no wire format, no server change and no version bump: everything it stores is
+this device's own opinion about a peer — how that peer came to be in the list,
+who introduced it, whether a consumer has surfaced it — written here and ignored
+on receipt, so a peer cannot describe its own introduction. The one visible
+consequence is that a removal now leaves a tombstone and a peer cannot undo it;
+re-pairing can, because that is the user saying so at both ends with the
+out-of-band secret.
+
 Remaining in the key hierarchy: nothing — `18` was the last open item and its
-rollback half is accepted rather than fixed. The sync-layer findings
-([12](12-sync-findings-index.md)) are untouched by that. Whoever raises the KDF
+rollback half is accepted rather than fixed. Of the sync-layer findings
+([12](12-sync-findings-index.md)), only `16` is left. Whoever raises the KDF
 parameters again must move the policy assertion in `kdf-vectors.test.ts` to a v3
 vector and leave **both** existing anchors beside it — a vault records the
 parameters it was written with and must still open under them. (Amended

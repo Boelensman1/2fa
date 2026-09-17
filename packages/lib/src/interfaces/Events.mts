@@ -1,6 +1,8 @@
 import type { EmptyObject } from 'type-fest'
 import type { FavaLibEvent } from '../FavaLibEvent.mjs'
 import type { ConnectionStatus } from '../subclasses/SyncManager.mjs'
+import type { DeviceFingerprint } from './BrandedTypes.mjs'
+import type { DeviceId, DeviceInfo, SyncDeviceEnrolment } from './SyncTypes.mjs'
 
 export interface FavaLibEventMap {
   [FavaLibEvent.Changed]: EmptyObject
@@ -11,6 +13,19 @@ export interface FavaLibEventMap {
   [FavaLibEvent.ConnectToExistingVaultFinished]: EmptyObject
   [FavaLibEvent.ConnectionToSyncServerStatusChanged]: {
     newStatus: ConnectionStatus
+  }
+  /**
+   * Fires only for `via: 'peer'`. A device this vault paired with itself, or
+   * this device registering itself, is an act the user performed in person at
+   * both ends holding a 60-byte secret -- re-asking about it would be noise,
+   * and noise is what stops the one that matters being read.
+   */
+  [FavaLibEvent.SyncDeviceAdded]: {
+    deviceId: DeviceId
+    fingerprint: DeviceFingerprint
+    /** As the introducing peer described it, so attacker-chosen. */
+    deviceInfo?: DeviceInfo
+    enrolment: SyncDeviceEnrolment
   }
   [FavaLibEvent.Log]: {
     /**

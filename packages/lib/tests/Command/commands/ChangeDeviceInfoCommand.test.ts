@@ -101,6 +101,9 @@ describe('ChangeDeviceInfoCommand', () => {
       Date.now(),
       '1',
       true,
+      // The verified sender, and the device being renamed: a peer renames
+      // itself or nothing.
+      remoteDeviceId,
     )
 
     await command.execute(mockFavaLibMediator)
@@ -180,14 +183,70 @@ describe('ChangeDeviceInfoCommand', () => {
     )
   })
 
-  it('should always validate remote commands', () => {
-    const command = new ChangeDeviceInfoCommand(
-      commandData,
+  // A remote rename used to be waved through entirely -- "we can only validate
+  // this command locally" -- so any peer could rename any device to anything of
+  // any length. The friendly name is what a user reads when deciding whether a
+  // device belongs, so a peer able to write someone else's name can dress its
+  // own device as the user's phone. See
+  // key-hierarchy-review/14-sync-device-injection.md.
+  const remoteRename = (
+    deviceId: DeviceId,
+    fromDeviceId: DeviceId | undefined,
+    deviceFriendlyName = mockNewFriendlyName,
+  ) =>
+    new ChangeDeviceInfoCommand(
+      {
+        deviceId,
+        newDeviceInfo: { deviceType: mockDeviceType, deviceFriendlyName },
+      },
       undefined,
       undefined,
       undefined,
       true,
+      fromDeviceId,
     )
-    expect(command.validate(mockFavaLibMediator)).toBe(true)
+
+  it('lets a remote peer rename itself', () => {
+    const peer = 'some-peer' as DeviceId
+    expect(remoteRename(peer, peer).validate(mockFavaLibMediator)).toBe(true)
+  })
+
+  it('refuses a remote peer renaming another device', () => {
+    expect(
+      remoteRename('victim' as DeviceId, 'attacker' as DeviceId).validate(
+        mockFavaLibMediator,
+      ),
+    ).toBe(false)
+  })
+
+  it('refuses a remote peer renaming this device', () => {
+    // The one the old code made reachable: execute() writes straight into
+    // favaMeta when the target is this device.
+    expect(
+      remoteRename(mockDeviceId, 'attacker' as DeviceId).validate(
+        mockFavaLibMediator,
+      ),
+    ).toBe(false)
+  })
+
+  it('refuses a remote rename with no verified sender', () => {
+    const peer = 'some-peer' as DeviceId
+    expect(remoteRename(peer, undefined).validate(mockFavaLibMediator)).toBe(
+      false,
+    )
+  })
+
+  it('bounds the friendly name on the remote path too', () => {
+    const peer = 'some-peer' as DeviceId
+    expect(
+      remoteRename(peer, peer, 'x'.repeat(257) as DeviceFriendlyName).validate(
+        mockFavaLibMediator,
+      ),
+    ).toBe(false)
+    expect(
+      remoteRename(peer, peer, '' as DeviceFriendlyName).validate(
+        mockFavaLibMediator,
+      ),
+    ).toBe(false)
   })
 })

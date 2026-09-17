@@ -33,6 +33,16 @@ holds the detail. Tick a box only when that file's `Status:` line and the
       recipient, under this command id. Took the asymmetric layer with it;
       storage version 2 was redefined rather than superseded, since nothing in
       the wild had ever written one
+- [x] **14** — closed by **deciding** peer trust is flat and writing that down
+      (`11`), not by gating enrolment. A quarantine was designed and rejected:
+      a pending device silently stops receiving entries, so the honest case
+      fails more often than the attack. Instead enrolment is legible —
+      provenance, a key fingerprint, a `SyncDeviceAdded` event, an
+      acknowledgement that gates nothing — and three things that contradicted
+      even a flat model are fixed: removal converges via tombstones, keys are
+      pinned on first receipt with a loud conflict, and a peer may rename only
+      itself. Library only; the browser extension is the intended consumer of
+      the event and is not in this tree
 - [x] **15** — the command id is bound into the signed payload, the
       processed-command record is persisted and bounded (30 days / 1000, with a
       per-peer floor so pruning cannot weaken it), the dead nonces are deleted
@@ -61,15 +71,11 @@ holds the detail. Tick a box only when that file's `Status:` line and the
 
 ## Open — sync layer
 
-Unranked on purpose; they belong to a sync-protocol review that has not been
-scoped ([12](12-sync-findings-index.md)). `13` and `15` were fixed on their own
-terms, which is not that review. Read `14` first.
+Only `16` is left. It belongs to a sync-protocol review that has not been scoped
+([12](12-sync-findings-index.md)); `13`, `14`, `15` and `17` were each worked
+through on their own terms, which is not that review. Read `14` first anyway —
+it is where the peer-trust model is argued.
 
-- [ ] **14** — keep device enrolment on the authenticated path. Narrowed twice
-      and still open: `05` took the shape half, `13` took the "anyone holding a
-      public key" half, and what is left is enrolment by a peer that is trusted
-      but hostile, key pinning on first receipt, and a confirmation the user can
-      see. Most severe finding in the review.
 - [ ] **16** — narrowed 2026-09-17, still open. The sync server now refuses any
       socket that cannot prove a static shared secret (HMAC over a server nonce,
       so the secret never travels), the secret lives per vault beside

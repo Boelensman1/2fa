@@ -2,6 +2,7 @@ import { v4 as uuidv4 } from 'uuid'
 import type FavaLibMediator from '../FavaLibMediator.mjs'
 
 import { CommandData } from '../interfaces/CommandTypes.mjs'
+import type { DeviceId } from '../interfaces/BrandedTypes.mjs'
 import { COMMAND_VERSION } from '../version.mjs'
 
 /**
@@ -15,6 +16,19 @@ abstract class BaseCommand<T extends CommandData = CommandData> {
   readonly version: string
   readonly data: T
   readonly fromRemote: boolean
+  /**
+   * The peer that sent this command, as VERIFIED, not as claimed.
+   *
+   * Set only by `fromJSON`, from the device id
+   * `SyncManager.verifyCommandEnvelope` matched a signature against -- never
+   * from anything inside the payload, which the sender chooses. Undefined for
+   * a command this device created.
+   *
+   * It is deliberately absent from `toJSON`: it is this device's conclusion
+   * about who spoke, not a field of the command, and serialising it would
+   * invite a receiver to read the sender's own claim about itself.
+   */
+  readonly fromDeviceId?: DeviceId
 
   /**
    * Creates a new BaseCommand instance.
@@ -28,6 +42,8 @@ abstract class BaseCommand<T extends CommandData = CommandData> {
    * stamped with a version it was not written in -- harmless only because the
    * receiving gate accepts older majors.
    * @param fromRemote - Indicates if the command originated from a remote source. Defaults to false.
+   * @param fromDeviceId - The verified sender, when this command arrived from
+   * a peer. Never taken from the payload; see the field.
    */
   constructor(
     type: string,
@@ -36,6 +52,7 @@ abstract class BaseCommand<T extends CommandData = CommandData> {
     timestamp: number = Date.now(),
     version = COMMAND_VERSION,
     fromRemote = false,
+    fromDeviceId?: DeviceId,
   ) {
     this.id = id
     this.type = type
@@ -43,6 +60,7 @@ abstract class BaseCommand<T extends CommandData = CommandData> {
     this.version = version
     this.data = data
     this.fromRemote = fromRemote
+    this.fromDeviceId = fromDeviceId
   }
 
   /**
@@ -73,6 +91,7 @@ abstract class BaseCommand<T extends CommandData = CommandData> {
       timestamp?: number,
       version?: string,
       fromRemote?: boolean,
+      fromDeviceId?: DeviceId,
     ) => C,
     data: T,
   ): C {
@@ -82,6 +101,8 @@ abstract class BaseCommand<T extends CommandData = CommandData> {
   /**
    * Creates a new instance of the command from JSON data.
    * @param input - The JSON input containing the command data.
+   * @param fromDeviceId - The device whose signature was verified over this
+   * command, which the caller must have established rather than read.
    * @returns A new instance of the command created from the JSON data.
    */
   static fromJSON<T extends CommandData, C extends BaseCommand<T>>(
@@ -91,6 +112,7 @@ abstract class BaseCommand<T extends CommandData = CommandData> {
       timestamp: number,
       version: string,
       fromRemote: boolean,
+      fromDeviceId?: DeviceId,
     ) => C,
     input: {
       data: T
@@ -98,8 +120,16 @@ abstract class BaseCommand<T extends CommandData = CommandData> {
       timestamp: number
       version: string
     },
+    fromDeviceId?: DeviceId,
   ): C {
-    return new this(input.data, input.id, input.timestamp, input.version, true)
+    return new this(
+      input.data,
+      input.id,
+      input.timestamp,
+      input.version,
+      true,
+      fromDeviceId,
+    )
   }
 
   /**

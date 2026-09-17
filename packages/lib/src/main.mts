@@ -45,8 +45,11 @@ import type {
   MacKey,
   KdfParameters,
 } from './interfaces/CryptoLib.mjs'
+import type { DeviceFingerprint } from './interfaces/BrandedTypes.mjs'
 import type {
   PublicSyncDevice,
+  SyncDeviceEnrolment,
+  SyncDeviceEnrolmentRoute,
   DeviceId,
   DeviceType,
   DeviceFriendlyName,
@@ -73,6 +76,8 @@ import {
   StorageVersionError,
   UnsupportedStorageVersionError,
   SyncPairingVersionError,
+  SyncDeviceKeyConflictError,
+  SyncDeviceRemovedError,
 } from './FavaLibError.mjs'
 import {
   LIB_VERSION,
@@ -100,6 +105,8 @@ export {
   StorageVersionError,
   UnsupportedStorageVersionError,
   SyncPairingVersionError,
+  SyncDeviceKeyConflictError,
+  SyncDeviceRemovedError,
   LIB_VERSION,
   SESSION_VERSION,
   STORAGE_VERSION,
@@ -158,8 +165,11 @@ export type {
   DeviceType,
   DeviceFriendlyName,
   DeviceInfo,
+  DeviceFingerprint,
   PublicSyncDevice,
   ServerSecret,
+  SyncDeviceEnrolment,
+  SyncDeviceEnrolmentRoute,
   SaveFunction,
   PlatformProviders,
   LoadFavaLibOptions,

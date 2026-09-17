@@ -1,8 +1,10 @@
 import { describe, it, expect } from 'vitest'
 
 import {
+  MAX_REMOVED_DEVICES,
   PUBLIC_KEY_LENGTH,
   parseDevicePublicKeys,
+  validateRemovedDevices,
   validateSyncDevice,
 } from '../../src/utils/syncDeviceValidation.mjs'
 
@@ -33,6 +35,44 @@ const deviceWith = (overrides: Record<string, unknown>): unknown => ({
 describe('validateSyncDevice', () => {
   it('accepts a well-formed device', () => {
     expect(validateSyncDevice(validDevice)).toBeNull()
+  })
+
+  it('accepts a device carrying its enrolment and acknowledgement', () => {
+    expect(
+      validateSyncDevice(
+        deviceWith({
+          enrolment: { via: 'peer', by: 'some-other-device', at: 1 },
+          acknowledgedAt: 2,
+        }),
+      ),
+    ).toBeNull()
+  })
+
+  it('accepts a device with neither, which is what a record predating them looks like', () => {
+    // There is deliberately no fourth route meaning "unknown": provenance that
+    // was never captured cannot be reconstructed, so the absence says it.
+    expect(
+      validateSyncDevice(
+        deviceWith({ enrolment: undefined, acknowledgedAt: undefined }),
+      ),
+    ).toBeNull()
+  })
+
+  it.each([
+    ['an enrolment that is not an object', { enrolment: 'paired' }],
+    ['an unknown enrolment route', { enrolment: { via: 'trusted', at: 1 } }],
+    ['an enrolment with no timestamp', { enrolment: { via: 'peer' } }],
+    [
+      'an enrolment timestamp that is not finite',
+      { enrolment: { via: 'peer', at: Number.POSITIVE_INFINITY } },
+    ],
+    [
+      'an introducer that is not a usable deviceId',
+      { enrolment: { via: 'peer', by: '', at: 1 } },
+    ],
+    ['an acknowledgedAt that is not a number', { acknowledgedAt: 'yes' }],
+  ])('refuses a device with %s', (_label, overrides) => {
+    expect(validateSyncDevice(deviceWith(overrides))).not.toBeNull()
   })
 
   it('accepts a device with no deviceInfo', () => {
@@ -114,5 +154,37 @@ describe('parseDevicePublicKeys', () => {
     ],
   ])('refuses %s', (_label, serialised) => {
     expect(() => parseDevicePublicKeys(serialised)).toThrow(/public keys/)
+  })
+})
+
+describe('validateRemovedDevices', () => {
+  it('accepts an absent record, which is what having removed nothing looks like', () => {
+    expect(validateRemovedDevices(undefined)).toBeNull()
+  })
+
+  it('accepts a well-formed record', () => {
+    expect(validateRemovedDevices({ 'old-phone': 1700000000000 })).toBeNull()
+  })
+
+  it.each([
+    ['a record that is not an object', 'old-phone'],
+    ['an array', ['old-phone']],
+    ['a removal time that is not a number', { 'old-phone': 'yesterday' }],
+    [
+      'a removal time that is not finite',
+      { 'old-phone': Number.POSITIVE_INFINITY },
+    ],
+    ['an empty deviceId', { '': 1 }],
+  ])('refuses %s', (_label, record) => {
+    expect(validateRemovedDevices(record)).not.toBeNull()
+  })
+
+  it('refuses more tombstones than the cap', () => {
+    // Bounded for the reason the device list is: the record is re-serialised
+    // and re-encrypted on every save.
+    const record = Object.fromEntries(
+      Array.from({ length: MAX_REMOVED_DEVICES + 1 }, (_, i) => [`d-${i}`, i]),
+    )
+    expect(validateRemovedDevices(record)).toMatch(/more than/)
   })
 })

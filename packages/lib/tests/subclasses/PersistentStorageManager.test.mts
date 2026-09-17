@@ -32,6 +32,7 @@ import { newTotpEntry } from '../testUtils.mjs'
 import type PersistentStorageManager from '../../src/subclasses/PersistentStorageManager.mjs'
 import type {
   LockedRepresentation,
+  UnlockedSession,
   VaultState,
 } from '../../src/interfaces/Vault.mjs'
 import type SyncManager from '../../src/subclasses/SyncManager.mjs'
@@ -459,6 +460,29 @@ describe('PersistentStorageManager', () => {
     const secondSalt = vault.lastSaved().salt
 
     expect(new Set([vault.salt, firstSalt, secondSalt]).size).toBe(3)
+  }, 45000) // long running test
+
+  it('exports an unlocked session that tracks the live key generation', async () => {
+    // Pins that exportUnlockedSession reads the manager's mutable state rather
+    // than a copy taken at construction: the two rotated secrets must move and
+    // the two retained ones must not. See
+    // key-hierarchy-review/07-session-key-api.md.
+    const vault = await createRotatableVault()
+
+    const before = JSON.parse(
+      vault.psm.exportUnlockedSession(),
+    ) as UnlockedSession
+    await vault.psm.changePassword(password, newPassword)
+    const after = JSON.parse(
+      vault.psm.exportUnlockedSession(),
+    ) as UnlockedSession
+
+    expect(after.symmetricKey).not.toBe(before.symmetricKey)
+    expect(after.macKey).not.toBe(before.macKey)
+    // Deliberately NOT rotated -- peers hold this device's public key
+    // (04-key-rotation.md).
+    expect(after.privateKey).toBe(before.privateKey)
+    expect(after.publicKey).toBe(before.publicKey)
   }, 45000) // long running test
 
   it('should throw an error when changing to a weak password', async () => {

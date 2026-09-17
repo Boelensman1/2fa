@@ -3,7 +3,11 @@ import type {
   EncryptedPrivateKey,
   EncryptedSymmetricKey,
   KdfParameters,
+  MacKey,
+  PrivateKey,
+  PublicKey,
   Salt,
+  SymmetricKey,
 } from './CryptoLib.mjs'
 import type Entry from './Entry.mjs'
 import type { DeviceFriendlyName, DeviceId, SyncDevice } from './SyncTypes.mjs'
@@ -47,6 +51,31 @@ export type LockedRepresentationString = Tagged<
   string,
   'LockedRepresentationString'
 >
+
+/**
+ * The derived key material of an unlocked vault, in a form a consumer can hold
+ * across a process restart -- see key-hierarchy-review/07-session-key-api.md.
+ *
+ * Only the four secrets that a password unlock DERIVES. Everything a vault
+ * stores about itself -- the salt, the kdf block, both encrypted keys, the
+ * encrypted vault state -- is deliberately absent: the consumer already holds
+ * a LockedRepresentation, and reading those from it rather than from here
+ * means the two can never disagree.
+ *
+ * This is PLAINTEXT KEY MATERIAL. Whoever reads it reads the vault. It is
+ * declared here rather than in BrandedTypes.mts (which is what `favalib/types`
+ * resolves to, and what favaserver imports back) on purpose: that module holds
+ * the types that legitimately cross a process boundary, and this one must
+ * never leave the device.
+ */
+export interface UnlockedSession {
+  sessionVersion: number
+  privateKey: PrivateKey
+  publicKey: PublicKey
+  symmetricKey: SymmetricKey
+  macKey: MacKey
+}
+export type UnlockedSessionString = Tagged<string, 'UnlockedSessionString'>
 
 export interface VaultSyncState {
   devices: SyncDevice[]

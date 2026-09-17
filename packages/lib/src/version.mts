@@ -32,6 +32,26 @@ export const LIB_VERSION = '0.0.22'
 export const STORAGE_VERSION = 2
 
 /**
+ * The version of the unlocked-session blob that this build writes, and the
+ * only one it will read.
+ *
+ * Deliberately separate from STORAGE_VERSION, because the two version
+ * artifacts with opposite obligations. A stored vault must open forever: a
+ * bump there drags in a frozen fixture, a read path for the old version and a
+ * migration, and getting it wrong costs a user their vault. An unlocked
+ * session is memory-backed and lives for one process; it is never migrated,
+ * and the right answer to one this build does not recognise is to refuse it
+ * and ask for the password again. Tying them together would force a storage
+ * bump to add a field to a throwaway blob, and would kill every live session
+ * on every storage bump for no reason.
+ *
+ * Compared with !==, not <. An older blob means the process was upgraded under
+ * a live session and a newer one means a downgrade; neither is a shape this
+ * build should guess at, and both cost exactly one password prompt.
+ */
+export const SESSION_VERSION = 1
+
+/**
  * The storage version assumed for a stored vault that carries no
  * storageVersion at all.
  *

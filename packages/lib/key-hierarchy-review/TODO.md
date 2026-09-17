@@ -20,16 +20,18 @@ holds the detail. Tick a box only when that file's `Status:` line and the
       `addSyncDevice` is the chokepoint with a 64-device cap
 - [x] **06** — KDF vectors, a frozen v1 fixture vault and stored-format
       assertions
+- [x] **07** — export/import-unlocked-session api on `favalib`; the extension
+      no longer needs the raw master password. Its extension half is **not**
+      done — see below.
 - [x] **08** · **09** · **10** — reviewed, no action. `10` carries an amendment
       on the at-rest RSA self-wrap.
 
 ## Open — key hierarchy
 
-- [ ] **04 (extension half)** — clear the extension's session `vaultPassword`
-      on a password change, by hooking `FavaLibEvent.PasswordChanged`. Owned by
-      the `app-extension` branch; there is no such code in this tree.
-- [ ] **07** — export/import-unlocked-session API on `favalib` so the extension
-      stops storing the raw master password. P2, new public API.
+- [ ] **04 · 07 (extension half)** — one commit on the `app-extension` branch:
+      store the exported session blob instead of `vaultPassword`, and clear it
+      on `lock()` and on `FavaLibEvent.PasswordChanged`. There is no such code
+      in this tree.
 - [ ] **18** — anti-rollback. Two parts: delete the v1 read path once installs
       have upgraded (calendar call), then a monotonic counter outside the blob.
       P1.

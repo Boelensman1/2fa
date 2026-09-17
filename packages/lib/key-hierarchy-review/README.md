@@ -28,7 +28,7 @@ match.
 | [04](04-key-rotation.md)            | No rotation; `changePassword` revokes nothing | weak                     | P1       | done               |
 | [05](05-load-path-validation.md)    | Load path skips the entry validators          | weak                     | P1       | done               |
 | [06](06-crypto-test-coverage.md)    | Nothing pins the KDF or the stored format     | weak                     | P1       | done               |
-| [07](07-session-key-api.md)         | Extension stores the raw master password      | untidy                   | P2       | open               |
+| [07](07-session-key-api.md)         | Extension stores the raw master password      | untidy                   | P2       | done               |
 | [18](18-anti-rollback.md)           | Rollback to an earlier vault is undetectable  | weak                     | P1       | open               |
 | [08](08-whole-vault-blob.md)        | Whole-vault blob vs per-item                  | **sound**                | —        | closed — no action |
 | [09](09-iv-handling.md)             | IV handling                                   | **sound**                | —        | closed — no action |
@@ -93,7 +93,22 @@ reverses what that file originally proposed — the reasoning is in it. It also
 closed the `JSON.parse`/`SyntaxError` item `03` deferred, and took the shape half
 of `14` with it without closing `14`.
 
-Remaining, in order: `07`, `18`. Whoever raises the KDF parameters
+`07` landed 2026-09-17, library half only: `favalib` now exports an unlocked
+session — the four secrets a password unlock derives — and rehydrates a
+`FavaLib` from it with no argon2id and no PBES2 unwrap. Everything else is read
+back from the `LockedRepresentation`, and a stale session is refused by the
+envelope MAC rather than by a counter, because `04` rotates the MAC key. The
+vault state it decrypts goes through `05`'s validators, the same as the password
+path. The blob is plaintext key material under a documented storage contract
+(memory-backed, process-lifetime, nothing else): wrapping it would need a key
+with a different lifetime, and there is none. `CryptoError` is exported now, so
+a consumer can branch on "session unusable" without matching on a message
+string. Two things it is **not**: freshness — a stale session with the stale
+vault it was exported beside still opens (`18`) — and confidentiality. The
+extension half is open, and is one commit on the `app-extension` branch
+together with `04`'s.
+
+Remaining, in order: `18`. Whoever raises the KDF parameters
 again must move the policy assertion in `kdf-vectors.test.ts` to a v3 vector and
 leave **both** existing anchors beside it; the v1 anchor survives until the v1
 read path itself is deleted (`18`, item 1).
@@ -167,7 +182,10 @@ Five details that are easy to get wrong:
 the server persists only a queue of `{commandId, deviceId, encryptedCommand,
 encryptedSymmetricKey}` (`packages/server/migrations/001_unsendSyncCommands.ts`).
 Storage sinks are `vault.json` + `vault.json.backup` for the CLI, and the
-`localStorage` key `lockedRepresentation` for the PWA. So the at-rest format has
+`localStorage` key `lockedRepresentation` for the PWA. Since
+[07](07-session-key-api.md) there is a second artifact a consumer may hold: an
+exported unlocked session, which is plaintext key material and belongs only in
+memory-backed, process-lifetime storage. So the at-rest format has
 **no peer-compatibility constraint** — there is no "peer on an older favalib"
 problem, only a same-device downgrade problem, which is what
 [03](03-storage-versioning.md) fixes. The two formats that _do_ carry that

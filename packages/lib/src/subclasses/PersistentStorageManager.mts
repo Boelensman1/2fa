@@ -7,6 +7,7 @@ import type {
   MacKey,
   Password,
   PrivateKey,
+  PublicKey,
   Salt,
   SymmetricKey,
 } from '../interfaces/CryptoLib.mjs'
@@ -14,6 +15,8 @@ import {
   EncryptedVaultStateString,
   LockedRepresentation,
   LockedRepresentationString,
+  UnlockedSession,
+  UnlockedSessionString,
   VaultState,
   VaultStateString,
 } from '../interfaces/Vault.mjs'
@@ -29,7 +32,12 @@ import {
   validatePasswordStrength,
 } from '../utils/creationUtils.mjs'
 import { buildEnvelopeMacMessage, buildVaultAad } from '../utils/canonical.mjs'
-import { LIB_VERSION, STORAGE_VERSION, V2_KDF_PARAMETERS } from '../version.mjs'
+import {
+  LIB_VERSION,
+  SESSION_VERSION,
+  STORAGE_VERSION,
+  V2_KDF_PARAMETERS,
+} from '../version.mjs'
 import { FavaLibEvent } from '../FavaLibEvent.mjs'
 
 /**
@@ -64,6 +72,14 @@ class PersistentStorageManager {
    * @param favaMeta - Meta info containing at least a unique identifier for this device.
    * @param privateKey - The private key used for cryptographic operations.
    * Never rotated: peers hold this device's public key.
+   * @param publicKey - This device's public key. Held here only so that
+   * exportUnlockedSession can carry it: a session-imported vault has to hand
+   * SyncManager the same key a password-imported one does, and there is no way
+   * back to it from the private key without a new CryptoLib member -- which is
+   * a break for any consumer supplying their own provider (see generateSalt in
+   * creationUtils.mts for the same argument). Deliberately NOT part of
+   * VaultKeyMaterial: it is not rotated, and putting it in the unit that
+   * snapshotKeyMaterial and replaceKeyMaterial move would imply it is.
    * @param symmetricKey - The symmetric key the vault state is encrypted
    * under. An INITIAL value -- changePassword rotates it.
    * @param encryptedPrivateKey - The encrypted private key
@@ -79,6 +95,7 @@ class PersistentStorageManager {
     private readonly passwordExtraDict: PasswordExtraDict,
     private readonly favaMeta: FavaMeta,
     private readonly privateKey: PrivateKey,
+    private readonly publicKey: PublicKey,
     private symmetricKey: SymmetricKey,
     private encryptedPrivateKey: EncryptedPrivateKey,
     private encryptedSymmetricKey: EncryptedSymmetricKey,
@@ -203,6 +220,73 @@ class PersistentStorageManager {
     }
 
     return JSON.stringify(lockedRepresentation) as LockedRepresentationString
+  }
+
+  /**
+   * Exports the derived key material of this unlocked vault, so that a
+   * consumer can rehydrate it later without the password.
+   *
+   * See key-hierarchy-review/07-session-key-api.md. An MV3 service worker is
+   * evicted after ~30s idle, and the only alternative to this is keeping the
+   * master password -- which is the input for every OTHER device too, and
+   * which users reuse. Leaking this device's derived keys is strictly less bad
+   * than leaking that.
+   *
+   * ## This is plaintext key material
+   *
+   * Whoever can read the returned string can read the vault. It is not
+   * encrypted, and deliberately so: encrypting it needs a key held somewhere
+   * with a different lifetime, and on the platforms this exists for there is
+   * no such place -- a key in the same process, in the same storage area, or
+   * derived from the password we are trying not to store is held by exactly
+   * the attacker this would be defending against. A wrap would buy the
+   * appearance of protection, which is worse than its absence because it
+   * invites storing the blob somewhere weaker.
+   *
+   * So the protection is a storage contract instead: memory-backed storage
+   * with the lifetime of a process (browser.storage.session and nothing else).
+   * Never a disk, never localStorage, never a sync channel, never a log or a
+   * crash report. Drop it on lock and on FavaLibEvent.PasswordChanged.
+   *
+   * ## What it is bound to
+   *
+   * A key GENERATION, not a particular stored blob. A save does not move the
+   * salt, the kdf block, the encrypted keys or the MAC key, so one session
+   * opens every envelope that generation goes on to write -- there is no need
+   * to re-export after each save, and doing so would write key material to
+   * storage on every change. Only changePassword moves them, and
+   * loadFavaLibFromUnlockedSession then refuses this blob against the vault
+   * that change wrote, because the envelope MAC is keyed from the password
+   * hash.
+   *
+   * That refusal is NOT freshness. A stale session paired with the stale
+   * LockedRepresentation it was exported beside still opens: both were valid
+   * together. See key-hierarchy-review/18-anti-rollback.md.
+   *
+   * Synchronous on purpose. Nothing is derived, wrapped or awaited here, and
+   * an async signature would imply otherwise -- which is the one thing about
+   * this blob it must not imply. Contrast getLockedRepresentation, which
+   * encrypts.
+   * @returns The session as a json string, to be handed back to
+   * loadFavaLibFromUnlockedSession together with a LockedRepresentation.
+   */
+  public exportUnlockedSession(): UnlockedSessionString {
+    // Through the snapshot rather than this.* directly. A synchronous method
+    // cannot tear, so this is not load-bearing today -- it is the same "one
+    // generation, read once" discipline getLockedRepresentation uses, so that
+    // a field added to the rotation unit later is picked up here instead of
+    // being forgotten.
+    const material = this.snapshotKeyMaterial()
+
+    const session: UnlockedSession = {
+      sessionVersion: SESSION_VERSION,
+      privateKey: this.privateKey,
+      publicKey: this.publicKey,
+      symmetricKey: material.symmetricKey,
+      macKey: material.macKey,
+    }
+
+    return JSON.stringify(session) as UnlockedSessionString
   }
 
   /**

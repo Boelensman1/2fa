@@ -141,6 +141,16 @@ actionable in this tree**: `VaultContainer.ts` lives only on the
 makes. Tracked next to [07](07-session-key-api.md), which owns the storage
 choice itself.
 
+[07](07-session-key-api.md)'s library half landed 2026-09-17, which changes
+what this hook has to clear and why. That store now holds an exported session
+blob rather than the password, and a blob predating a password change is
+**refused** by the envelope MAC — keyed from the password hash, which this
+finding's rotation moves — rather than silently used. So clearing on
+`PasswordChanged` is now hygiene: it removes live key material that still opens
+a _stale_ copy of the vault ([18](18-anti-rollback.md)), instead of being the
+only thing between a stale credential and a wrong unlock. Still worth doing,
+for a smaller reason.
+
 ### Two follow-ups this work surfaced
 
 - **The v1 migration re-wraps the legacy symmetric key rather than rotating

@@ -51,6 +51,8 @@ import type {
   EncryptedVaultStateString,
   LockedRepresentation,
   LockedRepresentationString,
+  UnlockedSession,
+  UnlockedSessionString,
 } from './interfaces/Vault.mjs'
 import type { SaveFunction } from './interfaces/SaveFunction.mjs'
 import type { PlatformProviders } from './interfaces/PlatformProviders.mjs'
@@ -59,6 +61,7 @@ import {
   FavaLibError,
   InitializationError,
   AuthenticationError,
+  CryptoError,
   EntryNotFoundError,
   TokenGenerationError,
   StorageVersionError,
@@ -66,6 +69,7 @@ import {
 } from './FavaLibError.mjs'
 import {
   LIB_VERSION,
+  SESSION_VERSION,
   STORAGE_VERSION,
   PAIRING_VERSION,
   V1_KDF_PARAMETERS,
@@ -83,11 +87,13 @@ export {
   getFavaLibVaultCreationUtils,
   InitializationError,
   AuthenticationError,
+  CryptoError,
   EntryNotFoundError,
   TokenGenerationError,
   StorageVersionError,
   SyncPairingVersionError,
   LIB_VERSION,
+  SESSION_VERSION,
   STORAGE_VERSION,
   PAIRING_VERSION,
   V1_KDF_PARAMETERS,
@@ -120,6 +126,8 @@ export type {
   EncryptedVaultStateString,
   LockedRepresentation,
   LockedRepresentationString,
+  UnlockedSession,
+  UnlockedSessionString,
   CryptoLib,
   Encrypted,
   EncryptedPrivateKey,

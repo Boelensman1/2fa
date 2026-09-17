@@ -2,6 +2,7 @@ import type FavaLibMediator from '../FavaLibMediator.mjs'
 
 import type { Password } from '../interfaces/CryptoLib.mjs'
 import type { SaveFunction } from '../interfaces/SaveFunction.mjs'
+import type { UnlockedSessionString } from '../interfaces/Vault.mjs'
 
 /**
  * Manages the public operations related to the vault storage
@@ -26,6 +27,21 @@ class StorageOperationsManager {
    */
   async forceSave() {
     return this.persistentStorage.save()
+  }
+
+  /**
+   * Exports the derived key material of this unlocked vault, so it can be
+   * rehydrated later without the password.
+   *
+   * The returned string is PLAINTEXT KEY MATERIAL and belongs only in
+   * memory-backed, process-lifetime storage. Read
+   * PersistentStorageManager.exportUnlockedSession's doc comment before using
+   * it, and key-hierarchy-review/07-session-key-api.md before changing it.
+   * @returns The session as a json string, for
+   * loadFavaLibFromUnlockedSession.
+   */
+  public exportUnlockedSession(): UnlockedSessionString {
+    return this.persistentStorage.exportUnlockedSession()
   }
 
   /**

@@ -157,6 +157,7 @@ class FavaLib extends TypedEventTarget<FavaLibEventMapEvents> {
           passwordExtraDict,
           favaMeta,
           privateKey,
+          publicKey,
           symmetricKey,
           encryptedPrivateKey,
           encryptedSymmetricKey,

@@ -67,6 +67,11 @@ acceptable.
 WASM memory is not a constraint: 1 GiB succeeded in testing, and `wxt.config.ts`
 already carries the `'wasm-unsafe-eval'` CSP carve-out.
 
+**Update, 2026-09-17:** [07](07-session-key-api.md) landed the library half.
+The KDF now runs once per unlock rather than once per worker boot, so the
+restraint argued for above is retired on the library side; the extension half
+is what retires it in the field.
+
 ### The parameters cannot currently be changed
 
 `LockedRepresentation` stores `salt`, `libVersion`, `storageVersion` and nothing

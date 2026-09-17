@@ -6,6 +6,7 @@ import {
   afterAll,
   beforeEach,
   afterEach,
+  vi,
 } from 'vitest'
 import { randomUUID } from 'crypto'
 import { WebSocketServer, WebSocket } from 'ws'
@@ -253,9 +254,15 @@ describe('WebSocket Server Integration Tests', () => {
 
       ws.send('invalid json')
 
-      await new Promise((resolve) => setTimeout(resolve, 100))
+      // The error has to arrive before it can be inspected, so wait for it
+      // rather than for a fixed 100ms. The two tests below are the opposite
+      // shape -- they assert that nothing happened, which a wait-for cannot
+      // express, so their fixed delay stays.
+      await vi.waitFor(() => expect(wsErrors).toHaveLength(1), {
+        timeout: 4000,
+        interval: 10,
+      })
       expect(ws.readyState).toBe(WebSocket.OPEN)
-      expect(wsErrors).toHaveLength(1)
       expect(wsErrors[0]).toBeInstanceOf(SyntaxError)
       expect(wsErrors[0].message).toContain('not valid JSON')
     })

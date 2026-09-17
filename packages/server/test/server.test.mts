@@ -31,6 +31,25 @@ import { cleanupTestDatabase, initializeTestDatabase } from './test-setup.mjs'
  * `createSyncServer.mts` exists so this file can stop guessing.
  */
 
+/**
+ * How long to wait for work `handleMessage` started but did not return.
+ *
+ * `handleMessage` is synchronous and fires its database writes off unawaited,
+ * so there is nothing for a test to await -- the assertions below used a flat
+ * 100ms sleep instead. That is a race the suite loses whenever the round trip
+ * to postgres takes longer than that, which is exactly what happens when
+ * `make test` runs this straight after packages/lib's argon2id suite: two
+ * assertions here fail intermittently, and the failure looks like a server
+ * bug rather than a slow machine.
+ *
+ * `vi.waitFor` polls instead, so the normal case still finishes in a
+ * millisecond or two and a slow one just takes longer. Four seconds of
+ * headroom rather than vitest's one-second default, and under the 5s test
+ * timeout so a genuine hang still reports as this assertion failing rather
+ * than as the test running out of time.
+ */
+const DB_WAIT = { timeout: 4000, interval: 10 }
+
 const sharedSecret = config.sync.sharedSecret as ServerSecret
 
 /**
@@ -224,17 +243,19 @@ describe('Server message handling', () => {
 
       core.handleMessage(ws, { type: 'connect', data: { deviceId } })
 
-      await new Promise((resolve) => setTimeout(resolve, 100))
-
-      expect(sentTo(ws)).toContainEqual({
-        type: 'syncCommands',
-        data: expect.arrayContaining([
-          expect.objectContaining({
-            commandId,
-            encryptedSymmetricKey: 'test-key',
+      await vi.waitFor(
+        () =>
+          expect(sentTo(ws)).toContainEqual({
+            type: 'syncCommands',
+            data: expect.arrayContaining([
+              expect.objectContaining({
+                commandId,
+                encryptedSymmetricKey: 'test-key',
+              }),
+            ]) as unknown,
           }),
-        ]) as unknown,
-      })
+        DB_WAIT,
+      )
     })
   })
 
@@ -337,15 +358,16 @@ describe('Server message handling', () => {
         },
       })
 
-      await new Promise((resolve) => setTimeout(resolve, 100))
+      const insertedCommand = await vi.waitFor(async () => {
+        const stored = await UnExecutedSyncCommand.query()
+          .where({ commandId, deviceId: 'device-1' })
+          .first()
+        expect(stored).toBeDefined()
+        return stored!
+      }, DB_WAIT)
 
-      const insertedCommand = await UnExecutedSyncCommand.query()
-        .where({ commandId, deviceId: 'device-1' })
-        .first()
-
-      expect(insertedCommand).toBeDefined()
-      expect(insertedCommand!.encryptedCommand).toBeDefined()
-      expect(insertedCommand!.encryptedSymmetricKey).toBe('encrypted-key')
+      expect(insertedCommand.encryptedCommand).toBeDefined()
+      expect(insertedCommand.encryptedSymmetricKey).toBe('encrypted-key')
 
       expect(sentTo(ws)).toContainEqual({
         type: 'syncCommandsReceived',
@@ -381,10 +403,12 @@ describe('Server message handling', () => {
         data: { commandIds: [cmd1Id, cmd2Id] },
       })
 
-      await new Promise((resolve) => setTimeout(resolve, 100))
+      const remaining = await vi.waitFor(async () => {
+        const rows = await UnExecutedSyncCommand.query().where({ deviceId })
+        expect(rows).toHaveLength(1)
+        return rows
+      }, DB_WAIT)
 
-      const remaining = await UnExecutedSyncCommand.query().where({ deviceId })
-      expect(remaining).toHaveLength(1)
       expect(remaining[0].commandId).toBe(cmd3Id)
     })
   })
@@ -478,7 +502,29 @@ describe('Server message handling', () => {
         }),
       ).not.toThrow()
 
-      await new Promise((resolve) => setTimeout(resolve, 50))
+      // Wait for the ack, not for a fixed 50ms. It is the observable end of
+      // the unawaited storeSyncCommand, and waiting for it is what keeps the
+      // insert from still being in flight when afterEach truncates the table.
+      //
+      // The ack is also the assertion worth making: a re-sent command counts
+      // as stored, so the client may drop it from its queue. Nothing is
+      // logged on this path -- the console spy is here to catch the failure
+      // branch saying something, and it staying silent is the point.
+      await vi.waitFor(
+        () =>
+          expect(sentTo(ws)).toContainEqual({
+            type: 'syncCommandsReceived',
+            data: { commandIds: [duplicateCommandId] },
+          }),
+        DB_WAIT,
+      )
+      // Specifically not "was never called": the forward step logs
+      // 'Connection not found' twice here, because device-1 has no socket in
+      // this test. What must not appear is the store failing.
+      expect(consoleSpy).not.toHaveBeenCalledWith(
+        'Could not store sync command',
+        expect.anything(),
+      )
 
       consoleSpy.mockRestore()
     })

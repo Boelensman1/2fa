@@ -16,7 +16,9 @@ and `node-forge`; they are relative indicators, not absolute guarantees.
 ## Status
 
 Each finding is one file. Update the **Resolution** section at the bottom of a
-file as work lands, and change its `Status:` line and the row here to match.
+file as work lands, and change its `Status:` line, the row here and the box in
+[TODO.md](TODO.md) — the short checklist of what is fixed and what is left — to
+match.
 
 | #                                   | Finding                                       | Verdict                  | Priority | Status             |
 | ----------------------------------- | --------------------------------------------- | ------------------------ | -------- | ------------------ |

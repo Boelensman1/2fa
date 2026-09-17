@@ -353,11 +353,16 @@ describe('2falib', () => {
     // ChangeDeviceInfoCommand.execute reads the sync manager, so register a
     // minimal mock so setDeviceFriendlyName can run. serverUrl is left
     // undefined so reloading from the saved state does not try to connect.
-    const registerMockSyncManager = (lib: FavaLib) => {
+    const registerMockSyncManager = (lib: FavaLib, publicKey: PublicKey) => {
       const mockSyncManager = {
         syncDevices: [
           {
+            // The publicKey is not decoration. A real SyncManager
+            // self-registers with one, and the load path now refuses a device
+            // record without it, so a mock that omits it saves a vault that
+            // cannot be reopened.
             deviceId: lib.meta.deviceId,
+            publicKey,
             deviceInfo: { deviceType },
           },
         ],
@@ -370,8 +375,8 @@ describe('2falib', () => {
     }
 
     it('should reflect the new name in meta after setDeviceFriendlyName', async () => {
-      const { favaLib } = await createFavaLibForTests()
-      registerMockSyncManager(favaLib)
+      const { favaLib, publicKey } = await createFavaLibForTests()
+      registerMockSyncManager(favaLib, publicKey)
 
       const friendlyName = 'my-laptop' as DeviceFriendlyName
       await favaLib.setDeviceFriendlyName(friendlyName)
@@ -385,8 +390,8 @@ describe('2falib', () => {
         savedData = data
       })
 
-      const { favaLib } = await createFavaLibForTests(saveFunction)
-      registerMockSyncManager(favaLib)
+      const { favaLib, publicKey } = await createFavaLibForTests(saveFunction)
+      registerMockSyncManager(favaLib, publicKey)
 
       const friendlyName = 'my-laptop' as DeviceFriendlyName
       await favaLib.setDeviceFriendlyName(friendlyName)

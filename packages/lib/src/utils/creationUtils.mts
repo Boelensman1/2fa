@@ -39,6 +39,33 @@ import type {
 } from '../interfaces/Vault.mjs'
 import type { PasswordExtraDict } from '../interfaces/PasswordExtraDict.js'
 import { SaveFunction } from '../interfaces/SaveFunction.mjs'
+import { validateEntryFatal } from './entryValidation.mjs'
+import {
+  MAX_SYNC_DEVICES,
+  validateSyncDevice,
+} from './syncDeviceValidation.mjs'
+
+/** Appended to every message that refuses a vault the user can still recover. */
+const DATA_IS_INTACT = 'Do not reset or delete the vault, its data is intact.'
+
+/**
+ * Parses JSON, reporting a failure as an InitializationError.
+ *
+ * A truncated or half-written file is the ordinary way this fails, and the bare
+ * SyntaxError that JSON.parse throws is neither a FavaLibError nor a message any
+ * consumer can show a user. See key-hierarchy-review/05-load-path-validation.md.
+ * @param json - The string to parse.
+ * @param what - What is being parsed, used in the error message.
+ * @returns The parsed value, as an unknown.
+ * @throws {InitializationError} If the string is not valid JSON.
+ */
+const parseJson = (json: string, what: string): unknown => {
+  try {
+    return JSON.parse(json)
+  } catch {
+    throw new InitializationError(`${what} is not valid JSON`)
+  }
+}
 
 export interface LoadFavaLibOptions {
   /** Whether to connect to the configured sync server while loading. */
@@ -230,8 +257,10 @@ const loadFavaLibFromLockedRepesentation = async (
 ): Promise<FavaLib> => {
   const cryptoLib = libraryLoader.getCryptoLib()
   const platformProviders = libraryLoader.getPlatformProviders()
-  const lockedRepresentation = JSON.parse(lockedRepresentationString) as
-    Partial<LockedRepresentation> | undefined
+  const lockedRepresentation = parseJson(
+    lockedRepresentationString,
+    'lockedRepresentation',
+  ) as Partial<LockedRepresentation> | undefined
 
   // Read the version before anything else, and deliberately not through the
   // Partial<LockedRepresentation> cast above: that cast claims the field is a
@@ -269,11 +298,20 @@ const loadFavaLibFromLockedRepesentation = async (
     )
   }
 
+  // The typeof half is not redundant with the truthiness half. Every one of
+  // these is read through the Partial<LockedRepresentation> cast above, which
+  // claims a type it cannot enforce, so a number or an object would otherwise
+  // sail through as a salt and fail much later with something unrecognisable.
+  // The truthiness half is what narrows away undefined for the code below.
   if (
     !lockedRepresentation?.encryptedPrivateKey ||
     !lockedRepresentation.encryptedSymmetricKey ||
     !lockedRepresentation.salt ||
-    !lockedRepresentation.encryptedVaultState
+    !lockedRepresentation.encryptedVaultState ||
+    typeof lockedRepresentation.encryptedPrivateKey !== 'string' ||
+    typeof lockedRepresentation.encryptedSymmetricKey !== 'string' ||
+    typeof lockedRepresentation.salt !== 'string' ||
+    typeof lockedRepresentation.encryptedVaultState !== 'string'
   ) {
     throw new InitializationError(
       'lockedRepresentation is incomplete or corrupted',
@@ -340,7 +378,12 @@ const loadFavaLibFromLockedRepesentation = async (
     // names the real problem instead of calling a v2 vault "incomplete".
     const storedKdf = lockedRepresentation.kdf
     const storedEnvelopeMac = lockedRepresentation.envelopeMac
-    if (!storedKdf || !storedEnvelopeMac) {
+    if (
+      !storedKdf ||
+      !storedEnvelopeMac ||
+      typeof storedKdf !== 'object' ||
+      typeof storedEnvelopeMac !== 'string'
+    ) {
       throw new InitializationError(
         `lockedRepresentation claims storage version ${storageVersion} but ` +
           `is missing its kdf parameters or its envelopeMac`,
@@ -408,12 +451,14 @@ const loadFavaLibFromLockedRepesentation = async (
     )
   }
 
-  const vaultState = JSON.parse(vaultStateString) as VaultState
+  const vaultState = parseJson(vaultStateString, 'encryptedVaultState') as
+    VaultState | undefined
 
   if (
     !vaultState?.deviceId ||
-    !vaultState.sync?.commandSendQueue ||
-    !vaultState.sync?.devices
+    !Array.isArray(vaultState.vault) ||
+    !Array.isArray(vaultState.sync?.commandSendQueue) ||
+    !Array.isArray(vaultState.sync.devices)
   ) {
     throw new InitializationError(
       'encryptedVaultState is incomplete or corrupted',
@@ -427,6 +472,51 @@ const loadFavaLibFromLockedRepesentation = async (
   // because they are equally undeliverable either way.
   if (isLegacy) {
     vaultState.sync.commandSendQueue = []
+  }
+
+  // Everything below here arrives from inside the blob and has never been
+  // checked by anything. Until now the entries went straight into
+  // VaultDataManager.replaceVault, whose sanitiseEntry only repairs the three
+  // matching fields, and sync.devices was assigned into SyncManager's
+  // constructor without even passing through addSyncDevice.
+  //
+  // This REFUSES rather than dropping, which is the one place this diverges
+  // from the tier policy in entryValidation.mts:69-74. Dropping a remote
+  // command is lossless because the server redelivers it; dropping an entry
+  // here is not, because nothing redelivers a vault -- the entry would be gone
+  // from memory and erased from storage by the next ordinary save. A silently
+  // vanished TOTP seed is worse than a loud refusal, so the message names what
+  // is wrong and says the vault is still intact.
+  // See key-hierarchy-review/05-load-path-validation.md.
+  for (const entry of vaultState.vault) {
+    const reason = validateEntryFatal(entry)
+    if (reason) {
+      const id = (entry as { id?: unknown } | null)?.id
+      throw new InitializationError(
+        `The stored vault contains an unusable entry ` +
+          `(${typeof id === 'string' ? id : 'no id'}): ${reason}. ` +
+          DATA_IS_INTACT,
+      )
+    }
+  }
+
+  if (vaultState.sync.devices.length > MAX_SYNC_DEVICES) {
+    throw new InitializationError(
+      `The stored vault lists ${vaultState.sync.devices.length} sync devices, ` +
+        `more than the ${MAX_SYNC_DEVICES} allowed. ` +
+        DATA_IS_INTACT,
+    )
+  }
+  for (const device of vaultState.sync.devices) {
+    const reason = validateSyncDevice(device)
+    if (reason) {
+      const id = (device as { deviceId?: unknown } | null)?.deviceId
+      throw new InitializationError(
+        `The stored vault contains an unusable sync device ` +
+          `(${typeof id === 'string' ? id : 'no deviceId'}): ${reason}. ` +
+          DATA_IS_INTACT,
+      )
+    }
   }
 
   const favaLib = new FavaLib(

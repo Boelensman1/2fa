@@ -3,6 +3,7 @@ import type FavaLibMediator from '../../FavaLibMediator.mjs'
 import Command from '../BaseCommand.mjs'
 import type { DeviceId, DeviceInfo } from '../../interfaces/SyncTypes.mjs'
 import type { PublicKey } from '../../interfaces/CryptoLib.mjs'
+import { validateSyncDevice } from '../../utils/syncDeviceValidation.mjs'
 
 export interface AddSyncDeviceData {
   deviceId: DeviceId
@@ -36,8 +37,9 @@ class AddSyncDeviceCommand extends Command<AddSyncDeviceData> {
    */
   async execute(mediator: FavaLibMediator) {
     const syncManager = mediator.getComponent('syncManager')
-    if (!this.validate()) {
-      throw new InvalidCommandError('Invalid AddEntry command')
+    const reason = this.invalidReason()
+    if (reason) {
+      throw new InvalidCommandError(`Invalid AddSyncDevice command: ${reason}`)
     }
     await syncManager.addSyncDevice(this.data)
   }
@@ -50,12 +52,25 @@ class AddSyncDeviceCommand extends Command<AddSyncDeviceData> {
   }
 
   /**
+   * Says why the command data is unusable.
+   *
+   * A shape gate only, matching the tier AddEntryCommand applies to a remote
+   * entry. It does **not** make device enrolment safe: nothing authenticates
+   * the sender of this command, so a well formed record carrying an attacker's
+   * public key still passes. That is
+   * key-hierarchy-review/14-sync-device-injection.md, and it is still open.
+   * @returns Null when the data is usable, otherwise the reason it is not.
+   */
+  invalidReason(): string | null {
+    return validateSyncDevice(this.data)
+  }
+
+  /**
    * Validates the command data.
    * @returns True if the command data is valid, false otherwise.
    */
   validate(): boolean {
-    // TODO: actually validate
-    return true
+    return this.invalidReason() === null
   }
 }
 

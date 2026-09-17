@@ -82,3 +82,25 @@ test('updates the UI and persists an entry edit after migration', async ({
     page.getByText('Fixture Entry Two', { exact: true }),
   ).toBeVisible()
 })
+
+test('reports a truncated vault as a recoverable error, not a JSON crash', async ({
+  page,
+}) => {
+  // The message shown here sits directly above a Reset button that clears
+  // localStorage, so "Unexpected end of JSON input" -- what a bare SyntaxError
+  // out of JSON.parse used to produce -- is the worst possible text to put in
+  // front of someone whose vault is merely truncated. See
+  // lib/key-hierarchy-review/05-load-path-validation.md.
+  await page.evaluate((fixture) => {
+    localStorage.setItem('lockedRepresentation', fixture.slice(0, 120))
+  }, v1Fixture)
+  await page.reload()
+
+  await page.getByLabel('Password', { exact: true }).fill(password)
+  await page.getByRole('button', { name: 'Log In', exact: true }).click()
+
+  await expect(page.getByText(/is not valid JSON/)).toBeVisible()
+  await expect(
+    page.getByRole('heading', { name: 'Added Items', exact: true }),
+  ).toBeHidden()
+})

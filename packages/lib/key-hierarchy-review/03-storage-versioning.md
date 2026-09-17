@@ -114,8 +114,8 @@ Verified by mutation: disabling the version comparison reddens three tests in
 `SyncManager.test.mts`, and changing `iterations` from 256 to 255 reddens the
 fixture.
 
-**Left open deliberately:** the bare `JSON.parse` at the top of
-`loadFavaLibFromLockedRepesentation` still throws a raw `SyntaxError` on a
-truncated file rather than an `InitializationError`. That belongs to
-[05](05-load-path-validation.md), which owns the envelope validation, and is
-untouched here.
+**Left open deliberately, now closed:** the bare `JSON.parse` at the top of
+`loadFavaLibFromLockedRepesentation` threw a raw `SyntaxError` on a truncated
+file rather than an `InitializationError`. That belonged to
+[05](05-load-path-validation.md), which owns the envelope validation, and was
+untouched here. `05` landed 2026-09-17 and wraps both parses.

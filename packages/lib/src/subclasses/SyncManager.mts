@@ -31,6 +31,11 @@ import {
   buildHandshakeAad,
   buildVaultDataAad,
 } from '../utils/canonical.mjs'
+import { validateEntryFatal } from '../utils/entryValidation.mjs'
+import {
+  MAX_SYNC_DEVICES,
+  validateSyncDevice,
+} from '../utils/syncDeviceValidation.mjs'
 import type {
   Encrypted,
   EncryptedPublicKey,
@@ -386,7 +391,9 @@ class SyncManager {
       case 'initialVault': {
         const { data } = message
         const { encryptedVaultData } = data
-        void this.importInitialVault(encryptedVaultData)
+        void this.importInitialVault(encryptedVaultData).catch((err: unknown) =>
+          this.reportFailedVaultImport('initial vault', err),
+        )
         break
       }
       case 'vault': {
@@ -415,6 +422,14 @@ class SyncManager {
               symmetricKey,
               fromDeviceId,
             ),
+          )
+          // Neither of these is awaited by anything, so without a catch a
+          // refused import is an unhandled rejection rather than something the
+          // consumer can surface. importVaultState only started throwing on
+          // malformed contents with
+          // key-hierarchy-review/05-load-path-validation.md.
+          .catch((err: unknown) =>
+            this.reportFailedVaultImport('resilvered vault', err),
           )
         break
       }
@@ -826,6 +841,18 @@ class SyncManager {
     this.dispatchLibEvent(FavaLibEvent.ConnectToExistingVaultFinished)
   }
 
+  /**
+   * Reports a vault import that was refused, without letting it escape as an
+   * unhandled rejection.
+   * @param what - Which import failed, for the message.
+   * @param err - The thrown value.
+   */
+  private reportFailedVaultImport(what: string, err: unknown) {
+    // eslint-disable-next-line no-restricted-globals
+    const detail = err instanceof Error ? err.message : 'unknown error'
+    this.log('warning', `Could not import the ${what}: ${detail}`)
+  }
+
   private async importVaultState(
     encryptedVaultState: EncryptedVaultStateString,
     symmetricKey: SymmetricKey,
@@ -852,6 +879,44 @@ class SyncManager {
       throw new SyncError(
         `For deviceId mismatch when importing, expected ${this.deviceId} got ${vaultState.forDeviceId}`,
       )
+    }
+
+    // Both of these are plain `as VaultStateSend` casts over a decrypted JSON
+    // blob, so neither is known to be an array, let alone to hold what it
+    // claims. A `for...of` over a number is a raw TypeError out of a promise
+    // nobody awaits.
+    if (!Array.isArray(vaultState.sync?.devices)) {
+      throw new SyncError('Imported vault state has no sync device list')
+    }
+    if (!Array.isArray(vaultState.vault)) {
+      throw new SyncError('Imported vault state has no entry list')
+    }
+
+    // Checked in full BEFORE anything is applied, so a bad record halfway
+    // down the list cannot leave the vault half-imported. addSyncDevice would
+    // reject the device on its own, but only after the ones before it were
+    // already pushed.
+    //
+    // The entries need checking here regardless: vaultDataManager.addEntry only
+    // runs sanitiseEntry, which repairs the three matching fields and never
+    // looks at the payload.
+    for (const entry of vaultState.vault) {
+      const reason = validateEntryFatal(entry)
+      if (reason) {
+        throw new SyncError(
+          `Refusing to import vault state: it contains an unusable entry ` +
+            `(${reason})`,
+        )
+      }
+    }
+    for (const device of vaultState.sync.devices) {
+      const reason = validateSyncDevice(device)
+      if (reason) {
+        throw new SyncError(
+          `Refusing to import vault state: it contains an unusable sync ` +
+            `device (${reason})`,
+        )
+      }
     }
 
     for (const device of vaultState.sync.devices) {
@@ -1147,9 +1212,28 @@ class SyncManager {
    * @param saveAfter - Whether to save the new vault after adding it (set to false when adding multiple devices)
    */
   async addSyncDevice(device: SyncDevice, saveAfter = true) {
+    // The single chokepoint for every route a peer device can arrive by:
+    // importVaultState, AddSyncDeviceCommand, and this device's own
+    // registration from the constructor. The load path is the one exception --
+    // it assigns syncDevices directly, so creationUtils runs the same two
+    // checks itself.
+    //
+    // A shape gate only. It stops a garbage record; it does nothing about a
+    // well formed one carrying an attacker's key, which is
+    // key-hierarchy-review/14-sync-device-injection.md and still open.
+    const reason = validateSyncDevice(device)
+    if (reason) {
+      throw new SyncError(`Refusing to add sync device: ${reason}`)
+    }
     if (this.syncDevices.some((d) => d.deviceId === device.deviceId)) {
       // we already have this device
       return
+    }
+    if (this.syncDevices.length >= MAX_SYNC_DEVICES) {
+      throw new SyncError(
+        `Refusing to add sync device ${device.deviceId}: this vault already ` +
+          `has the maximum of ${MAX_SYNC_DEVICES} devices`,
+      )
     }
     this.log('info', `Adding syncdevice ${device.deviceId} to ${this.deviceId}`)
     this.syncDevices.push({

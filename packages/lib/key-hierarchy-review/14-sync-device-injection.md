@@ -71,4 +71,18 @@ Ordering matters — this depends on [13](13-sync-command-authentication.md), si
 
 ## Resolution
 
-_Not started._
+_Not started._ Still **open**, and the direction above is unchanged.
+
+[05](05-load-path-validation.md) landed 2026-09-17 and took the _shape_ half of
+this off the table: `SyncManager.addSyncDevice` is now the chokepoint for all
+three enrolment routes and rejects a record without a usable `deviceId` or a
+public-key PEM, the stored device list is capped at 64, and
+`AddSyncDeviceCommand.validate()` is no longer `return true`.
+
+**That changes nothing about the finding above.** Every attack described here
+uses a _well formed_ device record; it is the attacker's own public key, in a
+valid PEM, under a plausible device id. A shape gate cannot tell that record
+from a real one, because nothing authenticates who sent it. What is still
+missing is exactly what the Direction section says: enrolment on the
+authenticated path, key pinning on first receipt, and a visible new-device
+confirmation — and [13](13-sync-command-authentication.md) before any of it.

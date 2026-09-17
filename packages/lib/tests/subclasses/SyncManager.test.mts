@@ -52,7 +52,9 @@ import {
 import type {
   DeviceFriendlyName,
   DeviceId,
+  SyncDevice,
 } from '../../src/interfaces/SyncTypes.mjs'
+import { MAX_SYNC_DEVICES } from '../../src/utils/syncDeviceValidation.mjs'
 import { FavaLibEvent } from '../../src/FavaLibEvent.mjs'
 import type { VaultServerMessage } from '../../src/interfaces/protocol/ServerMessage.mjs'
 
@@ -807,6 +809,119 @@ describe('SyncManager', () => {
     expect(senderFavaLib.vault.getEntryMeta(addedEntryId)).toBeTruthy()
     expect(receiverFavaLib.vault.getEntryMeta(addedEntryId)).toBeTruthy()
   }, 10000) // long running test, the re-connect itself takes 5 seconds
+
+  describe('sync device validation', () => {
+    // The single chokepoint every route a peer device arrives by has to pass:
+    // importVaultState, AddSyncDeviceCommand, and the constructor's own
+    // registration. See key-hierarchy-review/05-load-path-validation.md.
+    //
+    // A shape gate ONLY. A well formed record carrying an attacker's public key
+    // still passes every one of these, because nothing authenticates the sender
+    // of an AddSyncDeviceCommand -- that is 14-sync-device-injection.md, open.
+    const goodDevice = () => ({
+      deviceId: 'shape-check-peer' as DeviceId,
+      publicKey,
+      deviceInfo: { deviceType: 'test' as DeviceType },
+    })
+
+    it.each([
+      ['no publicKey', { publicKey: undefined }],
+      ['a publicKey that is not a PEM', { publicKey: 'not-a-pem' }],
+      ['no deviceId', { deviceId: undefined }],
+      ['a non-object deviceInfo', { deviceInfo: 'cli' }],
+    ])('refuses to add a device with %s', async (_label, overrides) => {
+      const before = receiverFavaLib.sync?.getSyncDevices().length
+
+      await expect(
+        receiverFavaLib.sync?.addSyncDevice({
+          ...goodDevice(),
+          ...overrides,
+        } as unknown as SyncDevice),
+      ).rejects.toThrow(/Refusing to add sync device/)
+
+      expect(receiverFavaLib.sync?.getSyncDevices()).toHaveLength(before!)
+    })
+
+    it('adds a well-formed device', async () => {
+      const before = receiverFavaLib.sync?.getSyncDevices().length ?? 0
+      await receiverFavaLib.sync?.addSyncDevice(goodDevice(), false)
+      expect(receiverFavaLib.sync?.getSyncDevices()).toHaveLength(before + 1)
+    })
+
+    it('refuses to go past the device cap', async () => {
+      // Every outgoing command is encrypted once per device, so an unbounded
+      // list is an unbounded amount of RSA work per keystroke.
+      // The cap counts the STORED list, which includes this device's own
+      // record; getSyncDevices filters that one out, so the peer count tops out
+      // one lower. Both enforcement points count the stored list so that they
+      // agree about the same vault.
+      const sync = receiverFavaLib.sync!
+      for (
+        let i = 0;
+        sync.getSyncDevices().length < MAX_SYNC_DEVICES - 1;
+        i++
+      ) {
+        await sync.addSyncDevice(
+          {
+            ...goodDevice(),
+            deviceId: `cap-peer-${i}` as DeviceId,
+          },
+          false,
+        )
+      }
+      expect(sync.getSyncDevices()).toHaveLength(MAX_SYNC_DEVICES - 1)
+
+      await expect(
+        sync.addSyncDevice(
+          {
+            ...goodDevice(),
+            deviceId: 'one-too-many' as DeviceId,
+          },
+          false,
+        ),
+      ).rejects.toThrow(new RegExp(`maximum of ${MAX_SYNC_DEVICES} devices`))
+    })
+
+    it('drops a malformed AddSyncDevice command without taking the batch down', async () => {
+      // processRemoteCommands catches per command, so a hostile or broken peer
+      // costs one command rather than the whole queue -- and the server
+      // redelivers it, so nothing is lost if the peer was merely wrong.
+      const receiverCommandManager = getReceiverCommandManager()
+      const warnings: string[] = []
+      receiverFavaLib.addEventListener(FavaLibEvent.Log, (event) => {
+        if (event.detail.severity === 'warning')
+          warnings.push(event.detail.message)
+      })
+
+      const goodEntryId = 'survives-the-bad-device' as EntryId
+      receiverCommandManager.receiveRemoteCommand({
+        id: 'bad-add-sync-device',
+        type: 'AddSyncDevice',
+        timestamp: Date.now(),
+        version: '2.0',
+        data: { deviceId: 'hostile-peer', deviceInfo: { deviceType: 'test' } },
+      } as unknown as SyncCommand)
+      receiverCommandManager.receiveRemoteCommand({
+        id: 'good-add-entry',
+        type: 'AddEntry',
+        timestamp: Date.now(),
+        version: '2.0',
+        data: makeRemoteEntry(goodEntryId),
+      } as unknown as SyncCommand)
+
+      const executedIds = await receiverCommandManager.processRemoteCommands()
+
+      expect(executedIds).not.toContain('bad-add-sync-device')
+      expect(executedIds).toContain('good-add-entry')
+      expect(receiverFavaLib.vault.getEntryMeta(goodEntryId).name).toBe(
+        'Remote TOTP',
+      )
+      expect(
+        receiverFavaLib.sync?.getSyncDevices().map((d) => d.deviceId),
+      ).not.toContain('hostile-peer')
+      expect(warnings.join('\n')).toMatch(/Invalid AddSyncDevice command/)
+    })
+  })
 
   describe('flushCommandSendQueue', () => {
     let wsInstancesMap: Map<DeviceId, WsClient>

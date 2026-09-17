@@ -9,8 +9,19 @@ import {
   LockedRepresentation,
   LockedRepresentationString,
   StorageVersionError,
+  InitializationError,
+  type PublicKey,
+  type SymmetricKey,
 } from '../../src/main.mjs'
-import { buildEnvelopeMacMessage } from '../../src/utils/canonical.mjs'
+import type {
+  VaultState,
+  VaultStateString,
+} from '../../src/interfaces/Vault.mjs'
+import {
+  buildEnvelopeMacMessage,
+  buildVaultAad,
+} from '../../src/utils/canonical.mjs'
+import { MAX_SYNC_DEVICES } from '../../src/utils/syncDeviceValidation.mjs'
 import {
   createFavaLibForTests,
   newTotpEntry,
@@ -31,6 +42,8 @@ describe('creationUtils', () => {
   let creationUtils: ReturnType<typeof getFavaLibVaultCreationUtils>
   let lockedRepresentation: LockedRepresentationString
   let macKey: MacKey
+  let symmetricKey: SymmetricKey
+  let devicePublicKey: PublicKey
 
   beforeAll(async () => {
     const saveFunction = (
@@ -41,6 +54,8 @@ describe('creationUtils', () => {
 
     const result = await createFavaLibForTests(saveFunction)
     macKey = result.macKey
+    symmetricKey = result.symmetricKey
+    devicePublicKey = result.publicKey
 
     await result.favaLib.storage.forceSave()
 
@@ -228,5 +243,229 @@ describe('creationUtils', () => {
     expect(reloadedFavaLib.vault.size).toBe(1)
     expect(reloadedFavaLib.sync?.getCommandSendQueue()).toHaveLength(1)
     reloadedFavaLib.sync?.closeServerConnection()
+  })
+
+  // The load path validates what it decrypts (05-load-path-validation.md).
+  // Reaching it means producing a blob that is cryptographically perfect and
+  // semantically wrong, so every case here re-encrypts under the real
+  // symmetric key AND re-issues the envelope MAC -- exactly what a legitimate
+  // writer running an older, laxer favalib would have produced.
+  describe('vault state validation', () => {
+    const cryptoLib = new nodeProviders.CryptoLib()
+
+    const reseal = async (
+      mutate: (state: VaultState) => void,
+    ): Promise<LockedRepresentationString> => {
+      const parsed = JSON.parse(lockedRepresentation) as LockedRepresentation
+      const aad = buildVaultAad(
+        parsed.storageVersion,
+        parsed.salt,
+        parsed.kdf,
+        await cryptoLib.sha256(parsed.encryptedPrivateKey),
+      )
+      const state = JSON.parse(
+        await cryptoLib.decryptSymmetric(
+          symmetricKey,
+          parsed.encryptedVaultState,
+          aad,
+        ),
+      ) as VaultState
+      mutate(state)
+      parsed.encryptedVaultState = await cryptoLib.encryptSymmetric(
+        symmetricKey,
+        JSON.stringify(state) as VaultStateString,
+        aad,
+      )
+      parsed.envelopeMac = await cryptoLib.createEnvelopeMac(
+        macKey,
+        buildEnvelopeMacMessage(parsed),
+      )
+      return JSON.stringify(parsed) as LockedRepresentationString
+    }
+
+    const load = (representation: LockedRepresentationString) =>
+      creationUtils.loadFavaLibFromLockedRepesentation(
+        representation,
+        password,
+        { connectToSyncServer: false },
+      )
+
+    const goodEntry = {
+      id: 'good-entry-id',
+      name: 'Good',
+      issuer: 'Issuer',
+      type: 'TOTP',
+      matchers: [],
+      url: null,
+      inputSelector: null,
+      addedAt: 1,
+      updatedAt: null,
+      payload: {
+        secret: 'JBSWY3DPEHPK3PXP',
+        period: 30,
+        algorithm: 'SHA-1',
+        digits: 6,
+      },
+    }
+
+    const goodDevice = () => ({
+      deviceId: 'peer-device-id' as DeviceId,
+      publicKey: devicePublicKey,
+      deviceInfo: { deviceType },
+    })
+
+    it('still opens a resealed but unmodified vault', async () => {
+      // Without this the assertions below would pass for the wrong reason:
+      // reseal itself has to produce a loadable blob.
+      const favaLib = await load(await reseal(() => undefined))
+      await favaLib.ready
+      expect(favaLib.meta.deviceId).toBeTruthy()
+      favaLib.sync?.closeServerConnection()
+    })
+
+    it('opens a vault whose entries and devices are all usable', async () => {
+      const favaLib = await load(
+        await reseal((state) => {
+          state.vault = [goodEntry] as unknown as VaultState['vault']
+          state.sync.devices = [goodDevice()]
+        }),
+      )
+      await favaLib.ready
+      expect(favaLib.vault.size).toBe(1)
+      favaLib.sync?.closeServerConnection()
+    })
+
+    it('refuses a vault carrying an unusable entry, and names it', async () => {
+      // REFUSING, not dropping, is the one place this diverges from the tier
+      // policy in entryValidation.mts:69-74. A dropped remote command is
+      // redelivered by the server; a dropped entry here is gone from memory and
+      // erased by the next ordinary save. See 05-load-path-validation.md.
+      const representation = await reseal((state) => {
+        state.vault = [
+          goodEntry,
+          { ...goodEntry, id: 'bad-entry-id', payload: { secret: '' } },
+        ] as unknown as VaultState['vault']
+      })
+
+      await expect(load(representation)).rejects.toThrow(InitializationError)
+      await expect(load(representation)).rejects.toThrow(
+        /bad-entry-id.*payload\.secret is missing.*data is intact/s,
+      )
+    })
+
+    it.each([
+      [
+        'a non-array vault',
+        (state: VaultState) => {
+          state.vault = 'nope' as unknown as VaultState['vault']
+        },
+      ],
+      [
+        'a non-array device list',
+        (state: VaultState) => {
+          state.sync.devices = 42 as unknown as VaultState['sync']['devices']
+        },
+      ],
+      [
+        'a non-array command queue',
+        (state: VaultState) => {
+          state.sync.commandSendQueue =
+            null as unknown as VaultState['sync']['commandSendQueue']
+        },
+      ],
+    ])('refuses %s', async (_label, mutate) => {
+      await expect(load(await reseal(mutate))).rejects.toThrow(
+        /incomplete or corrupted/,
+      )
+    })
+
+    it('refuses a sync device with no publicKey, and names it', async () => {
+      const representation = await reseal((state) => {
+        state.sync.devices = [
+          {
+            deviceId: 'peer-device-id' as DeviceId,
+            deviceInfo: { deviceType },
+          },
+        ] as unknown as VaultState['sync']['devices']
+      })
+
+      await expect(load(representation)).rejects.toThrow(
+        /peer-device-id.*no usable publicKey/s,
+      )
+    })
+
+    it('refuses more than MAX_SYNC_DEVICES devices', async () => {
+      const representation = await reseal((state) => {
+        state.sync.devices = Array.from(
+          { length: MAX_SYNC_DEVICES + 1 },
+          (_, i) => ({ ...goodDevice(), deviceId: `peer-${i}` as DeviceId }),
+        )
+      })
+
+      await expect(load(representation)).rejects.toThrow(
+        new RegExp(`${MAX_SYNC_DEVICES + 1} sync devices`),
+      )
+    })
+
+    it('accepts exactly MAX_SYNC_DEVICES devices', async () => {
+      // Pins that the cap is not off by one, which is the only way a limit
+      // like this ever breaks a real user.
+      const favaLib = await load(
+        await reseal((state) => {
+          state.sync.devices = Array.from(
+            { length: MAX_SYNC_DEVICES },
+            (_, i) => ({ ...goodDevice(), deviceId: `peer-${i}` as DeviceId }),
+          )
+        }),
+      )
+      await favaLib.ready
+      favaLib.sync?.closeServerConnection()
+    })
+  })
+
+  describe('envelope validation', () => {
+    it('reports a truncated file as an InitializationError, not a SyntaxError', async () => {
+      // 03-storage-versioning.md left this open explicitly: a half-written
+      // vault.json used to surface as a bare SyntaxError, which is neither a
+      // FavaLibError nor anything a consumer can show a user.
+      await expect(
+        creationUtils.loadFavaLibFromLockedRepesentation(
+          lockedRepresentation.slice(0, 40) as LockedRepresentationString,
+          password,
+        ),
+      ).rejects.toThrow(InitializationError)
+    })
+
+    it.each([
+      ['a numeric salt', 'salt', 12345],
+      ['an object salt', 'salt', { value: 'AAAA' }],
+      ['a numeric encryptedVaultState', 'encryptedVaultState', 1],
+      ['an object encryptedPrivateKey', 'encryptedPrivateKey', {}],
+    ])('refuses %s', async (_label, field, value) => {
+      // These used to pass a truthiness check behind an unchecked
+      // `as Partial<LockedRepresentation>` cast and fail much later, somewhere
+      // unrecognisable.
+      const parsed = JSON.parse(lockedRepresentation) as Record<string, unknown>
+      parsed[field] = value
+
+      await expect(
+        creationUtils.loadFavaLibFromLockedRepesentation(
+          JSON.stringify(parsed) as LockedRepresentationString,
+          password,
+        ),
+      ).rejects.toThrow(/incomplete or corrupted/)
+    })
+
+    it('refuses a v2 blob whose kdf is not an object', async () => {
+      const parsed = JSON.parse(lockedRepresentation) as Record<string, unknown>
+      parsed.kdf = 'argon2id'
+
+      await expect(
+        creationUtils.loadFavaLibFromLockedRepesentation(
+          JSON.stringify(parsed) as LockedRepresentationString,
+          password,
+        ),
+      ).rejects.toThrow(/missing its kdf parameters or its envelopeMac/)
+    })
   })
 })

@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest'
 import crypto from 'node:crypto'
 import {
   CryptoLib,
+  DeviceId,
   EncryptedSecretKeys,
   EncryptedSymmetricKey,
   PublicKey,
@@ -350,10 +351,16 @@ describe('Crypto Provider Comparison', () => {
 
     test('Node and Browser createSyncKey produce the same result', async () => {
       const sharedKey = new Uint8Array([1, 2, 3, 4, 5])
-      const salt = 'testSalt' as Salt
+      const responderDeviceId = 'testDeviceId' as DeviceId
 
-      const nodeSyncKey = await nodeCrypto.createSyncKey(sharedKey, salt)
-      const browserSyncKey = await browserCrypto.createSyncKey(sharedKey, salt)
+      const nodeSyncKey = await nodeCrypto.createSyncKey(
+        sharedKey,
+        responderDeviceId,
+      )
+      const browserSyncKey = await browserCrypto.createSyncKey(
+        sharedKey,
+        responderDeviceId,
+      )
 
       expect(nodeSyncKey).toBe(browserSyncKey)
       expect(nodeSyncKey.length).toBeGreaterThan(0)

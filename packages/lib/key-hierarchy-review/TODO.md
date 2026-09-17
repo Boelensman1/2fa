@@ -65,5 +65,8 @@ terms, which is not that review. Read `14` first.
       evict a proven connection for an unproven one. The primitive it needs
       (`CryptoLib.sign`/`verify`) now exists; a hijacker can already only
       suppress and observe, never inject.
-- [ ] **17** — a real per-pairing salt for `createSyncKey`, or a comment saying
-      the device id is deliberate. Drop the `as string as Salt` cast. P3.
+- [x] **17** — done 2026-09-17. Kept the device id: the JPAKE input is ephemeral
+      and 256-bit, so a salt would add neither entropy nor uniqueness, only a
+      field the sync server could tamper with. The parameter is now typed
+      `DeviceId`, the `as string as Salt` cast is gone, and the reasoning lives
+      on `createSyncKey`. P3.

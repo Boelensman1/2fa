@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest'
 import { argon2id } from 'hash-wasm'
 import { uint8ArrayToBase64 } from 'uint8array-extras'
 
-import type { Password, Salt } from '../../src/main.mjs'
+import type { DeviceId, Password, Salt } from '../../src/main.mjs'
 import { generatePasswordHash } from '../../src/platformProviders/browser/cryptoLib.mjs'
 import { nodeProviders } from '../../src/platformProviders/node/index.mjs'
 import { browserProviders } from '../../src/platformProviders/browser/index.mjs'
@@ -69,10 +69,12 @@ const EXPECTED_SYNC_PASSWORD_HASH =
 const EXPECTED_V2_PASSWORD_HASH =
   '7b6da4164545def5fabbf2e0ed003074b9d692877a3a6de7d92531e20dd2606be63be1c2354d7e1d763b2f0e1e8b0c26de829ef47593e71c056dd071aa999f79'
 
-// createSyncKey is handed a device id as its salt (SyncManager.mts:664,696) and
-// a jpake-derived shared secret as its password, so the vector uses that shape.
+// createSyncKey is handed the responder's device id in argon2's salt slot (see
+// finishAddDeviceFlowKeyExchangeInitiator / ...Responder in SyncManager) and a
+// jpake-derived shared secret as its password, so the vector uses that shape --
+// a uuid v4, as a real device id always is.
 const SHARED_KEY = Uint8Array.from({ length: 32 }, (_, index) => index + 1)
-const SYNC_SALT = '91b8a8bf-3450-4e68-94db-4d6051901ffa' as Salt
+const SYNC_DEVICE_ID = '91b8a8bf-3450-4e68-94db-4d6051901ffa' as DeviceId
 const EXPECTED_SYNC_KEY = 'gqxjkuuaiZSdrIoaNUJ3QiDoNPsqkg8mVBglfvkBm2s='
 
 describe('argon2id test vectors', () => {
@@ -141,7 +143,7 @@ describe('argon2id test vectors', () => {
     test('the sync parameters produce the known sync key', async () => {
       const key = await argon2id({
         password: SHARED_KEY,
-        salt: SYNC_SALT,
+        salt: SYNC_DEVICE_ID,
         ...SYNC_PARAMETERS,
         hashLength: 32,
         outputType: 'binary',
@@ -161,7 +163,7 @@ describe('argon2id test vectors', () => {
     ])('%s createSyncKey matches the vector', async (_name, providers) => {
       const crypto = new providers.CryptoLib()
 
-      const syncKey = await crypto.createSyncKey(SHARED_KEY, SYNC_SALT)
+      const syncKey = await crypto.createSyncKey(SHARED_KEY, SYNC_DEVICE_ID)
 
       expect(syncKey).toBe(EXPECTED_SYNC_KEY)
     })

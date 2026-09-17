@@ -50,7 +50,7 @@ review did and did not do with them.
 | [14](14-sync-device-injection.md)       | Unvalidated sync-device injection               | broken — most severe found anywhere | open   |
 | [15](15-sync-replay-protection.md)      | Replay protection is bypassable by construction | broken                              | done   |
 | [16](16-server-authentication.md)       | The sync server authenticates nothing           | weak by design, one real hijack     | open   |
-| [17](17-synckey-salt.md)                | `createSyncKey`'s salt is a public device id    | untidy                              | open   |
+| [17](17-synckey-salt.md)                | `createSyncKey`'s salt is a public device id    | untidy                              | done   |
 
 `13` and `15` landed 2026-09-17 and took the asymmetric layer with them; see
 `13` first, then [10](10-rsa-layer.md)'s amendment. `14` is the one still worth

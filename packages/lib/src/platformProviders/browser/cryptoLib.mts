@@ -535,10 +535,13 @@ class BrowserCryptoLib implements CryptoLib {
   /**
    * @inheritdoc
    */
-  async createSyncKey(sharedKey: Uint8Array, salt: string): Promise<SyncKey> {
+  async createSyncKey(
+    sharedKey: Uint8Array,
+    responderDeviceId: string,
+  ): Promise<SyncKey> {
     const key = await argon2id({
       password: sharedKey,
-      salt,
+      salt: responderDeviceId,
       parallelism: SYNC_KDF_PARAMETERS.parallelism,
       iterations: SYNC_KDF_PARAMETERS.iterations,
       memorySize: SYNC_KDF_PARAMETERS.memorySize,

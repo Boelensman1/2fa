@@ -1,5 +1,6 @@
 import type { Tagged } from 'type-fest'
 import type {
+  DeviceId,
   Encrypted,
   EncryptedSymmetricKey,
   PublicKey,
@@ -327,11 +328,32 @@ interface CryptoLib {
    * Uses SYNC_KDF_PARAMETERS rather than the password parameters: its input is
    * already a 256-bit ECC shared secret, so there is nothing to grind and the
    * cost setting is immaterial.
+   *
+   * `responderDeviceId` fills argon2's salt slot and is deliberately NOT a
+   * salt: it is public, server-visible, and identical across every pairing
+   * with that device. That is sound only because of what the password is. A
+   * salt stops precomputation against low-entropy inputs, and `sharedKey` is a
+   * ~256-bit JPAKE secret, so there is nothing to precompute; that secret is
+   * also ephemeral per exchange, so each derived key is already unique and a
+   * random salt would add no uniqueness either. What a random salt WOULD add
+   * is a wire field routed through the untrusted sync server before the
+   * channel is authenticated, where tampering desynchronises the two sides
+   * into a confusing key mismatch. The device id is known to both sides with
+   * no extra message, and being a uuid v4 (genUuidV4, utils/creationUtils)
+   * it clears argon2's 8-byte salt minimum.
+   *
+   * Do not copy this shape to a derivation whose password is low-entropy -- a
+   * user password above all. That one needs a real per-vault random salt, and
+   * the type here is DeviceId rather than Salt so the compiler says so.
    * @param sharedKey - The shared key to derive from
-   * @param salt - A salt to derive the key with
+   * @param responderDeviceId - The responder's device id, used as argon2's
+   *   salt input for domain separation only; see above
    * @returns A promise that resolves to the derived key
    */
-  createSyncKey: (sharedKey: Uint8Array, salt: Salt) => Promise<SyncKey>
+  createSyncKey: (
+    sharedKey: Uint8Array,
+    responderDeviceId: DeviceId,
+  ) => Promise<SyncKey>
 }
 
 export default CryptoLib

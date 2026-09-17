@@ -26,7 +26,7 @@ review.
 | [14](14-sync-device-injection.md)       | Unvalidated sync-device injection               | broken — most severe found anywhere |
 | [15](15-sync-replay-protection.md)      | Replay protection is bypassable by construction | broken — **done**                   |
 | [16](16-server-authentication.md)       | The sync server authenticates nothing           | weak by design, with a real hijack  |
-| [17](17-synckey-salt.md)                | `createSyncKey`'s salt is a public device id    | untidy                              |
+| [17](17-synckey-salt.md)                | `createSyncKey`'s salt is a public device id    | untidy — **done**                   |
 
 ## What holds
 
@@ -61,6 +61,12 @@ whole. What changed for the rest:
 - **`16`** — unchanged as a finding. A hijacked socket can still suppress and
   observe; it can no longer inject.
 - **`17`** — untouched.
+
+**`17` closed 2026-09-17**, after the above was written: the device id stays —
+the JPAKE secret it derives from is ephemeral, so a random salt would have added
+neither entropy nor uniqueness, only a tamperable field crossing this very
+server — and the `as string as Salt` cast is gone, with the reasoning moved into
+`createSyncKey`'s doc comment. No wire change, so nothing here moves with it.
 
 The "what holds" list below is still accurate, with one addition: **the server
 was not changed at all**, and its test suite passes unedited. That was a design

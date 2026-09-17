@@ -45,7 +45,6 @@ import type {
   Encrypted,
   EncryptedPublicKeys,
   PublicKeysString,
-  Salt,
   Signature,
   SigningPublicKey,
   SymmetricKey,
@@ -848,7 +847,7 @@ class SyncManager {
     const { key: sharedKey } = this.activeAddDeviceFlow.jpak.deriveSharedKey()
     const syncKey = await this.cryptoLib.createSyncKey(
       sharedKey,
-      responderDeviceId as string as Salt,
+      responderDeviceId,
     )
     this.activeAddDeviceFlow = {
       ...this.activeAddDeviceFlow,
@@ -880,7 +879,7 @@ class SyncManager {
     const { key: sharedKey } = this.activeAddDeviceFlow.jpak.deriveSharedKey()
     const syncKey = await this.cryptoLib.createSyncKey(
       sharedKey,
-      this.activeAddDeviceFlow.responderDeviceId as string as Salt,
+      this.activeAddDeviceFlow.responderDeviceId,
     )
     this.activeAddDeviceFlow = {
       ...this.activeAddDeviceFlow,

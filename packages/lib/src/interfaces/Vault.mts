@@ -1,12 +1,13 @@
 import type { Tagged } from 'type-fest'
 import type {
-  EncryptedPrivateKey,
+  EncryptedSecretKeys,
   EncryptedSymmetricKey,
+  LegacyEncryptedPrivateKey,
   KdfParameters,
   MacKey,
   PrivateKey,
-  PublicKey,
   Salt,
+  SigningSecretKey,
   SymmetricKey,
 } from './CryptoLib.mjs'
 import type Entry from './Entry.mjs'
@@ -22,7 +23,26 @@ export type {
 export type Vault = Entry[]
 
 export interface LockedRepresentation {
-  encryptedPrivateKey: EncryptedPrivateKey
+  /**
+   * The device's two secret keys -- X25519 and Ed25519 -- sealed together with
+   * AES-256-GCM under a key derived from the password hash.
+   *
+   * Storage version 1 kept a PBES2-wrapped RSA private key here instead, which
+   * is why the migration path reads the field as LegacyEncryptedPrivateKey and
+   * why the two never meet: a v1 keypair cannot become a curve keypair, so an
+   * upgrade mints a fresh pair and discards the old one.
+   */
+  encryptedSecretKeys: EncryptedSecretKeys
+  /**
+   * The key the vault state is encrypted under, sealed with AES-256-GCM under
+   * a second key derived from the password hash.
+   *
+   * NOT wrapped to this device's own public key any more. That self-wrap is
+   * what let anyone holding the public key choose their own symmetric key and
+   * re-encrypt the whole vault state -- the forgery that made `envelopeMac`
+   * necessary in the first place
+   * (key-hierarchy-review/02-ciphertext-authenticity.md).
+   */
   encryptedSymmetricKey: EncryptedSymmetricKey
   salt: Salt
   encryptedVaultState: EncryptedVaultStateString
@@ -38,15 +58,40 @@ export interface LockedRepresentation {
    * base64 HMAC-SHA256 over every other field, keyed from the password hash.
    * Absent in storage version 1, required from version 2.
    *
-   * This is what authenticates the vault to the holder of the PASSWORD. The
-   * AES-GCM tag on `encryptedVaultState` cannot: the key it is under arrives
-   * via an RSA-OAEP wrap to this device's OWN public key, so anyone holding
-   * that public key can pick their own key, wrap it, and re-encrypt the whole
-   * vault state with a matching AAD. See
+   * This is what authenticates the vault to the holder of the PASSWORD. It was
+   * added because the AES-GCM tag on `encryptedVaultState` could not: the key
+   * it is under used to arrive via an RSA-OAEP wrap to this device's OWN public
+   * key, so anyone holding that public key could pick their own key, wrap it,
+   * and re-encrypt the whole vault state with a matching AAD.
+   *
+   * That self-wrap is gone -- the symmetric key is now sealed under a key
+   * derived from the password hash, so a forger needs the password to produce a
+   * readable vault at all. The MAC stays regardless: it covers the cleartext
+   * fields no ciphertext authenticates, and dropping it would be a second
+   * argument for no gain. See
    * key-hierarchy-review/02-ciphertext-authenticity.md.
    */
   envelopeMac: string
 }
+/**
+ * A storage version 1 envelope, as the migration path reads it.
+ *
+ * It differs from LockedRepresentation in exactly one field, and that field is
+ * the whole reason the two formats cannot be conflated: `encryptedPrivateKey`
+ * is a PBES2 PEM wrapping an RSA key, where v2 has `encryptedSecretKeys`, an
+ * AES-GCM seal over two curve keys. A v1 vault also has no `kdf` block and no
+ * `envelopeMac`.
+ *
+ * MIGRATION PATH ONLY -- it goes with the v1 read path
+ * (key-hierarchy-review/18-anti-rollback.md).
+ */
+export interface LegacyLockedRepresentation extends Omit<
+  LockedRepresentation,
+  'encryptedSecretKeys' | 'kdf' | 'envelopeMac'
+> {
+  encryptedPrivateKey: LegacyEncryptedPrivateKey
+}
+
 export type LockedRepresentationString = Tagged<
   string,
   'LockedRepresentationString'
@@ -57,10 +102,12 @@ export type LockedRepresentationString = Tagged<
  * across a process restart -- see key-hierarchy-review/07-session-key-api.md.
  *
  * Only the four secrets that a password unlock DERIVES. Everything a vault
- * stores about itself -- the salt, the kdf block, both encrypted keys, the
+ * stores about itself -- the salt, the kdf block, the sealed keys, the
  * encrypted vault state -- is deliberately absent: the consumer already holds
  * a LockedRepresentation, and reading those from it rather than from here
- * means the two can never disagree.
+ * means the two can never disagree. The two PUBLIC keys are absent for a
+ * related reason: they are pure functions of the secret keys, so a copy here
+ * could only disagree with them.
  *
  * This is PLAINTEXT KEY MATERIAL. Whoever reads it reads the vault. It is
  * declared here rather than in BrandedTypes.mts (which is what `favalib/types`
@@ -71,16 +118,49 @@ export type LockedRepresentationString = Tagged<
 export interface UnlockedSession {
   sessionVersion: number
   privateKey: PrivateKey
-  publicKey: PublicKey
+  signingSecretKey: SigningSecretKey
   symmetricKey: SymmetricKey
   macKey: MacKey
 }
 export type UnlockedSessionString = Tagged<string, 'UnlockedSessionString'>
 
+/**
+ * One remote command this device has applied.
+ *
+ * `timestamp` is the sender's, taken from the SIGNED payload rather than from
+ * the clock here: it is what the pruning bound and the per-peer floor are
+ * measured against, so a value the server could choose would make both
+ * meaningless.
+ */
+export interface ProcessedCommand {
+  id: string
+  from: DeviceId
+  timestamp: number
+}
+
+/**
+ * What this device has applied, kept so that a restart does not make every
+ * queued command replayable again.
+ *
+ * `floors` is the price of bounding `commands`: pruning an id raises its
+ * sender's floor to that id's timestamp, so forgetting an id never makes it
+ * acceptable again. See key-hierarchy-review/15-sync-replay-protection.md.
+ */
+export interface ProcessedCommandRecord {
+  commands: ProcessedCommand[]
+  floors: Record<DeviceId, number>
+}
+
 export interface VaultSyncState {
   devices: SyncDevice[]
   serverUrl: string | undefined
   commandSendQueue: SyncCommandFromClient[]
+  /**
+   * Absent in vaults written before replay protection was persisted, which is
+   * why it is optional: an empty record is the correct starting point, since a
+   * device that has applied nothing cannot have applied anything twice.
+   */
+  processedCommands?: ProcessedCommandRecord
 }
 export type VaultSyncStateWithServerUrl = Omit<VaultSyncState, 'serverUrl'> & {
   serverUrl: NonNullable<VaultSyncState['serverUrl']>

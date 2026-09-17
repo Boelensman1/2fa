@@ -2,6 +2,7 @@ import { v4 as uuidv4 } from 'uuid'
 import type FavaLibMediator from '../FavaLibMediator.mjs'
 
 import { CommandData } from '../interfaces/CommandTypes.mjs'
+import { COMMAND_VERSION } from '../version.mjs'
 
 /**
  * Abstract base class for commands that interact with the vault.
@@ -21,7 +22,11 @@ abstract class BaseCommand<T extends CommandData = CommandData> {
    * @param data - The data associated with the command.
    * @param id - The unique identifier for the command. If not provided, a new UUID will be generated.
    * @param timestamp - The timestamp of when the command was created. If not provided, the current timestamp will be used.
-   * @param version - The version of the command. Defaults to '1.0'.
+   * @param version - The sync protocol version of the command. Defaults to
+   * what this build speaks. It used to default to the literal '1.0' while
+   * COMMAND_VERSION said '2.0', so every command this library created went out
+   * stamped with a version it was not written in -- harmless only because the
+   * receiving gate accepts older majors.
    * @param fromRemote - Indicates if the command originated from a remote source. Defaults to false.
    */
   constructor(
@@ -29,7 +34,7 @@ abstract class BaseCommand<T extends CommandData = CommandData> {
     data: T,
     id: string = uuidv4(),
     timestamp: number = Date.now(),
-    version = '1.0',
+    version = COMMAND_VERSION,
     fromRemote = false,
   ) {
     this.id = id

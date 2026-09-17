@@ -83,4 +83,17 @@ leaves the other.
 
 ## Resolution
 
-_Not started._
+_Not started._ Still **open**, and both items above are unchanged.
+
+One thing did change around item 1. Since the curve migration in
+[13](13-sync-command-authentication.md) landed 2026-09-17, the v1 read path is
+the **only** RSA-shaped code left in the library: `decryptKeysV1`, the PBES2
+unwrap inside it, and `decryptSymmetricV1`. Deleting it therefore removes RSA
+and node-forge's key handling from favalib entirely, rather than merely closing
+the downgrade window — which is a second, independent reason to do it, and one
+that makes the calendar decision easier to argue for.
+
+Note also that a v1 vault now costs more to migrate than it did: the upgrade
+mints a fresh keypair, so the device's peers have to pair again. That raises the
+value of getting installs upgraded early, and it does not change the shape of
+either item above.

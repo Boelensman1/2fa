@@ -1,7 +1,7 @@
 # 15 — Replay protection is bypassable by construction
 
-**Verdict:** broken
-**Status:** open
+**Verdict:** broken — and partly overtaken before it was fixed; see Resolution
+**Status:** done
 **Priority:** unranked — belongs to the sync-protocol review ([12](12-sync-findings-index.md))
 **Touches:** `src/subclasses/CommandManager.mts:20,44-50`,
 `src/subclasses/SyncManager.mts:882`, `:965`, `:383-388`
@@ -54,4 +54,77 @@ than no field. And stop swallowing the resilver replay error.
 
 ## Resolution
 
-_Not started._
+Done 2026-09-17, alongside [13](13-sync-command-authentication.md).
+
+### First, a correction: half of the finding above had already lapsed
+
+**"A malicious server replays any stored blob under a fresh `commandId`" was no
+longer true when this was fixed**, and had not been since storage version 2
+landed. `buildCommandAad(commandId, deviceId)` binds the id into the AES-GCM
+tag on both sides (`SyncManager.mts:1032` and `:1190`), so a blob re-announced
+under a different id fails to decrypt. The finding was written against the v1
+CBC wire and the line references in it are from that era.
+
+What genuinely remained was smaller and less dramatic, and is what this
+resolution closes:
+
+1. the same id arriving twice was caught only by an **in-memory** set, which a
+   restart emptied — and the server redelivers everything it has not been told
+   was executed, on every reconnect;
+2. the nonces were decorative;
+3. the one real replay alarm was swallowed.
+
+Recording this rather than quietly fixing the smaller thing, because a reader
+comparing the finding to the code would otherwise conclude the fix had missed
+the point.
+
+### What landed
+
+- **The processed-command record is persisted.** `VaultSyncState` gains
+  `processedCommands: {commands, floors}`, beside the `commandSendQueue` that
+  was already stored there. Only remote commands are recorded, and only after
+  they actually executed, so anything dropped for another reason stays
+  redeliverable.
+- **The command id is inside the signed payload.** `sendCommand` used to strip
+  it (`id: undefined`) and the receiver took it from the server's envelope. Now
+  it travels inside, is covered by the signature, and must match the envelope —
+  so the dedup key is no longer something the server chooses.
+- **The record is bounded, and pruning cannot weaken it.** Entries older than 30
+  days go, and so does anything past 1000, oldest first; pruning an entry raises
+  its sender's floor to that entry's timestamp, and a command at or below a
+  sender's floor is refused. Forgetting an id therefore never makes it
+  acceptable again. The floor is per peer and rises only from that peer's own
+  traffic, so a device that has been offline for months still has its queued
+  commands applied — its floor never moved.
+- **A save is forced when the record grows**, even when no command changed an
+  entry: the record of what has been applied is itself the thing that has to
+  survive a restart.
+- **The nonces are deleted.** Eight client messages carried one, the client
+  generated it, `grep -rn nonce packages/server/src` returned nothing, and no
+  client verified one either. A field that looks like a security control and is
+  read by nobody is worse than no field, and freshness is the signature's job
+  now.
+- **The alarm is no longer swallowed.** A `SyncError` out of
+  `handleServerMessage` is logged as itself at a new `error` severity, instead
+  of being flattened into `Failed to parse message` by the socket's catch. So
+  "got vault data while no resilver was requested, probably replay attack!"
+  reaches the user rather than looking like a truncated frame. The CLI treats
+  `error` like `warning` (it surfaces it); the PWA logs it to `console.error`.
+- **Malformed records are refused at load, not reset.** Absent means "nothing
+  applied yet", which is right for every vault written before the field existed.
+  Present but the wrong shape throws: silently starting replay protection over
+  is the one repair whose cost is invisible, because the vault works perfectly
+  afterwards and simply accepts commands it has already applied.
+
+### Verified by mutation
+
+Listed in [13](13-sync-command-authentication.md)'s table, since the two
+changes landed together: disabling the persisted duplicate check, the floor, or
+the recording each reddens exactly one test.
+
+### Not closed by this
+
+Ordering. Commands are still applied in sender-timestamp order
+(`CommandQueue`), and a hostile peer can pick its own timestamps. That is a
+peer-trust question, not a freshness one, and it belongs with
+[14](14-sync-device-injection.md).

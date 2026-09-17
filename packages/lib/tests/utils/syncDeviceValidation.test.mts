@@ -1,16 +1,22 @@
 import { describe, it, expect } from 'vitest'
 
 import {
-  MAX_PUBLIC_KEY_LENGTH,
+  PUBLIC_KEY_LENGTH,
+  parseDevicePublicKeys,
   validateSyncDevice,
 } from '../../src/utils/syncDeviceValidation.mjs'
 
-const pem = (body: string, eol = '\n') =>
-  ['-----BEGIN PUBLIC KEY-----', body, '-----END PUBLIC KEY-----'].join(eol)
+/**
+ * Builds a base64 key of exactly the right length: 32 raw bytes.
+ * @param fill - The character to repeat, so two keys can be told apart.
+ * @returns The base64 key.
+ */
+const key = (fill = 'A') => fill.repeat(43) + '='
 
 const validDevice = {
   deviceId: 'a5b4e2b0-1f4e-4a4a-9a0e-2d9b5d5a1c11',
-  publicKey: pem('MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEA'),
+  publicKey: key('A'),
+  signingPublicKey: key('B'),
   deviceInfo: { deviceType: '2fa-cli', deviceFriendlyName: 'my-laptop' },
 }
 
@@ -33,25 +39,6 @@ describe('validateSyncDevice', () => {
     expect(validateSyncDevice(deviceWith({ deviceInfo: undefined }))).toBeNull()
   })
 
-  // node writes PEM with \n and node-forge with \r\n, and canonical.mts
-  // already records that both reach the same fields. A check that accepted only
-  // one of them would pass within a provider and fail across them -- which is
-  // exactly the class of bug fixtures.test.mts exists to catch.
-  it.each([
-    ['unix line endings', '\n'],
-    ['windows line endings', '\r\n'],
-  ])('accepts a PEM with %s', (_label, eol) => {
-    expect(
-      validateSyncDevice(deviceWith({ publicKey: pem('AAAA', eol) })),
-    ).toBeNull()
-  })
-
-  it('accepts a PEM with surrounding whitespace', () => {
-    expect(
-      validateSyncDevice(deviceWith({ publicKey: `\n${pem('AAAA')}\n` })),
-    ).toBeNull()
-  })
-
   it.each([
     ['not an object', 'a string'],
     ['null', null],
@@ -70,16 +57,9 @@ describe('validateSyncDevice', () => {
     ['an over-long deviceId', { deviceId: 'x'.repeat(257) }],
     ['a missing publicKey', { publicKey: undefined }],
     ['an empty publicKey', { publicKey: '' }],
-    ['a non-string publicKey', { publicKey: { pem: 'nope' } }],
-    [
-      'a private key PEM',
-      {
-        publicKey:
-          '-----BEGIN PRIVATE KEY-----\nAAAA\n-----END PRIVATE KEY-----',
-      },
-    ],
-    ['a PEM with no footer', { publicKey: '-----BEGIN PUBLIC KEY-----\nAAAA' }],
-    ['a bare base64 key', { publicKey: 'MIICIjANBgkqhkiG9w0BAQEFAAOCAg8A' }],
+    ['a non-string publicKey', { publicKey: { key: 'nope' } }],
+    ['a missing signingPublicKey', { signingPublicKey: undefined }],
+    ['a non-string signingPublicKey', { signingPublicKey: 42 }],
     ['a non-object deviceInfo', { deviceInfo: 'cli' }],
     ['a deviceInfo with no deviceType', { deviceInfo: {} }],
     [
@@ -90,18 +70,49 @@ describe('validateSyncDevice', () => {
     expect(validateSyncDevice(deviceWith(overrides))).not.toBeNull()
   })
 
-  it('rejects an over-long publicKey', () => {
-    // The cap is what stops a device record being used as a blob store: the
-    // list is not bounded by anything the user sees.
-    const body = 'A'.repeat(MAX_PUBLIC_KEY_LENGTH)
+  // Storage version 1's RSA keys could only be bounded; a curve key has one
+  // correct length, so anything else is refused outright rather than passed on
+  // to a curve that would name the primitive in its error message.
+  it.each([
+    ['one character short', key().slice(0, PUBLIC_KEY_LENGTH - 1)],
+    ['one character long', key() + 'A'],
+    ['a PEM', '-----BEGIN PUBLIC KEY-----\nAAAA\n-----END PUBLIC KEY-----'],
+    ['right length, not base64', '!'.repeat(PUBLIC_KEY_LENGTH)],
+  ])('rejects a publicKey that is %s', (_label, publicKey) => {
+    expect(validateSyncDevice(deviceWith({ publicKey }))).not.toBeNull()
     expect(
-      validateSyncDevice(deviceWith({ publicKey: pem(body) })),
+      validateSyncDevice(deviceWith({ signingPublicKey: publicKey })),
     ).not.toBeNull()
   })
 
-  it('names what is wrong', () => {
+  it('names which key is wrong', () => {
     expect(validateSyncDevice(deviceWith({ publicKey: 'nope' }))).toMatch(
       /publicKey/,
     )
+    expect(
+      validateSyncDevice(deviceWith({ signingPublicKey: 'nope' })),
+    ).toMatch(/signingPublicKey/)
+  })
+})
+
+describe('parseDevicePublicKeys', () => {
+  it('reads a well-formed pair', () => {
+    expect(
+      parseDevicePublicKeys(
+        JSON.stringify({ publicKey: key('A'), signingPublicKey: key('B') }),
+      ),
+    ).toEqual({ publicKey: key('A'), signingPublicKey: key('B') })
+  })
+
+  it.each([
+    ['not JSON', 'not json at all'],
+    ['JSON that is not an object', '"a string"'],
+    ['a pair with one key missing', JSON.stringify({ publicKey: key() })],
+    [
+      'a pair with an unusable key',
+      JSON.stringify({ publicKey: key(), signingPublicKey: 'short' }),
+    ],
+  ])('refuses %s', (_label, serialised) => {
+    expect(() => parseDevicePublicKeys(serialised)).toThrow(/public keys/)
   })
 })

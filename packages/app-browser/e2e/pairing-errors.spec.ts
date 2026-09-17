@@ -28,17 +28,29 @@ const openConnectScreen = async (page: Page) => {
     .click()
   await page.getByLabel('New password', { exact: true }).fill(vaultPassword)
 
-  const socketOpened = page.waitForEvent('websocket')
+  // respondToAddDeviceFlow checks the server connection before it looks at the
+  // payload at all, and favalib sends its hello frame as soon as the socket is
+  // open -- so the first frame sent on the sync socket is the signal that a
+  // submit will reach the pairing checks. This screen shows no connection state
+  // to wait on instead.
+  //
+  // Both listeners are attached BEFORE the click, and the frame one is attached
+  // when the socket appears rather than awaited afterwards. Awaiting the socket
+  // first used to work only because creating a vault meant an RSA-4096 keygen:
+  // once that became a pair of curve keygens the socket opened and sent inside
+  // the same moment, and the test subscribed to `framesent` after the frame it
+  // was waiting for had already gone.
+  const helloSent = new Promise<void>((resolve) => {
+    page.on('websocket', (socket) => {
+      if (!socket.url().includes('/api/sync')) return
+      socket.on('framesent', () => resolve())
+    })
+  })
+
   await page
     .getByRole('button', { name: 'Connect to Vault', exact: true })
     .click()
-
-  // respondToAddDeviceFlow checks the server connection before it looks at the
-  // payload at all, and favalib sends its hello frame as soon as the socket is
-  // open -- so the first sent frame is the signal that a submit will reach the
-  // pairing checks. This screen shows no connection state to wait on instead.
-  const socket = await socketOpened
-  await socket.waitForEvent('framesent')
+  await helloSent
 
   await expect(page.getByPlaceholder('Or enter text here')).toBeVisible()
 }

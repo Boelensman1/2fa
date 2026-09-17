@@ -2,16 +2,17 @@ import { describe, expect, test } from 'vitest'
 import crypto from 'node:crypto'
 import {
   CryptoLib,
-  EncryptedPrivateKey,
+  EncryptedSecretKeys,
   EncryptedSymmetricKey,
   PublicKey,
   PrivateKey,
+  SigningPublicKey,
+  SigningSecretKey,
   SymmetricKey,
   Password,
   Salt,
   V2_KDF_PARAMETERS,
 } from '../../src/main.mjs'
-import forge from 'node-forge'
 
 import { nodeProviders } from '../../src/platformProviders/node/index.mjs'
 import { browserProviders } from '../../src/platformProviders/browser/index.mjs'
@@ -31,51 +32,72 @@ describe('Crypto Provider Comparison', () => {
   const testAad = 'favalib:test:v2'
 
   const runTests = (crypto: CryptoLib, name: string) => {
-    let encryptedPrivateKey: EncryptedPrivateKey
+    let encryptedSecretKeys: EncryptedSecretKeys
     let encryptedSymmetricKey: EncryptedSymmetricKey
     let publicKey: PublicKey
     let privateKey: PrivateKey
+    let signingPublicKey: SigningPublicKey
+    let signingSecretKey: SigningSecretKey
     let symmetricKey: SymmetricKey
     let salt: Salt
 
     test(`${name}: full encryption cycle`, async () => {
       // Create keys
       const keyResult = await crypto.createKeys(testPassword)
-      encryptedPrivateKey = keyResult.encryptedPrivateKey
+      encryptedSecretKeys = keyResult.encryptedSecretKeys
       encryptedSymmetricKey = keyResult.encryptedSymmetricKey
       publicKey = keyResult.publicKey
+      signingPublicKey = keyResult.signingPublicKey
       salt = keyResult.salt
-      expect(encryptedPrivateKey).toBeTruthy()
+      expect(encryptedSecretKeys).toBeTruthy()
       expect(encryptedSymmetricKey).toBeTruthy()
       expect(publicKey).toBeTruthy()
+      expect(signingPublicKey).toBeTruthy()
+      expect(publicKey).not.toEqual(signingPublicKey)
       expect(salt).toBeTruthy()
 
       // Decrypt keys
       const decryptResult = await crypto.decryptKeys(
-        encryptedPrivateKey,
+        encryptedSecretKeys,
         encryptedSymmetricKey,
         salt,
         testPassword,
         V2_KDF_PARAMETERS,
       )
       privateKey = decryptResult.privateKey
+      signingSecretKey = decryptResult.signingSecretKey
       symmetricKey = decryptResult.symmetricKey
       expect(privateKey).toBeTruthy()
+      expect(signingSecretKey).toBeTruthy()
       expect(symmetricKey).toBeTruthy()
+      // Both public keys are DERIVED from the secret keys rather than stored,
+      // so this is what pins that the derivation agrees with what createKeys
+      // handed out.
       expect(decryptResult.publicKey).toEqual(publicKey)
+      expect(decryptResult.signingPublicKey).toEqual(signingPublicKey)
 
       // Re-encrypt keys
       const reEncrypted = await crypto.encryptKeys(
-        privateKey,
+        { privateKey, signingSecretKey },
         symmetricKey,
         salt,
         testPassword,
         V2_KDF_PARAMETERS,
       )
-      expect(reEncrypted.encryptedPrivateKey).toBeTruthy()
+      expect(reEncrypted.encryptedSecretKeys).toBeTruthy()
       expect(reEncrypted.encryptedSymmetricKey).toBeTruthy()
-      expect(reEncrypted.encryptedPrivateKey).not.toEqual(privateKey)
-      expect(reEncrypted.encryptedSymmetricKey).not.toEqual(symmetricKey)
+      expect(reEncrypted.encryptedSecretKeys).not.toContain(privateKey)
+      expect(reEncrypted.encryptedSecretKeys).not.toContain(signingSecretKey)
+      expect(reEncrypted.encryptedSymmetricKey).not.toContain(symmetricKey)
+
+      // A signature made by this provider verifies in it.
+      const signature = await crypto.sign(signingSecretKey, testMessage)
+      expect(
+        await crypto.verify(signingPublicKey, testMessage, signature),
+      ).toBe(true)
+      expect(
+        await crypto.verify(signingPublicKey, testMessage + '!', signature),
+      ).toBe(false)
 
       // Asymmetric encryption and decryption
       const encrypted = await crypto.encrypt(publicKey, testMessage)
@@ -109,10 +131,12 @@ describe('Crypto Provider Comparison', () => {
 
     return {
       getKeys: () => ({
-        encryptedPrivateKey,
+        encryptedSecretKeys,
         encryptedSymmetricKey,
         publicKey,
         privateKey,
+        signingPublicKey,
+        signingSecretKey,
         symmetricKey,
         salt,
       }),
@@ -131,13 +155,13 @@ describe('Crypto Provider Comparison', () => {
   describe('NodeCryptoLib', () => {
     test('Keys are properly set after test', () => {
       const {
-        encryptedPrivateKey,
+        encryptedSecretKeys,
         encryptedSymmetricKey,
         publicKey,
         privateKey,
         symmetricKey,
       } = nodeTest.getKeys()
-      expect(encryptedPrivateKey).toBeTruthy()
+      expect(encryptedSecretKeys).toBeTruthy()
       expect(encryptedSymmetricKey).toBeTruthy()
       expect(publicKey).toBeTruthy()
       expect(privateKey).toBeTruthy()
@@ -148,13 +172,13 @@ describe('Crypto Provider Comparison', () => {
   describe('BrowserCryptoLib', () => {
     test('Keys are properly set after test', () => {
       const {
-        encryptedPrivateKey,
+        encryptedSecretKeys,
         encryptedSymmetricKey,
         publicKey,
         privateKey,
         symmetricKey,
       } = browserTest.getKeys()
-      expect(encryptedPrivateKey).toBeTruthy()
+      expect(encryptedSecretKeys).toBeTruthy()
       expect(encryptedSymmetricKey).toBeTruthy()
       expect(publicKey).toBeTruthy()
       expect(privateKey).toBeTruthy()
@@ -165,13 +189,13 @@ describe('Crypto Provider Comparison', () => {
   describe('Cross-provider compatibility', () => {
     test('Node can decrypt Browser-encrypted keys', async () => {
       const {
-        encryptedPrivateKey: browserEncryptedPrivateKey,
+        encryptedSecretKeys: browserEncryptedSecretKeys,
         encryptedSymmetricKey: browserEncryptedSymmetricKey,
         publicKey: browserPublicKey,
         salt: browserSalt,
       } = browserTest.getKeys()
       const result = await nodeCrypto.decryptKeys(
-        browserEncryptedPrivateKey,
+        browserEncryptedSecretKeys,
         browserEncryptedSymmetricKey,
         browserSalt,
         testPassword,
@@ -184,13 +208,13 @@ describe('Crypto Provider Comparison', () => {
 
     test('Browser can decrypt Node-encrypted keys', async () => {
       const {
-        encryptedPrivateKey: nodeEncryptedPrivateKey,
+        encryptedSecretKeys: nodeEncryptedSecretKeys,
         encryptedSymmetricKey: nodeEncryptedSymmetricKey,
         publicKey: nodePublicKey,
         salt: nodeSalt,
       } = nodeTest.getKeys()
       const result = await browserCrypto.decryptKeys(
-        nodeEncryptedPrivateKey,
+        nodeEncryptedSecretKeys,
         nodeEncryptedSymmetricKey,
         nodeSalt,
         testPassword,
@@ -250,39 +274,78 @@ describe('Crypto Provider Comparison', () => {
       expect(decrypted).toEqual(testMessage)
     })
 
-    test('OAEP is MGF1-SHA-256 on both sides, not just SHA-256 labels', async () => {
-      // node's `oaepHash: 'sha256'` sets the label digest AND MGF1 together;
-      // node-forge takes them as separate options. It does default mgf1 to md
-      // when mgf1 is omitted, so the hazard is not a forgotten option but an
-      // EXPLICIT mismatch -- which round-trips perfectly inside forge and
-      // fails only against node, i.e. only on a user's second device.
-      const { publicKey: nodePublicKey, privateKey: nodePrivateKey } =
-        nodeTest.getKeys()
+    test('a seal names its recipient, so another key cannot open it', async () => {
+      // The ephemeral public key and the RECIPIENT's public key both go into
+      // the HKDF info, and the recipient recomputes the second one from its own
+      // secret key rather than reading it off the message. This is what the RSA
+      // layer's OAEP options used to be the hazard in: two providers agreeing
+      // with themselves and not with each other. There are no options to
+      // mismatch now, so what is worth pinning is the binding itself.
+      const { publicKey: nodePublicKey } = nodeTest.getKeys()
+      const { privateKey: browserPrivateKey } = browserTest.getKeys()
 
-      const publicKeyObj = forge.pki.publicKeyFromPem(nodePublicKey)
-      const mismatched = btoa(
-        publicKeyObj.encrypt(testMessage, 'RSA-OAEP', {
-          md: forge.md.sha256.create(),
-          mgf1: { md: forge.md.sha1.create() },
-        }),
-      )
+      const sealed = await browserCrypto.encrypt(nodePublicKey, testMessage)
 
       await expect(
-        nodeCrypto.decrypt(nodePrivateKey, mismatched as never),
-      ).rejects.toThrow()
+        nodeCrypto.decrypt(browserPrivateKey, sealed),
+      ).rejects.toThrow('Could not decrypt data')
+      await expect(
+        browserCrypto.decrypt(browserPrivateKey, sealed),
+      ).rejects.toThrow('Could not decrypt data')
+    })
 
-      // ...while what the provider actually does round-trips both ways.
-      const fromBrowser = await browserCrypto.encrypt(
-        nodePublicKey,
+    test('signatures verify across providers', async () => {
+      const { signingSecretKey: nodeSigningSecretKey } = nodeTest.getKeys()
+      const { signingPublicKey: browserSigningPublicKey, signingSecretKey } =
+        browserTest.getKeys()
+
+      // A signature is the one thing in the system that has to mean the same to
+      // a device that did not produce it, so both directions are pinned.
+      const fromNode = await nodeCrypto.sign(nodeSigningSecretKey, testMessage)
+      const fromBrowser = await browserCrypto.sign(
+        signingSecretKey,
         testMessage,
       )
-      expect(await nodeCrypto.decrypt(nodePrivateKey, fromBrowser)).toBe(
-        testMessage,
-      )
-      const fromNode = await nodeCrypto.encrypt(nodePublicKey, testMessage)
-      expect(await browserCrypto.decrypt(nodePrivateKey, fromNode)).toBe(
-        testMessage,
-      )
+      expect(fromNode).not.toEqual(fromBrowser)
+
+      expect(
+        await browserCrypto.verify(
+          nodeTest.getKeys().signingPublicKey,
+          testMessage,
+          fromNode,
+        ),
+      ).toBe(true)
+      expect(
+        await nodeCrypto.verify(
+          browserSigningPublicKey,
+          testMessage,
+          fromBrowser,
+        ),
+      ).toBe(true)
+
+      // The wrong signer, a changed message and a malformed signature all
+      // resolve false rather than throwing: these run on data off the network.
+      expect(
+        await nodeCrypto.verify(
+          nodeTest.getKeys().signingPublicKey,
+          testMessage,
+          fromBrowser,
+        ),
+      ).toBe(false)
+      expect(
+        await nodeCrypto.verify(
+          browserSigningPublicKey,
+          testMessage + ' ',
+          fromBrowser,
+        ),
+      ).toBe(false)
+      expect(
+        await nodeCrypto.verify(
+          browserSigningPublicKey,
+          testMessage,
+          'not a signature' as never,
+        ),
+      ).toBe(false)
     })
 
     test('Node and Browser createSyncKey produce the same result', async () => {

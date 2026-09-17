@@ -228,3 +228,33 @@ padding oracle on the sync path; and silent corruption.
 (`major <= currentCommandMajorVersion`), so a v1 peer's command fails earlier,
 in decryption. The comment in [03](03-storage-versioning.md) calling it a
 forward-compat hook still stands.
+
+## Amendment: the forgery this finding described no longer has an entry point
+
+The attack above was: the data encryption key arrives RSA-OAEP wrapped **to this
+device's own public key**, so anyone who has seen that public key can choose
+their own key, wrap it, re-encrypt an arbitrary vault state, and build a
+matching AAD out of the cleartext they are writing. The AES-GCM tag proves only
+that the writer held a key of their own choosing. That is why this finding's
+Resolution added a password-keyed `envelopeMac`.
+
+With the curve migration in [13](13-sync-command-authentication.md), landed
+2026-09-17, the self-wrap is gone: `encryptedSymmetricKey` is an AES-GCM seal
+under a key derived from the password hash. Producing a readable vault now needs
+the password, so the forgery is closed at its source rather than caught after
+the fact.
+
+**The `envelopeMac` stays**, and the reasoning is worth being explicit about
+since its original justification has moved:
+
+- it covers `libVersion`, `storageVersion`, `salt` and `kdf` — cleartext fields
+  that no ciphertext authenticates;
+- it is what makes a truncated or field-swapped envelope fail with "this vault
+  has been modified" instead of as a decryption error, which is a different
+  message to the user about a different problem;
+- removing it would be a second argument for no gain.
+
+`tests/envelope-integrity.test.mts` keeps the forgery test, rewritten: it still
+builds exactly the blob the finding describes, and now asserts that the key slot
+will not take it. Everything else in that file — the MAC's coverage, the
+"Invalid password" ordering, the AAD binding — is unchanged.

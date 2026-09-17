@@ -3,15 +3,17 @@ import WS from 'vitest-websocket-mock'
 
 import {
   DeviceType,
-  EncryptedPrivateKey,
+  EncryptedSecretKeys,
   EncryptedSymmetricKey,
   FavaLib,
   Salt,
   MacKey,
   KdfParameters,
   PrivateKey,
+  SigningSecretKey,
   SymmetricKey,
   PublicKey,
+  SigningPublicKey,
   FavaLibEvent,
   DeviceId,
   DeviceFriendlyName,
@@ -35,9 +37,11 @@ describe('2falib', () => {
   let favaLib: FavaLib
   let mockPersistentStorageManager: { save: Mock; init: Mock }
   let privateKey: PrivateKey
+  let signingSecretKey: SigningSecretKey
   let symmetricKey: SymmetricKey
   let publicKey: PublicKey
-  let encryptedPrivateKey: EncryptedPrivateKey
+  let signingPublicKey: SigningPublicKey
+  let encryptedSecretKeys: EncryptedSecretKeys
   let encryptedSymmetricKey: EncryptedSymmetricKey
   let salt: Salt
   let macKey: MacKey
@@ -47,13 +51,15 @@ describe('2falib', () => {
     const result = await createFavaLibForTests()
     favaLib = result.favaLib
     platformProviders = result.platformProviders
-    encryptedPrivateKey = result.encryptedPrivateKey
+    encryptedSecretKeys = result.encryptedSecretKeys
     encryptedSymmetricKey = result.encryptedSymmetricKey
     macKey = result.macKey
     kdf = result.kdf
     privateKey = result.privateKey
+    signingSecretKey = result.signingSecretKey
     symmetricKey = result.symmetricKey
     publicKey = result.publicKey
+    signingPublicKey = result.signingPublicKey
     salt = result.salt
   })
 
@@ -76,14 +82,14 @@ describe('2falib', () => {
             '' as DeviceType,
             platformProviders,
             ['test'],
-            privateKey,
+            { privateKey, signingSecretKey },
             symmetricKey,
-            encryptedPrivateKey,
+            encryptedSecretKeys,
             encryptedSymmetricKey,
             salt,
             macKey,
             kdf,
-            publicKey,
+            { publicKey, signingPublicKey },
             { deviceId },
             [],
           ),
@@ -98,14 +104,14 @@ describe('2falib', () => {
             longDeviceIdentifier as DeviceType,
             platformProviders,
             ['test'],
-            privateKey,
+            { privateKey, signingSecretKey },
             symmetricKey,
-            encryptedPrivateKey,
+            encryptedSecretKeys,
             encryptedSymmetricKey,
             salt,
             macKey,
             kdf,
-            publicKey,
+            { publicKey, signingPublicKey },
             { deviceId },
             [],
           ),
@@ -120,14 +126,14 @@ describe('2falib', () => {
             // @ts-expect-error null is not a valid argument for FavaLib
             null,
             ['test'],
-            privateKey,
+            { privateKey, signingSecretKey },
             symmetricKey,
-            encryptedPrivateKey,
+            encryptedSecretKeys,
             encryptedSymmetricKey,
             salt,
             macKey,
             kdf,
-            publicKey,
+            { publicKey, signingPublicKey },
             { deviceId },
             [],
           ),
@@ -142,14 +148,14 @@ describe('2falib', () => {
             platformProviders,
             // @ts-expect-error empty array is not a valid argument
             [],
-            privateKey,
+            { privateKey, signingSecretKey },
             symmetricKey,
-            encryptedPrivateKey,
+            encryptedSecretKeys,
             encryptedSymmetricKey,
             salt,
             macKey,
             kdf,
-            publicKey,
+            { publicKey, signingPublicKey },
             { deviceId },
             [],
           ),
@@ -161,14 +167,14 @@ describe('2falib', () => {
         deviceType,
         platformProviders,
         ['test'],
-        privateKey,
+        { privateKey, signingSecretKey },
         symmetricKey,
-        encryptedPrivateKey,
+        encryptedSecretKeys,
         encryptedSymmetricKey,
         salt,
         macKey,
         kdf,
-        publicKey,
+        { publicKey, signingPublicKey },
         { deviceId },
         [],
       )
@@ -188,14 +194,14 @@ describe('2falib', () => {
       deviceType,
       platformProviders,
       ['test'],
-      privateKey,
+      { privateKey, signingSecretKey },
       symmetricKey,
-      encryptedPrivateKey,
+      encryptedSecretKeys,
       encryptedSymmetricKey,
       salt,
       macKey,
       kdf,
-      publicKey,
+      { publicKey, signingPublicKey },
       { deviceId },
       [],
     )
@@ -222,14 +228,14 @@ describe('2falib', () => {
         deviceType,
         platformProviders,
         ['test'],
-        privateKey,
+        { privateKey, signingSecretKey },
         symmetricKey,
-        encryptedPrivateKey,
+        encryptedSecretKeys,
         encryptedSymmetricKey,
         salt,
         macKey,
         kdf,
-        publicKey,
+        { publicKey, signingPublicKey },
         { deviceId: 'testDeviceId' as DeviceId },
         [],
       )
@@ -286,14 +292,14 @@ describe('2falib', () => {
         deviceType,
         platformProviders,
         ['test'],
-        privateKey,
+        { privateKey, signingSecretKey },
         symmetricKey,
-        encryptedPrivateKey,
+        encryptedSecretKeys,
         encryptedSymmetricKey,
         salt,
         macKey,
         kdf,
-        publicKey,
+        { publicKey, signingPublicKey },
         { deviceId: 'testDeviceId' as DeviceId },
         [],
       )
@@ -323,14 +329,14 @@ describe('2falib', () => {
         deviceType,
         platformProviders,
         ['test'],
-        privateKey,
+        { privateKey, signingSecretKey },
         symmetricKey,
-        encryptedPrivateKey,
+        encryptedSecretKeys,
         encryptedSymmetricKey,
         salt,
         macKey,
         kdf,
-        publicKey,
+        { publicKey, signingPublicKey },
         { deviceId: 'testDeviceId' as DeviceId },
         [],
       )
@@ -363,11 +369,13 @@ describe('2falib', () => {
             // cannot be reopened.
             deviceId: lib.meta.deviceId,
             publicKey,
+            signingPublicKey,
             deviceInfo: { deviceType },
           },
         ],
         serverUrl: undefined,
         getCommandSendQueue: () => [],
+        getProcessedCommands: () => ({ commands: [], floors: {} }),
         sendCommand: vi.fn(),
       }
       // @ts-expect-error: registering a partial sync manager mock for testing

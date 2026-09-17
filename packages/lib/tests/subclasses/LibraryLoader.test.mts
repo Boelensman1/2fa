@@ -28,6 +28,8 @@ describe('LibraryLoader', () => {
       decryptKeys: vi.fn(),
       decryptKeysV1: vi.fn(),
       encryptKeys: vi.fn(),
+      sign: vi.fn(),
+      verify: vi.fn(),
       deriveEnvelopeMacKey: vi.fn(),
       createEnvelopeMac: vi.fn(),
       verifyEnvelopeMac: vi.fn(),

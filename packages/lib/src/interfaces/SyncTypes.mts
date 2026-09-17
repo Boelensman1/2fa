@@ -1,6 +1,6 @@
 import type { Tagged } from 'type-fest'
 import type { JPakeThreePass, Round1Result } from 'jpake-ts'
-import type { PublicKey, SyncKey } from './CryptoLib.mjs'
+import type { PublicKey, SigningPublicKey, SyncKey } from './CryptoLib.mjs'
 import type { Vault, VaultSyncState } from './Vault.mjs'
 import type { DeviceId } from './BrandedTypes.mjs'
 
@@ -15,10 +15,25 @@ export interface DeviceInfo {
 
 export interface SyncDevice {
   deviceId: DeviceId
+  /** The peer's X25519 public key: what this device seals messages to. */
   publicKey: PublicKey
+  /**
+   * The peer's Ed25519 public key: what this device verifies its commands
+   * with.
+   *
+   * This is the credential the whole sync path's authenticity rests on, and it
+   * is why removing a device from this list is now a revocation rather than
+   * bookkeeping -- a peer that is not in it can no longer say anything this
+   * device will act on. See
+   * key-hierarchy-review/13-sync-command-authentication.md.
+   */
+  signingPublicKey: SigningPublicKey
   deviceInfo?: DeviceInfo
 }
-export type PublicSyncDevice = Omit<SyncDevice, 'publicKey' | 'deviceInfo'> &
+export type PublicSyncDevice = Omit<
+  SyncDevice,
+  'publicKey' | 'signingPublicKey' | 'deviceInfo'
+> &
   Partial<SyncDevice['deviceInfo']>
 
 export interface BaseAddDeviceFlow {

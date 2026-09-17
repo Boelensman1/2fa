@@ -211,3 +211,34 @@ nothing (`backgroundCanBeEvicted()`).
 Its tests change shape exactly as this finding predicted above: the
 `expect(store.has('session:vaultPassword')).toBe(false)` assertions become
 assertions about the session blob.
+
+## Amendment: the blob got smaller when the key hierarchy moved
+
+[13](13-sync-command-authentication.md) replaced the asymmetric layer on the
+same day this landed — X25519 and Ed25519 in place of RSA — which changes three
+things here and confirms a fourth.
+
+- **The blob carries two secret keys and no public key.** It was `privateKey`,
+  `publicKey`, `symmetricKey`, `macKey`; it is now `privateKey`,
+  `signingSecretKey`, `symmetricKey`, `macKey`. Still four secrets, still
+  nothing the stored vault already holds.
+- **`publicKey` is out of `PersistentStorageManager`'s constructor again**, and
+  the argument that put it there is gone rather than overruled. It was there
+  because "there is no way back to it from the private key without a new
+  CryptoLib member". Both public keys are now pure functions of the secret keys
+  (`platformProviders/shared/curves.mts`), computed by the session load path
+  with no interface change and no consumer break. The test that motivated the
+  field still exists and still asserts the session path hands `SyncManager` the
+  same keys the password path does — it just asserts a derivation now instead of
+  a copy, which is the stronger claim.
+- **`SESSION_VERSION` is 2.** This is the one version constant in the library
+  that was bumped rather than redefined in place, and the reason is the one
+  stated at the constant: a session blob is memory-backed and never migrated, so
+  refusing one costs a single password prompt. A live v1 session holds an RSA
+  private key this build cannot use, and refusing it is exactly right.
+- **"No key derivation" is now true twice over.** The phrase above meant no
+  argon2id and no PBES2 unwrap; there is no PBES2 anywhere any more.
+
+What does not change: the staleness argument, the storage-version-1 refusal, the
+plaintext-key-material contract, and every mutation in the table above except
+the `publicKey` row, whose mutation is no longer expressible.

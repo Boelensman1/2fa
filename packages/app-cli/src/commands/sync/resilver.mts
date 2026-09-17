@@ -17,7 +17,7 @@ class ResilverCommand extends BaseCommand {
       throw new Error('No server url set')
     }
 
-    await this.favaLib.sync.requestResilver()
+    this.favaLib.sync.requestResilver()
 
     // TODO: do this based on events
     await new Promise((resolve) => setTimeout(resolve, 5000))

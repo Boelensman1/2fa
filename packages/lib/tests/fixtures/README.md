@@ -76,15 +76,34 @@ once checked in, which is why the table above lists the ids literally.
 ## `vault-v2.json`
 
 - **Storage version:** 2
-- **Written by:** favalib 0.0.22, on the commit that introduced storage
-  version 2 (the child of `e0fe516`)
+- **Written by:** favalib 0.0.22, on the commit that redefined storage version 2
+  to the curve hierarchy
 - **Password:** `fixture!Vault7#Frozen$v2`
 - **Crypto it pins:** argon2id (m = 64 MiB, t = 3, p = 4, len = 64, salt used
-  as a 24-byte UTF-8 string) -> PBES2-wrapped RSA-4096 ->
-  RSA-OAEP/MGF1-**SHA-256** unwrap of the symmetric key -> AES-256-**GCM**
-  with a `v2:base64(nonce):base64(ciphertext||tag)` payload bound to the
-  at-rest AAD, plus an `envelopeMac` (HMAC-SHA256 keyed by
-  HKDF-SHA256 over the password hash).
+  as a 24-byte UTF-8 string) -> HKDF-SHA256 over the password hash for two
+  wrapping keys -> AES-256-GCM seals over the device's X25519 and Ed25519
+  secret keys and over the vault's symmetric key -> AES-256-GCM with a
+  `v2:base64(nonce):base64(ciphertext||tag)` payload bound to the at-rest AAD,
+  plus an `envelopeMac` (HMAC-SHA256 keyed by HKDF-SHA256 over the password
+  hash).
+
+### Regenerated once, and why that is not a breach of the rule above
+
+This file was replaced when storage version 2 was **redefined** -- the RSA layer
+was taken out and X25519/Ed25519 put in its place -- rather than superseded by a
+version 3. Nothing in the wild had ever written a version 2 vault, so there was
+no released format for the old file to be evidence of: it pinned a shape with no
+writers and no readers, and keeping it would have meant keeping a parallel RSA
+reader alive to open it.
+
+The convention holds for every format that has shipped. `vault-v1.json` is the
+one that has, and it is untouched -- and now doing more work than before, since
+it is the only thing proving that a real v1 vault still opens and migrates.
+
+The evidence that the regeneration is honest is in the OTPs: the secrets are
+unchanged, so the expected values are the ones already cross-checked against an
+independent RFC 6238 implementation, and they came back identical through an
+entirely different key hierarchy.
 
 Contents -- the same two TOTP entries as v1, deliberately: the secrets are
 identical, so the expected OTPs are the ones already cross-checked against an
@@ -93,10 +112,10 @@ format under test.
 
 | Entry id                               | Name              | Issuer           | Secret             |
 | -------------------------------------- | ----------------- | ---------------- | ------------------ |
-| `9898f013-9e8c-412b-b892-a5eb8a583851` | Fixture Entry One | Fixture Issuer A | `JBSWY3DPEHPK3PXP` |
-| `09e3a359-3764-4a73-ba55-bc5ce2fec2d5` | Fixture Entry Two | Fixture Issuer B | `GEZDGNBVGY3TQOJQ` |
+| `bc068e83-2a34-4d0d-8550-650d45a45e3c` | Fixture Entry One | Fixture Issuer A | `JBSWY3DPEHPK3PXP` |
+| `0d72d157-a5c1-469c-b021-c985492ebe85` | Fixture Entry Two | Fixture Issuer B | `GEZDGNBVGY3TQOJQ` |
 
-`deviceId` is `9ad6d991-a1b0-45a2-8e3f-01de0a956272` and `sync.serverUrl` is
+`deviceId` is `822d43ef-ab39-4a9e-a106-2e96eb3fdb82` and `sync.serverUrl` is
 `undefined`, so no `SyncManager` is ever constructed.
 
 Unlike v1, this fixture's password and salt are **not** reused as the argon2id

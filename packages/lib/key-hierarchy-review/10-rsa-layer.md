@@ -1,7 +1,9 @@
 # 10 — Why the RSA layer exists
 
-**Verdict:** sound but incidental — not weak
-**Status:** closed — no action
+**Verdict:** sound but incidental — not weak; **the Decision below was later
+reversed**, see the amendment at the end
+**Status:** closed — superseded by the curve migration in
+[13](13-sync-command-authentication.md)
 **Priority:** — (two optional cleanups noted below)
 
 ## Finding
@@ -115,3 +117,44 @@ Neither changes the Decision. Both are the honest other half of it.
 - **`validatePasswordStrength` before `createKeys`** — done, one line.
 
 Not taken: dropping the at-rest self-wrap. The Decision above stands.
+
+## Amendment: the Decision was reversed, and by an argument this file did not consider
+
+The Decision above — keep the RSA layer, including the at-rest self-wrap — stood
+on a question this file asked well: _is the keypair load-bearing?_ The answer
+was yes, for sync, so the layer stayed.
+
+[13](13-sync-command-authentication.md) asked a different one: _what can the
+keypair prove?_ RSA-OAEP is an encryption primitive. It says nothing about who
+encrypted, and the library had no signing path at all, so "a signed command from
+a trusted device" was not expressible. The choice was between adding RSA
+signatures to a hierarchy this file already called incidental, or replacing the
+asymmetric layer. It was replaced, on 2026-09-17: X25519 for the key agreement
+this file correctly identified as load-bearing, Ed25519 for the signatures it
+had no reason to think about.
+
+Both costs recorded in the amendment above are gone with it:
+
+- the `encryptedPrivateKey` PBES2/AES-256-CBC blob is gone, because nothing
+  routes a DEK through a private key any more — both at-rest seals are AES-GCM
+  under keys derived from the password hash;
+- the self-wrap is gone, so the ciphertext forgery that made
+  [02](02-ciphertext-authenticity.md)'s `envelopeMac` necessary has no entry
+  point left. The MAC stays, for the cleartext fields.
+
+Two observations in this file survive the reversal, and are worth keeping:
+
+- **The re-wrap-to-another-public-key affordance** the Decision valued is not
+  lost. It was never about RSA: a recovery flow re-seals the symmetric key to
+  another key and re-issues the MAC, exactly as described, with X25519 in place
+  of RSA-OAEP.
+- **The OAEP MGF1 hazard** this file and `02` spent real effort pinning is not
+  merely fixed but structurally gone. It existed because the two providers
+  implemented the same primitive twice — node-forge and OpenSSL — and agreed
+  only while every padding parameter matched. The curve layer is one
+  implementation (`@noble/curves`) used by both providers, with no parameters to
+  match.
+
+What remains RSA-shaped is the v1 read path, and only that: `decryptKeysV1` and
+the PBES2 unwrap beside it. Deleting it (item 1 of
+[18](18-anti-rollback.md)) removes RSA from the library entirely.

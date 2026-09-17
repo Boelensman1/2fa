@@ -49,6 +49,13 @@ test('migrates a v1 vault during login and reopens it after reload', async ({
   )
   expect(migrated.storageVersion).toBe(2)
   expect(migrated.envelopeMac).toEqual(expect.any(String))
+  // The migration mints a fresh X25519/Ed25519 pair: a v1 vault's RSA keypair
+  // cannot become a curve one. The sealed key material is what the two formats
+  // disagree about most visibly -- a PBES2 PEM of ~3.2 KB before, a v2 AES-GCM
+  // envelope of a few hundred bytes now -- so this is what says the upgrade
+  // really happened rather than merely re-labelling the blob.
+  expect(migrated.encryptedSecretKeys.startsWith('v2:')).toBe(true)
+  expect(migrated).not.toHaveProperty('encryptedPrivateKey')
 
   await page.reload()
   await login(page)

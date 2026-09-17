@@ -28,23 +28,32 @@ import {
 import { decodeInitiatorData, jsonToUint8Array } from '../utils/syncUtils.mjs'
 import {
   buildCommandAad,
+  buildCommandSignatureMessage,
   buildHandshakeAad,
   buildVaultDataAad,
+  buildVaultDataSignatureMessage,
 } from '../utils/canonical.mjs'
 import { validateEntryFatal } from '../utils/entryValidation.mjs'
 import {
   MAX_SYNC_DEVICES,
+  parseDevicePublicKeys,
   validateSyncDevice,
 } from '../utils/syncDeviceValidation.mjs'
 import type {
+  DevicePublicKeys,
+  DeviceSecretKeys,
   Encrypted,
-  EncryptedPublicKey,
-  PrivateKey,
-  PublicKey,
+  EncryptedPublicKeys,
+  PublicKeysString,
   Salt,
+  Signature,
+  SigningPublicKey,
   SymmetricKey,
 } from '../interfaces/CryptoLib.mjs'
-import type { SyncCommand } from '../interfaces/CommandTypes.mjs'
+import type {
+  SignedCommandEnvelope,
+  SyncCommand,
+} from '../interfaces/CommandTypes.mjs'
 import type Command from '../Command/BaseCommand.mjs'
 
 import type FavaLibMediator from '../FavaLibMediator.mjs'
@@ -61,6 +70,8 @@ import {
 import { PAIRING_VERSION } from '../version.mjs'
 import {
   EncryptedVaultStateString,
+  ProcessedCommand,
+  VaultSyncState,
   VaultSyncStateWithServerUrl,
 } from '../interfaces/Vault.mjs'
 import type { FavaMeta } from '../interfaces/FavaMeta.mjs'
@@ -117,6 +128,37 @@ export enum ConnectionStatus {
 /** How long `flushCommandSendQueue` waits for the server to acknowledge. */
 const COMMAND_FLUSH_TIMEOUT = IN_TESTING ? 500 : 10_000
 
+/**
+ * How long an applied command's id is remembered, in milliseconds.
+ *
+ * Thirty days is chosen against how long a peer can plausibly be offline with
+ * commands still queued for delivery, not against how long an attacker might
+ * wait: an attacker's replay is refused by the floor once the id is pruned, so
+ * this number trades vault size against how gracefully a long-absent device
+ * comes back, and nothing else.
+ */
+const REPLAY_RETENTION_MS = 30 * 24 * 60 * 60 * 1000
+
+/**
+ * The most applied-command ids a vault keeps.
+ *
+ * A hard second bound under the age one, so a burst of traffic cannot grow the
+ * stored vault without limit. At roughly 90 bytes an entry this is well under
+ * 100 KiB.
+ */
+const MAX_PROCESSED_COMMANDS = 1000
+
+/**
+ * How many verified-but-not-yet-applied command origins are held in memory.
+ *
+ * An origin is normally removed a moment later, when `processRemoteCommands`
+ * reports what ran. One whose command threw during execution is never reported,
+ * so without a bound the map would keep an entry per failing command for the
+ * life of the process. Oldest out first, and losing one costs only the
+ * persisted dedup entry for a command that did not apply.
+ */
+const MAX_PENDING_COMMAND_ORIGINS = 1000
+
 const generateNonCryptographicRandomString = () => {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
   const length = Math.floor(Math.random() * 64) + 1
@@ -149,6 +191,35 @@ class SyncManager {
   private requestedResilver = false
   private requestedResilverTimeout?: NodeJS.Timeout
 
+  /**
+   * Remote commands this device has applied, as persisted in the vault.
+   *
+   * The in-memory set CommandManager keeps is still there and still gates
+   * `execute`, but it empties on every restart, and the server re-sends
+   * everything it has not been told was executed. This is the half that
+   * survives (key-hierarchy-review/15-sync-replay-protection.md).
+   */
+  private processedCommands: ProcessedCommand[]
+
+  /**
+   * Per peer, the newest timestamp whose command id has been pruned from
+   * `processedCommands`. Anything at or below it is refused.
+   */
+  private replayFloors: Record<DeviceId, number>
+
+  /**
+   * Where a verified command came from, between verification and execution.
+   *
+   * In memory only, and deliberately: it exists for the few milliseconds
+   * between `receiveCommands` verifying a command and `processRemoteCommands`
+   * reporting whether it ran, because only commands that actually ran are worth
+   * recording.
+   */
+  private pendingCommandOrigins = new Map<
+    string,
+    { from: DeviceId; timestamp: number }
+  >()
+
   private get deviceId() {
     return this.favaMeta.deviceId
   }
@@ -169,6 +240,14 @@ class SyncManager {
   }
 
   /**
+   * Public getter for the replay-protection state, for persistence.
+   * @returns The applied-command record and the per-peer floors.
+   */
+  public getProcessedCommands(): VaultSyncState['processedCommands'] {
+    return { commands: this.processedCommands, floors: this.replayFloors }
+  }
+
+  /**
    * Public getter for the sync devices
    * @returns The sync devices (without their public key)
    */
@@ -184,8 +263,8 @@ class SyncManager {
   /**
    * Creates an instance of SyncManager.
    * @param mediator - The mediator for accessing other components.
-   * @param publicKey - The public key of the device.
-   * @param privateKey - The private key of the device.
+   * @param publicKeys - This device's two public keys.
+   * @param secretKeys - This device's two secret keys.
    * @param favaMeta - Meta info containing at least a unique identifier for this device.
    * @param syncState - The state of the sync.
    * @param deviceType - The identifier for this device type (e.g. 2fa-cli).
@@ -194,14 +273,15 @@ class SyncManager {
    */
   constructor(
     private readonly mediator: FavaLibMediator,
-    private readonly publicKey: PublicKey,
-    private readonly privateKey: PrivateKey,
+    private readonly publicKeys: DevicePublicKeys,
+    private readonly secretKeys: DeviceSecretKeys,
     private readonly favaMeta: FavaMeta,
     syncState: VaultSyncStateWithServerUrl,
     private readonly deviceType: DeviceType,
     private connectionEnabled = true,
   ) {
-    const { serverUrl, devices, commandSendQueue } = syncState
+    const { serverUrl, devices, commandSendQueue, processedCommands } =
+      syncState
 
     if (!serverUrl.startsWith('wss://')) {
       if (!serverUrl.startsWith('ws://') && !(IN_DEV || IN_TESTING)) {
@@ -212,6 +292,8 @@ class SyncManager {
     }
     this.syncDevices = devices
     this.commandSendQueue = commandSendQueue
+    this.processedCommands = processedCommands?.commands ?? []
+    this.replayFloors = processedCommands?.floors ?? {}
     this.serverUrl = serverUrl
     if (this.connectionEnabled) {
       this.initServerConnection()
@@ -224,7 +306,8 @@ class SyncManager {
     void this.addSyncDevice(
       {
         deviceId: this.favaMeta.deviceId,
-        publicKey: this.publicKey,
+        publicKey: this.publicKeys.publicKey,
+        signingPublicKey: this.publicKeys.signingPublicKey,
         deviceInfo: this.deviceInfo,
       },
       false,
@@ -286,10 +369,6 @@ class SyncManager {
     return this.ws?.readyState === WebSocket.OPEN
   }
 
-  private async getNonce() {
-    return uint8ArrayToBase64(await this.cryptoLib.getRandomBytes(16))
-  }
-
   private sendToServer<T extends ClientMessage['type']>(
     type: T,
     data: Extract<ClientMessage, { type: T }>['data'],
@@ -324,8 +403,17 @@ class SyncManager {
 
         syncManager.handleServerMessage(parsedMessage)
       } catch (error) {
-        // eslint-disable-next-line no-restricted-globals
-        if (error instanceof Error) {
+        // A SyncError from handleServerMessage is a REFUSAL, not a parse
+        // failure, and it is reported as itself. The two used to be flattened
+        // together, which meant the loudest alarm in the sync path -- "got
+        // vault data while no resilver was requested, probably replay attack!"
+        // -- reached the user as "Failed to parse message", indistinguishable
+        // from a truncated frame. See
+        // key-hierarchy-review/15-sync-replay-protection.md.
+        if (error instanceof SyncError) {
+          syncManager.log('error', error.message)
+          // eslint-disable-next-line no-restricted-globals
+        } else if (error instanceof Error) {
           syncManager.log(
             'warning',
             `Failed to parse message: ${error.message}`,
@@ -350,7 +438,7 @@ class SyncManager {
       this.connectionFailedTimeout = undefined
 
       // send any commands that were done while offline
-      void this.processCommandSendQueue()
+      this.processCommandSendQueue()
     })
     ws.addEventListener('close', this.handleWebSocketClose.bind(this))
 
@@ -416,11 +504,11 @@ class SyncManager {
       }
       case 'publicKeyAndDeviceInfo': {
         const { data } = message
-        const { responderEncryptedPublicKey, responderEncryptedDeviceInfo } =
+        const { responderEncryptedPublicKeys, responderEncryptedDeviceInfo } =
           data
 
         void this.sendFullVaultDataAndSetDeviceInfo(
-          responderEncryptedPublicKey,
+          responderEncryptedPublicKeys,
           responderEncryptedDeviceInfo,
         )
         break
@@ -445,14 +533,41 @@ class SyncManager {
           encryptedSymmetricKey,
           fromDeviceId,
           forDeviceId,
+          signature,
         } = data
 
         if (forDeviceId !== this.deviceId) {
           throw new SyncError('Got vault data for the wrong device!')
         }
 
-        void this.cryptoLib
-          .decrypt(this.privateKey, encryptedSymmetricKey)
+        // `fromDeviceId` is stamped by the server, so on its own it is a claim.
+        // The signature is what turns it into one: it has to verify under the
+        // key this vault holds for that peer, which a server cannot produce and
+        // a removed device no longer has a listing for.
+        const sender = this.syncDevices.find(
+          (device) => device.deviceId === fromDeviceId,
+        )
+
+        void (
+          sender
+            ? this.assertVaultDataSignature(
+                sender.signingPublicKey,
+                fromDeviceId,
+                encryptedVaultData,
+                signature,
+              )
+            : Promise.reject(
+                new SyncError(
+                  'Got vault data from a device that is not a peer',
+                ),
+              )
+        )
+          .then(() =>
+            this.cryptoLib.decrypt(
+              this.secretKeys.privateKey,
+              encryptedSymmetricKey,
+            ),
+          )
           .then((symmetricKey) =>
             this.importVaultState(
               encryptedVaultData,
@@ -583,7 +698,6 @@ class SyncManager {
     this.sendToServer('addSyncDeviceInitialiseData', {
       initiatorDeviceId: this.deviceId,
       timestamp,
-      nonce: await this.getNonce(),
     })
 
     // wait for the server to confirm it has registered the add device request
@@ -698,7 +812,6 @@ class SyncManager {
 
     // respond to this add device request at the server
     this.sendToServer('JPAKEPass2', {
-      nonce: await this.getNonce(),
       // @ts-expect-error we get a type mismatch because we input Uint8Array instead of JsonifiedUint8Array, but it will get jsonified later
       pass2Result,
       responderDeviceId: this.deviceId,
@@ -727,7 +840,6 @@ class SyncManager {
     )
 
     this.sendToServer('JPAKEPass3', {
-      nonce: await this.getNonce(),
       initiatorDeviceId: this.activeAddDeviceFlow.initiatorDeviceId,
       // @ts-expect-error we get a type mismatch because we input Uint8Array instead of JsonifiedUint8Array, but it will get jsonified later
       pass3Result,
@@ -759,7 +871,7 @@ class SyncManager {
       )
     }
 
-    if (!this.publicKey) {
+    if (!this.publicKeys.publicKey) {
       throw new SyncError('Public key not set')
     }
 
@@ -780,9 +892,12 @@ class SyncManager {
       this.activeAddDeviceFlow.initiatorDeviceId,
       this.activeAddDeviceFlow.responderDeviceId,
     )
-    const responderEncryptedPublicKey = await this.cryptoLib.encryptSymmetric(
+    // Both public keys, as one JSON payload: a peer that knows only where to
+    // seal to but not whose signature to expect cannot verify anything this
+    // device sends, so the two always travel together.
+    const responderEncryptedPublicKeys = await this.cryptoLib.encryptSymmetric(
       syncKey,
-      this.publicKey,
+      JSON.stringify(this.publicKeys) as PublicKeysString,
       handshakeAad,
     )
     const responderEncryptedDeviceInfo = await this.cryptoLib.encryptSymmetric(
@@ -791,17 +906,16 @@ class SyncManager {
       handshakeAad,
     )
 
-    // send our public key
+    // send our public keys
     this.sendToServer('publicKeyAndDeviceInfo', {
-      nonce: await this.getNonce(),
-      responderEncryptedPublicKey,
+      responderEncryptedPublicKeys,
       responderEncryptedDeviceInfo,
       initiatorDeviceId: this.activeAddDeviceFlow.initiatorDeviceId,
     })
   }
 
   private async sendFullVaultDataAndSetDeviceInfo(
-    responderEncryptedPublicKey: EncryptedPublicKey,
+    responderEncryptedPublicKeys: EncryptedPublicKeys,
     responderEncryptedDeviceInfo: Encrypted<string>,
   ) {
     if (!this.ws || !this.webSocketConnected) {
@@ -814,7 +928,7 @@ class SyncManager {
       )
     }
 
-    if (!this.publicKey) {
+    if (!this.publicKeys.publicKey) {
       throw new SyncError('Public key not set')
     }
 
@@ -824,11 +938,16 @@ class SyncManager {
       this.activeAddDeviceFlow.responderDeviceId,
     )
 
-    // Decrypt the received public key
-    const decryptedPublicKey = await this.cryptoLib.decryptSymmetric(
-      syncKey,
-      responderEncryptedPublicKey,
-      handshakeAad,
+    // Decrypt the received public keys. Shape-checked before use: they arrive
+    // under the JPAKE-derived key, so this is not a trust boundary, but a
+    // responder on a build that sends something else should fail here and not
+    // three messages later inside a curve.
+    const decryptedPublicKeys = parseDevicePublicKeys(
+      await this.cryptoLib.decryptSymmetric(
+        syncKey,
+        responderEncryptedPublicKeys,
+        handshakeAad,
+      ),
     )
 
     // decrypt the received device info
@@ -851,9 +970,10 @@ class SyncManager {
         ),
       )
 
-    // Send the encrypted vault data to the server
+    // Send the encrypted vault data to the server. No signature: it is
+    // encrypted under the JPAKE-derived sync key, which only a party that knew
+    // the out-of-band secret can hold. See importInitialVault.
     this.sendToServer('initialVault', {
-      nonce: await this.getNonce(),
       encryptedVaultData,
       initiatorDeviceId: this.activeAddDeviceFlow.initiatorDeviceId,
     })
@@ -861,7 +981,8 @@ class SyncManager {
     // save the added the sync device, done via command so this is synced to all sync devices
     const command = AddSyncDeviceCommand.create({
       deviceId: this.activeAddDeviceFlow.responderDeviceId,
-      publicKey: decryptedPublicKey,
+      publicKey: decryptedPublicKeys.publicKey,
+      signingPublicKey: decryptedPublicKeys.signingPublicKey,
       deviceInfo: responderDeviceInfo,
     })
     await this.commandManager.execute(command)
@@ -879,6 +1000,13 @@ class SyncManager {
       )
     }
 
+    // Deliberately NOT signature-checked, unlike a resilver. This vault arrives
+    // under the JPAKE-derived sync key, and reaching that key means proving
+    // knowledge of the 60-byte out-of-band secret -- so the channel is already
+    // mutually authenticated, and a signature would be a second statement by
+    // the same party. It is also where the responder LEARNS the initiator's
+    // signing key, from the device list inside this vault, which is sound for
+    // exactly the same reason.
     await this.importVaultState(
       encryptedVaultState,
       this.activeAddDeviceFlow.syncKey,
@@ -1016,19 +1144,45 @@ class SyncManager {
           return
         }
 
+        // The exact bytes that get signed and then sealed. The command id is
+        // INSIDE now -- it used to be stripped here and taken from the server's
+        // envelope on the other side, which made the dedup key something the
+        // server chose (key-hierarchy-review/15-sync-replay-protection.md).
+        const payload = JSON.stringify({
+          ...commandJson,
+          padding: generateNonCryptographicRandomString(), // make it harder to guess the length
+        })
+
+        // Signed per recipient, not once for all of them: the recipient is part
+        // of what is signed, so one signature for every peer would be a
+        // signature that says nothing about who a command was meant for.
+        const signature = await this.cryptoLib.sign(
+          this.secretKeys.signingSecretKey,
+          buildCommandSignatureMessage(
+            command.id,
+            this.deviceId,
+            device.deviceId,
+            payload,
+          ),
+        )
+
         // unique symmetricKey per command
         const symmetricKey = await this.cryptoLib.createSymmetricKey()
         const encryptedSymmetricKey = await this.cryptoLib.encrypt(
           device.publicKey,
           symmetricKey,
         )
+        // The signature goes INSIDE the ciphertext, with the sender's id. The
+        // server relays the envelope untouched and learns nothing about who is
+        // talking to whom -- and cannot strip a signature either, because a
+        // payload without one is refused on the other side.
         const encryptedCommand = await this.cryptoLib.encryptSymmetric(
           symmetricKey,
           JSON.stringify({
-            ...commandJson,
-            id: undefined,
-            padding: generateNonCryptographicRandomString(), // make it harder to guess the length
-          }),
+            from: this.deviceId,
+            signature,
+            payload,
+          } satisfies SignedCommandEnvelope),
           buildCommandAad(command.id, device.deviceId),
         )
 
@@ -1049,7 +1203,7 @@ class SyncManager {
       await this.persistentStorageManager.save()
     }
 
-    await this.processCommandSendQueue()
+    this.processCommandSendQueue()
   }
 
   /**
@@ -1106,7 +1260,7 @@ class SyncManager {
     return flushed
   }
 
-  private async processCommandSendQueue() {
+  private processCommandSendQueue() {
     if (this.syncDevices.length === 0) {
       // no devices to sync with, no need to send anything
       this.commandSendQueue = []
@@ -1131,7 +1285,6 @@ class SyncManager {
     }
 
     this.sendToServer('syncCommands', {
-      nonce: await this.getNonce(),
       commands: this.commandSendQueue,
     })
   }
@@ -1163,6 +1316,223 @@ class SyncManager {
   }
 
   /**
+   * Refuses a command this device has already applied, or one old enough that
+   * it can no longer prove it has not.
+   *
+   * Two checks, because the record of what has been applied is deliberately
+   * bounded (see `recordProcessedCommands`):
+   *
+   * - an id still in `processedCommands` is a duplicate outright;
+   * - a command at or below its sender's floor is one whose id may have been
+   *   pruned, so it is refused rather than guessed at.
+   *
+   * The floor is per peer and only ever rises when that peer's OWN traffic is
+   * pruned, which is what keeps this from punishing a device that has been
+   * offline for a long time: a quiet peer's floor stays where it was, and its
+   * queued commands still apply when it comes back.
+   *
+   * Note what this is NOT for. A malicious server cannot re-deliver a stored
+   * blob under a fresh id -- the command id is in the AAD and inside the signed
+   * payload, so a changed id fails to decrypt and then fails to verify. This is
+   * about the same id arriving twice, which the server does routinely and
+   * legitimately on every reconnect, and which used to be caught only by an
+   * in-memory set that a restart emptied.
+   * @param from - The peer that signed the command.
+   * @param command - The verified command.
+   * @throws {SyncError} If the command has been applied before.
+   */
+  private assertNotReplayed(from: DeviceId, command: SyncCommand): void {
+    if (this.processedCommands.some((seen) => seen.id === command.id)) {
+      throw new SyncError('Command has already been applied')
+    }
+    const floor = this.replayFloors[from]
+    if (floor !== undefined && (command.timestamp ?? 0) <= floor) {
+      throw new SyncError("Command is older than this peer's replay floor")
+    }
+  }
+
+  /**
+   * Notes where a verified command came from until it has been applied.
+   * @param commandId - The command's id.
+   * @param origin - The peer that signed it and the timestamp it carried.
+   */
+  private rememberCommandOrigin(
+    commandId: string,
+    origin: { from: DeviceId; timestamp: number },
+  ): void {
+    this.pendingCommandOrigins.set(commandId, origin)
+    // Map iterates in insertion order, so the first key is the oldest.
+    while (this.pendingCommandOrigins.size > MAX_PENDING_COMMAND_ORIGINS) {
+      const oldest = this.pendingCommandOrigins.keys().next()
+      if (oldest.done) {
+        break
+      }
+      this.pendingCommandOrigins.delete(oldest.value)
+    }
+  }
+
+  /**
+   * Records the commands that were just applied, and prunes the record.
+   *
+   * Bounded two ways, because "remember every command id forever" is a vault
+   * that grows without limit: anything older than REPLAY_RETENTION_MS goes, and
+   * so does anything beyond MAX_PROCESSED_COMMANDS, oldest first. Pruning an
+   * entry raises its sender's floor to that entry's timestamp, so forgetting an
+   * id never makes it acceptable again -- the set shrinks without the
+   * protection weakening.
+   * @param executedIds - The ids `processRemoteCommands` reported as applied.
+   */
+  private async recordProcessedCommands(executedIds: string[]): Promise<void> {
+    let changed = false
+    for (const id of executedIds) {
+      const origin = this.pendingCommandOrigins.get(id)
+      this.pendingCommandOrigins.delete(id)
+      if (!origin) {
+        // A locally issued command, or one this device did not verify. Only
+        // remote commands can be replayed at it.
+        continue
+      }
+      this.processedCommands.push({ id, ...origin })
+      changed = true
+    }
+    if (!changed) {
+      return
+    }
+
+    const cutoff = Date.now() - REPLAY_RETENTION_MS
+    const kept: ProcessedCommand[] = []
+    const pruned: ProcessedCommand[] = []
+    // Oldest first, so the count bound drops the oldest rather than whichever
+    // happened to be at the front of the array.
+    const ordered = [...this.processedCommands].sort(
+      (a, b) => a.timestamp - b.timestamp,
+    )
+    for (const entry of ordered) {
+      const tooOld = entry.timestamp < cutoff
+      const tooMany = ordered.length - pruned.length > MAX_PROCESSED_COMMANDS
+      if (tooOld || tooMany) {
+        pruned.push(entry)
+      } else {
+        kept.push(entry)
+      }
+    }
+    for (const entry of pruned) {
+      this.replayFloors[entry.from] = Math.max(
+        this.replayFloors[entry.from] ?? 0,
+        entry.timestamp,
+      )
+    }
+    this.processedCommands = kept
+
+    // The vault has to be written even when no command changed a single entry:
+    // the record of what has been applied is itself the thing that must survive
+    // a restart.
+    await this.persistentStorageManager.save()
+  }
+
+  /**
+   * Checks that a full vault state was signed by the peer it claims to be from.
+   *
+   * A resilver is the one message that carries the whole vault, and it was as
+   * unauthenticated as commands were: it is sealed to this device's public key,
+   * and sealing is a public operation. The `fromDeviceId` on it is stamped by
+   * the server. This is what makes it mean something.
+   *
+   * The initial vault of a pairing flow does NOT come through here -- see
+   * importInitialVault for why the JPAKE key already settles that one.
+   * @param signingPublicKey - The key this vault holds for the claimed sender.
+   * @param fromDeviceId - The device the vault data claims to be from.
+   * @param encryptedVaultData - The sealed vault state, as it arrived.
+   * @param signature - The signature that travelled with it.
+   * @throws {SyncError} If the signature is absent or does not verify.
+   */
+  private async assertVaultDataSignature(
+    signingPublicKey: SigningPublicKey,
+    fromDeviceId: DeviceId,
+    encryptedVaultData: EncryptedVaultStateString,
+    signature: Signature | undefined,
+  ): Promise<void> {
+    const signatureIsValid =
+      typeof signature === 'string' &&
+      (await this.cryptoLib.verify(
+        signingPublicKey,
+        buildVaultDataSignatureMessage(
+          fromDeviceId,
+          this.deviceId,
+          encryptedVaultData,
+        ),
+        signature,
+      ))
+    if (!signatureIsValid) {
+      throw new SyncError('Vault data signature does not verify')
+    }
+  }
+
+  /**
+   * Checks that a decrypted command really came from the peer it names.
+   *
+   * Everything this does is a refusal, and the order is deliberate: shape, then
+   * sender, then signature, then the id. Each step is what makes the next one
+   * meaningful, and no step reports which one failed -- `receiveCommands` turns
+   * every throw here into the same warning, because telling a prober whether a
+   * device id is known is already telling them something.
+   *
+   * The signature is the whole point (see
+   * key-hierarchy-review/13-sync-command-authentication.md). Sealing a command
+   * to this device's public key proves nothing about who sealed it: sealing is
+   * a public operation, so before this check anyone holding a device's public
+   * key could mint commands for it. Now a command is only acted on if a device
+   * CURRENTLY in this vault's peer list signed it, for this recipient, under
+   * this command id -- which is also what finally makes `removeSyncDevice` a
+   * revocation rather than bookkeeping.
+   * @param commandId - The id the server delivered the command under.
+   * @param envelope - The decrypted envelope, which may be anything at all.
+   * @returns The command and the id of the peer that signed it.
+   * @throws {SyncError} If the envelope is not a command from a known peer.
+   */
+  private async verifyCommandEnvelope(
+    commandId: string,
+    envelope: Partial<SignedCommandEnvelope>,
+  ): Promise<{ command: SyncCommand; from: DeviceId }> {
+    const { from, signature, payload } = envelope
+    if (
+      typeof from !== 'string' ||
+      typeof signature !== 'string' ||
+      typeof payload !== 'string'
+    ) {
+      throw new SyncError('Command envelope is not signed')
+    }
+
+    // Never this device itself: a command signed by our own key can only be one
+    // the server reflected back at us.
+    const sender = this.syncDevices.find(
+      (device) => device.deviceId === from && device.deviceId !== this.deviceId,
+    )
+    if (!sender) {
+      throw new SyncError('Command is from a device that is not a peer')
+    }
+
+    const signatureIsValid = await this.cryptoLib.verify(
+      sender.signingPublicKey,
+      buildCommandSignatureMessage(commandId, from, this.deviceId, payload),
+      signature,
+    )
+    if (!signatureIsValid) {
+      throw new SyncError('Command signature does not verify')
+    }
+
+    const command = JSON.parse(payload) as SyncCommand
+    // The signed payload carries the id, and the server's envelope carries it
+    // too. They have to agree, because only the signed one is authenticated and
+    // only the envelope one is what the dedup set and the AAD were built from.
+    if (command.id !== commandId) {
+      throw new SyncError('Command id does not match its envelope')
+    }
+
+    return { command, from }
+  }
+
+  /**
    * Receives and processes commands from other devices.
    * @param encryptedCommands - The commands
    * @throws {CryptoError} If decryption fails.
@@ -1179,30 +1549,37 @@ class SyncManager {
         // reported in syncCommandsExecuted, so the server redelivers it.
         try {
           const symmetricKey = await this.cryptoLib.decrypt(
-            this.privateKey,
+            this.secretKeys.privateKey,
             data.encryptedSymmetricKey,
           )
 
-          const command = JSON.parse(
-            await this.cryptoLib.decryptSymmetric(
-              symmetricKey,
-              data.encryptedCommand,
-              buildCommandAad(data.commandId, this.deviceId),
-            ),
-          ) as Omit<SyncCommand, 'id'>
-
-          this.commandManager.receiveRemoteCommand({
-            ...command,
-            id: data.commandId,
-          } as SyncCommand)
+          const { command, from } = await this.verifyCommandEnvelope(
+            data.commandId,
+            JSON.parse(
+              await this.cryptoLib.decryptSymmetric(
+                symmetricKey,
+                data.encryptedCommand,
+                buildCommandAad(data.commandId, this.deviceId),
+              ),
+            ) as Partial<SignedCommandEnvelope>,
+          )
+          this.assertNotReplayed(from, command)
+          this.rememberCommandOrigin(command.id, {
+            from,
+            timestamp: command.timestamp ?? 0,
+          })
+          this.commandManager.receiveRemoteCommand(command)
         } catch {
           // No detail in the message: which of the several possible causes it
-          // was is exactly what an attacker probing the sync path wants told.
+          // was -- undecryptable, unsigned, signed by a device this vault does
+          // not know, or a replay -- is exactly what an attacker probing the
+          // sync path wants told.
           this.log(
             'warning',
             `Dropping remote command ${data.commandId}: it could not be ` +
-              `decrypted or was not valid. It will be retried if the sending ` +
-              `device is still on a compatible version.`,
+              `decrypted, was not authentic, or had already been applied. It ` +
+              `will be retried if the sending device is still on a compatible ` +
+              `version.`,
           )
         }
       }),
@@ -1210,6 +1587,12 @@ class SyncManager {
 
     const commandsExecutedIds =
       await this.commandManager.processRemoteCommands()
+
+    // Recorded only for commands that actually ran, so a command dropped for
+    // any other reason is still redeliverable, and persisted because the point
+    // of the record is to outlive the process. See
+    // key-hierarchy-review/15-sync-replay-protection.md.
+    await this.recordProcessedCommands(commandsExecutedIds)
 
     // if this was the first time we received commands,
     // we can signal that we're done loading after the commands where processed
@@ -1248,9 +1631,16 @@ class SyncManager {
 
       this.sendToServer('vault', {
         forDeviceId: device.deviceId,
-        nonce: await this.getNonce(),
         encryptedVaultData,
         encryptedSymmetricKey,
+        signature: await this.cryptoLib.sign(
+          this.secretKeys.signingSecretKey,
+          buildVaultDataSignatureMessage(
+            this.deviceId,
+            device.deviceId,
+            encryptedVaultData,
+          ),
+        ),
       })
     }
   }
@@ -1322,10 +1712,9 @@ class SyncManager {
   /**
    * Requests a resilver of the vault
    */
-  async requestResilver() {
+  requestResilver() {
     this.sendToServer('startResilver', {
       deviceIds: this.syncDevices.map((d) => d.deviceId),
-      nonce: await this.getNonce(),
     })
 
     // Set requestedResilver to true for 60 seconds, after this we no longer

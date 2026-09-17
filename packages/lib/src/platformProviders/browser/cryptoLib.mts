@@ -11,20 +11,38 @@ import { argon2id } from 'hash-wasm'
 import { CryptoError } from '../../FavaLibError.mjs'
 import type CryptoLib from '../../interfaces/CryptoLib.mjs'
 import type {
+  DeviceSecretKeys,
   Encrypted,
-  EncryptedPrivateKey,
+  EncryptedSecretKeys,
   EncryptedSymmetricKey,
   KdfParameters,
+  LegacyEncryptedPrivateKey,
   MacKey,
   Password,
   PasswordHash,
   PrivateKey,
   PublicKey,
   Salt,
+  Signature,
+  SigningPublicKey,
+  SigningSecretKey,
   SymmetricKey,
   SyncKey,
 } from '../../interfaces/CryptoLib.mjs'
 import { V1_KDF_PARAMETERS, V2_KDF_PARAMETERS } from '../../version.mjs'
+import { buildKeyWrapAad } from '../../utils/canonical.mjs'
+import {
+  createEncryptionKeyPair,
+  createSigningKeyPair,
+  encryptionPublicKeyFromSecret,
+  openSeal,
+  parseSecretKeys,
+  sealTo,
+  serialiseSecretKeys,
+  signMessage,
+  signingPublicKeyFromSecret,
+  verifyMessage,
+} from '../shared/curves.mjs'
 
 /**
  * The AES-GCM nonce length, in bytes. Twelve, not the sixteen the v1 CBC path
@@ -42,6 +60,15 @@ const GCM_NONCE_BYTES = 12
  */
 const V2_ENVELOPE_PREFIX = 'v2'
 
+/** HKDF info for the key that seals the device's two secret keys at rest. */
+const KEY_WRAP_INFO = 'favalib:key-wrap:v2'
+
+/** HKDF info for the key that seals the vault's symmetric key at rest. */
+const DEK_WRAP_INFO = 'favalib:dek-wrap:v2'
+
+/** HKDF info for the envelope MAC key. */
+const ENVELOPE_MAC_INFO = 'favalib:envelope-mac:v2'
+
 /**
  * Normalizes line endings in a string so they match the
  * node cryptoprovider format
@@ -51,24 +78,6 @@ const V2_ENVELOPE_PREFIX = 'v2'
 const normalizeLineEndings = (str: string): string => {
   return str.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
 }
-
-/**
- * The RSA-OAEP options for storage version 2: MGF1-SHA-256.
- *
- * node-forge takes the label digest and the MGF1 digest SEPARATELY, while
- * node's `oaepHash: 'sha256'` sets both at once. Passing `md` here without
- * `mgf1.md` produces ciphertext that round-trips perfectly within forge and
- * fails only against the node provider, which is exactly the kind of break
- * that reaches users rather than CI. Both are set, and
- * tests/CryptoProviders/compare-node-browser.test.ts asserts the half-migrated
- * combination specifically.
- * @returns Fresh forge message digest objects; they are stateful, so a new
- * pair is needed per call.
- */
-const oaepSha256Options = () => ({
-  md: forge.md.sha256.create(),
-  mgf1: { md: forge.md.sha256.create() },
-})
 
 /**
  * Create a password hash
@@ -133,20 +142,28 @@ class BrowserCryptoLib implements CryptoLib {
       V2_KDF_PARAMETERS,
     )
 
-    const { privateKey, encryptedPrivateKey, publicKey } =
-      await this.createKeyPair(passwordHash)
+    const { privateKey, publicKey } = createEncryptionKeyPair()
+    const { signingSecretKey, signingPublicKey } = createSigningKeyPair()
     const symmetricKey = await this.createSymmetricKey()
-    const encryptedSymmetricKey = await this.encrypt(publicKey, symmetricKey)
+
+    const sealed = await this.sealKeyMaterial(
+      { privateKey, signingSecretKey },
+      symmetricKey,
+      passwordHash,
+      salt,
+      V2_KDF_PARAMETERS,
+    )
     // Derived from the passwordHash we already have; never a second argon2 run.
     const macKey = await this.deriveEnvelopeMacKey(passwordHash, salt)
 
     return {
       privateKey,
+      signingSecretKey,
       symmetricKey,
-      encryptedPrivateKey,
-      encryptedSymmetricKey: encryptedSymmetricKey as EncryptedSymmetricKey,
-      salt,
       publicKey,
+      signingPublicKey,
+      salt,
+      ...sealed,
       macKey,
       kdf: V2_KDF_PARAMETERS,
     }
@@ -156,7 +173,7 @@ class BrowserCryptoLib implements CryptoLib {
    * @inheritdoc
    */
   async encryptKeys(
-    privateKey: PrivateKey,
+    secretKeys: DeviceSecretKeys,
     symmetricKey: SymmetricKey,
     salt: Salt,
     password: Password,
@@ -165,17 +182,58 @@ class BrowserCryptoLib implements CryptoLib {
     // recreate passwordHash
     const passwordHash = await generatePasswordHash(salt, password, kdf)
 
-    const encryptedPrivateKey = await this.encryptPrivateKey(
-      privateKey,
+    const sealed = await this.sealKeyMaterial(
+      secretKeys,
+      symmetricKey,
       passwordHash,
+      salt,
+      kdf,
     )
-    const publicKey = await this.getPublicKeyFromPrivateKey(privateKey)
-    const encryptedSymmetricKey = await this.encrypt(publicKey, symmetricKey)
+    const macKey = await this.deriveEnvelopeMacKey(passwordHash, salt)
+
+    return { ...sealed, macKey }
+  }
+
+  /**
+   * @inheritdoc
+   */
+  async decryptKeys(
+    encryptedSecretKeys: EncryptedSecretKeys,
+    encryptedSymmetricKey: EncryptedSymmetricKey,
+    salt: Salt,
+    password: Password,
+    kdf: KdfParameters = V2_KDF_PARAMETERS,
+  ): Promise<{
+    privateKey: PrivateKey
+    signingSecretKey: SigningSecretKey
+    symmetricKey: SymmetricKey
+    publicKey: PublicKey
+    signingPublicKey: SigningPublicKey
+    macKey: MacKey
+  }> {
+    // recreate passwordHash
+    const passwordHash = await generatePasswordHash(salt, password, kdf)
+
+    const secretKeys = await this.openSecretKeys(
+      encryptedSecretKeys,
+      passwordHash,
+      salt,
+      kdf,
+    )
+    const symmetricKey = await this.decryptSymmetric(
+      await this.deriveWrappingKey(passwordHash, salt, DEK_WRAP_INFO),
+      encryptedSymmetricKey,
+      buildKeyWrapAad('symmetric-key', salt, kdf),
+    )
+    // Same passwordHash, no second derivation: at m=64 MiB/t=3/p=4 a second
+    // argon2 run would add ~260 ms to every unlock.
     const macKey = await this.deriveEnvelopeMacKey(passwordHash, salt)
 
     return {
-      encryptedPrivateKey,
-      encryptedSymmetricKey: encryptedSymmetricKey as EncryptedSymmetricKey,
+      ...secretKeys,
+      publicKey: encryptionPublicKeyFromSecret(secretKeys.privateKey),
+      signingPublicKey: signingPublicKeyFromSecret(secretKeys.signingSecretKey),
+      symmetricKey,
       macKey,
     }
   }
@@ -183,64 +241,32 @@ class BrowserCryptoLib implements CryptoLib {
   /**
    * @inheritdoc
    */
-  async decryptKeys(
-    encryptedPrivateKey: EncryptedPrivateKey,
-    encryptedSymmetricKey: EncryptedSymmetricKey,
-    salt: Salt,
-    password: Password,
-    kdf: KdfParameters = V2_KDF_PARAMETERS,
-  ): Promise<{
-    privateKey: PrivateKey
-    symmetricKey: SymmetricKey
-    publicKey: PublicKey
-    macKey: MacKey
-  }> {
-    // recreate passwordHash
-    const passwordHash = await generatePasswordHash(salt, password, kdf)
-
-    const { privateKey, publicKey } = await this.decryptPrivateKey(
-      encryptedPrivateKey,
-      passwordHash,
-    )
-    const symmetricKey = await this.decrypt(privateKey, encryptedSymmetricKey)
-    // Same passwordHash, no second derivation: at m=64 MiB/t=3/p=4 a second
-    // argon2 run would add ~260 ms to every unlock.
-    const macKey = await this.deriveEnvelopeMacKey(passwordHash, salt)
-
-    return { privateKey, publicKey, symmetricKey, macKey }
-  }
-
-  /**
-   * @inheritdoc
-   */
   async decryptKeysV1(
-    encryptedPrivateKey: EncryptedPrivateKey,
+    encryptedPrivateKey: LegacyEncryptedPrivateKey,
     encryptedSymmetricKey: EncryptedSymmetricKey,
     salt: Salt,
     password: Password,
-  ): Promise<{
-    privateKey: PrivateKey
-    symmetricKey: SymmetricKey
-    publicKey: PublicKey
-  }> {
+  ): Promise<{ symmetricKey: SymmetricKey }> {
     const passwordHash = await generatePasswordHash(
       salt,
       password,
       V1_KDF_PARAMETERS,
     )
 
-    const { privateKey, publicKey } = await this.decryptPrivateKey(
+    const privateKey = await this.decryptLegacyPrivateKey(
       encryptedPrivateKey,
       passwordHash,
     )
-    // v1 wrapped the symmetric key with RSA-OAEP/MGF1-SHA-1.
+    // v1 wrapped the symmetric key with RSA-OAEP/MGF1-SHA-1. The RSA keypair
+    // itself is not returned: the upgrade mints a fresh curve pair, so this key
+    // is read exactly once and then discarded.
     const privateKeyObj = forge.pki.privateKeyFromPem(privateKey)
     const symmetricKey = privateKeyObj.decrypt(
       atob(encryptedSymmetricKey),
       'RSA-OAEP',
     ) as SymmetricKey
 
-    return { privateKey, publicKey, symmetricKey }
+    return { symmetricKey }
   }
 
   /**
@@ -250,6 +276,30 @@ class BrowserCryptoLib implements CryptoLib {
     passwordHash: PasswordHash,
     salt: Salt,
   ): Promise<MacKey> {
+    return (await this.deriveWrappingKey(
+      passwordHash,
+      salt,
+      ENVELOPE_MAC_INFO,
+    )) as string as MacKey
+  }
+
+  /**
+   * Derives one of the three keys the password hash feeds: the two at-rest
+   * wrapping keys and the envelope MAC key.
+   *
+   * They differ only in the HKDF info, which is what keeps them independent --
+   * a seal made under one can never be opened with another, whatever a caller
+   * confuses.
+   * @param passwordHash - The argon2id password hash (hex).
+   * @param salt - The vault salt, used as the HKDF salt.
+   * @param info - The domain separator for this key's purpose.
+   * @returns A promise resolving to the derived key, base64 encoded.
+   */
+  private async deriveWrappingKey(
+    passwordHash: PasswordHash,
+    salt: Salt,
+    info: string,
+  ): Promise<SymmetricKey> {
     // hexToUint8Array, NOT stringToUint8Array: the input keying material is
     // the 64 bytes the hash represents, not the 128 characters it is printed
     // as. Both readings "work" in isolation and diverge silently between
@@ -267,12 +317,83 @@ class BrowserCryptoLib implements CryptoLib {
         name: 'HKDF',
         hash: 'SHA-256',
         salt: stringToUint8Array(salt),
-        info: stringToUint8Array('favalib:envelope-mac:v2'),
+        info: stringToUint8Array(info),
       },
       key,
       256,
     )
-    return uint8ArrayToBase64(new Uint8Array(bits)) as MacKey
+    return uint8ArrayToBase64(new Uint8Array(bits)) as SymmetricKey
+  }
+
+  /**
+   * Seals a device's secret keys and its symmetric key under the password.
+   *
+   * Two seals under two separately derived keys, rather than one blob holding
+   * everything: `changePassword` rewrites both, but a resilver and an unlock
+   * need only one of them, and keeping them apart means neither path can be
+   * made to read the other's bytes.
+   * @param secretKeys - The device's two secret keys.
+   * @param symmetricKey - The key the vault state is encrypted under.
+   * @param passwordHash - The argon2id password hash (hex).
+   * @param salt - The vault salt.
+   * @param kdf - The parameters the hash was produced with.
+   * @returns A promise resolving to both sealed forms.
+   */
+  private async sealKeyMaterial(
+    secretKeys: DeviceSecretKeys,
+    symmetricKey: SymmetricKey,
+    passwordHash: PasswordHash,
+    salt: Salt,
+    kdf: KdfParameters,
+  ): Promise<{
+    encryptedSecretKeys: EncryptedSecretKeys
+    encryptedSymmetricKey: EncryptedSymmetricKey
+  }> {
+    const encryptedSecretKeys = await this.encryptSymmetric(
+      await this.deriveWrappingKey(passwordHash, salt, KEY_WRAP_INFO),
+      serialiseSecretKeys(secretKeys),
+      buildKeyWrapAad('secret-keys', salt, kdf),
+    )
+    const encryptedSymmetricKey = await this.encryptSymmetric(
+      await this.deriveWrappingKey(passwordHash, salt, DEK_WRAP_INFO),
+      symmetricKey,
+      buildKeyWrapAad('symmetric-key', salt, kdf),
+    )
+
+    return { encryptedSecretKeys, encryptedSymmetricKey }
+  }
+
+  /**
+   * Opens the seal around a device's secret keys.
+   *
+   * A failure here is reported as an invalid password, which is what it almost
+   * always is: at rest the password is the only variable, and the alternative
+   * -- a modified vault -- is what the envelope MAC is checked for immediately
+   * afterwards, with a message that says so.
+   * @param encryptedSecretKeys - The sealed secret keys.
+   * @param passwordHash - The argon2id password hash (hex).
+   * @param salt - The vault salt.
+   * @param kdf - The parameters the hash was produced with.
+   * @returns A promise resolving to the two secret keys.
+   * @throws {CryptoError} If the seal does not open.
+   */
+  private async openSecretKeys(
+    encryptedSecretKeys: EncryptedSecretKeys,
+    passwordHash: PasswordHash,
+    salt: Salt,
+    kdf: KdfParameters,
+  ): Promise<DeviceSecretKeys> {
+    let serialised: string
+    try {
+      serialised = await this.decryptSymmetric(
+        await this.deriveWrappingKey(passwordHash, salt, KEY_WRAP_INFO),
+        encryptedSecretKeys,
+        buildKeyWrapAad('secret-keys', salt, kdf),
+      )
+    } catch {
+      throw new CryptoError('Invalid password')
+    }
+    return parseSecretKeys(serialised)
   }
 
   /**
@@ -328,13 +449,7 @@ class BrowserCryptoLib implements CryptoLib {
    * @inheritdoc
    */
   async encrypt<T extends string>(publicKey: PublicKey, plainText: T) {
-    const publicKeyObj = forge.pki.publicKeyFromPem(publicKey)
-    const encrypted = publicKeyObj.encrypt(
-      plainText,
-      'RSA-OAEP',
-      oaepSha256Options(),
-    )
-    return Promise.resolve(btoa(encrypted) as Encrypted<T>)
+    return sealTo(this, publicKey, plainText)
   }
 
   /**
@@ -344,13 +459,25 @@ class BrowserCryptoLib implements CryptoLib {
     privateKey: PrivateKey,
     encryptedText: Encrypted<T>,
   ) {
-    const privateKeyObj = forge.pki.privateKeyFromPem(privateKey)
-    const decrypted = privateKeyObj.decrypt(
-      atob(encryptedText),
-      'RSA-OAEP',
-      oaepSha256Options(),
-    )
-    return Promise.resolve(decrypted as T)
+    return openSeal(this, privateKey, encryptedText)
+  }
+
+  /**
+   * @inheritdoc
+   */
+  async sign(signingSecretKey: SigningSecretKey, message: string) {
+    return Promise.resolve(signMessage(signingSecretKey, message))
+  }
+
+  /**
+   * @inheritdoc
+   */
+  async verify(
+    signingPublicKey: SigningPublicKey,
+    message: string,
+    signature: Signature,
+  ) {
+    return Promise.resolve(verifyMessage(signingPublicKey, message, signature))
   }
 
   /**
@@ -490,25 +617,21 @@ class BrowserCryptoLib implements CryptoLib {
     return uint8ArrayToBase64(key) as SyncKey
   }
 
-  private async encryptPrivateKey(
-    privateKey: PrivateKey,
+  /**
+   * Unwraps a storage version 1 PBES2-encrypted RSA private key.
+   *
+   * MIGRATION PATH ONLY, reachable from decryptKeysV1 and nowhere else. It and
+   * the OAEP unwrap beside it are the last RSA operations in the provider, and
+   * they go with the v1 read path.
+   * @param encryptedPrivateKey - The stored v1 encrypted private key.
+   * @param passwordHash - The argon2id hash the key was wrapped under.
+   * @returns A promise resolving to the plaintext private key PEM.
+   * @throws {CryptoError} If the password or the key is not usable.
+   */
+  private async decryptLegacyPrivateKey(
+    encryptedPrivateKey: LegacyEncryptedPrivateKey,
     passwordHash: PasswordHash,
-  ): Promise<EncryptedPrivateKey> {
-    const privateKeyObj = forge.pki.privateKeyFromPem(privateKey)
-    const encryptedPrivateKey = forge.pki.encryptRsaPrivateKey(
-      privateKeyObj,
-      passwordHash,
-      {
-        algorithm: 'aes256',
-      },
-    ) as EncryptedPrivateKey
-    return Promise.resolve(encryptedPrivateKey)
-  }
-
-  private async decryptPrivateKey(
-    encryptedPrivateKey: EncryptedPrivateKey,
-    passwordHash: PasswordHash,
-  ): Promise<{ privateKey: PrivateKey; publicKey: PublicKey }> {
+  ): Promise<string> {
     try {
       const privateKeyPem = forge.pki.decryptRsaPrivateKey(
         encryptedPrivateKey,
@@ -517,14 +640,9 @@ class BrowserCryptoLib implements CryptoLib {
       if (!privateKeyPem) {
         throw new CryptoError('Invalid password')
       }
-      const privateKey = forge.pki.privateKeyToPem(privateKeyPem)
-      const publicKey = forge.pki.publicKeyToPem(
-        forge.pki.setRsaPublicKey(privateKeyPem.n, privateKeyPem.e),
+      return Promise.resolve(
+        normalizeLineEndings(forge.pki.privateKeyToPem(privateKeyPem)),
       )
-      return Promise.resolve({
-        privateKey: normalizeLineEndings(privateKey) as PrivateKey,
-        publicKey: normalizeLineEndings(publicKey) as PublicKey,
-      })
     } catch (err) {
       // eslint-disable-next-line no-restricted-globals
       if (err instanceof Error) {
@@ -537,46 +655,6 @@ class BrowserCryptoLib implements CryptoLib {
       }
       throw err
     }
-  }
-
-  private async createKeyPair(password: string): Promise<{
-    privateKey: PrivateKey
-    encryptedPrivateKey: EncryptedPrivateKey
-    publicKey: PublicKey
-  }> {
-    return new Promise((resolve, reject) => {
-      forge.pki.rsa.generateKeyPair({ bits: 4096 }, (err, keyPair) => {
-        if (err) {
-          reject(err)
-        } else {
-          const publicKey = forge.pki.publicKeyToPem(keyPair.publicKey)
-          const privateKey = forge.pki.privateKeyToPem(keyPair.privateKey)
-          const encryptedPrivateKey = forge.pki.encryptRsaPrivateKey(
-            keyPair.privateKey,
-            password,
-            {
-              algorithm: 'aes256',
-            },
-          ) as EncryptedPrivateKey
-
-          resolve({
-            privateKey: normalizeLineEndings(privateKey) as PrivateKey,
-            publicKey: normalizeLineEndings(publicKey) as PublicKey,
-            encryptedPrivateKey,
-          })
-        }
-      })
-    })
-  }
-
-  private async getPublicKeyFromPrivateKey(
-    privateKey: PrivateKey,
-  ): Promise<PublicKey> {
-    const privateKeyObj = forge.pki.privateKeyFromPem(privateKey)
-    const publicKey = forge.pki.publicKeyToPem(
-      forge.pki.setRsaPublicKey(privateKeyObj.n, privateKeyObj.e),
-    )
-    return Promise.resolve(normalizeLineEndings(publicKey) as PublicKey)
   }
 }
 

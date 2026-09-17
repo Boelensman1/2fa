@@ -3,8 +3,26 @@ import type { Tagged } from 'type-fest'
 /** Represents a device id */
 export type DeviceId = Tagged<string, 'DeviceId'>
 
-/** Represents a public key */
+/**
+ * Represents a device's X25519 public key (base64 encoded, 32 raw bytes).
+ *
+ * The KEY AGREEMENT half of a device's identity: what a peer seals a message
+ * to. The signing half is SigningPublicKey, and the two are deliberately
+ * separate types -- they are both 32 base64-encoded bytes, so nothing but the
+ * type system can tell one from the other at a call site.
+ *
+ * Not versioned in itself. Every surface a key travels on carries a version of
+ * its own (storageVersion in the vault, pairingVersion in a pairing payload,
+ * version in a command), so a tag here would be a second source of truth that
+ * could only ever disagree with the first.
+ */
 export type PublicKey = Tagged<string, 'PublicKey'>
+
+/** Represents a device's Ed25519 public key (base64 encoded, 32 raw bytes) */
+export type SigningPublicKey = Tagged<string, 'SigningPublicKey'>
+
+/** Represents an Ed25519 signature (base64 encoded, 64 raw bytes) */
+export type Signature = Tagged<string, 'Signature'>
 
 /** Represents a symmetric key */
 export type SymmetricKey = Tagged<string, 'SymmetricKey'>
@@ -12,14 +30,17 @@ export type SymmetricKey = Tagged<string, 'SymmetricKey'>
 /** Represents the stringified form of a vault state */
 export type VaultStateString = Tagged<string, 'VaultState'>
 
+/** Represents the stringified form of a device's pair of public keys */
+export type PublicKeysString = Tagged<string, 'PublicKeysString'>
+
 // `Encrypted<T>` tags the original string type to denote that it is encrypted
 export type Encrypted<T extends string> = Tagged<T, 'Encrypted'>
 
 /** Represents an encrypted symmetric key (base64 encoded) */
 export type EncryptedSymmetricKey = Encrypted<SymmetricKey>
 
-/** Represents an encrypted public key (base64 encoded) */
-export type EncryptedPublicKey = Encrypted<PublicKey>
+/** Represents a device's encrypted pair of public keys (base64 encoded) */
+export type EncryptedPublicKeys = Encrypted<PublicKeysString>
 
 /** Represents an encrypted vault state (base64 encoded) */
 export type EncryptedVaultStateString = Encrypted<VaultStateString>

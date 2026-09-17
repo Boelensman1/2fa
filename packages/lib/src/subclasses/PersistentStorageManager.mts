@@ -1,13 +1,12 @@
 import { AuthenticationError } from '../FavaLibError.mjs'
 
 import type {
-  EncryptedPrivateKey,
+  DeviceSecretKeys,
+  EncryptedSecretKeys,
   EncryptedSymmetricKey,
   KdfParameters,
   MacKey,
   Password,
-  PrivateKey,
-  PublicKey,
   Salt,
   SymmetricKey,
 } from '../interfaces/CryptoLib.mjs'
@@ -53,7 +52,7 @@ import { FavaLibEvent } from '../FavaLibEvent.mjs'
 interface VaultKeyMaterial {
   salt: Salt
   symmetricKey: SymmetricKey
-  encryptedPrivateKey: EncryptedPrivateKey
+  encryptedSecretKeys: EncryptedSecretKeys
   encryptedSymmetricKey: EncryptedSymmetricKey
   macKey: MacKey
   kdf: KdfParameters
@@ -70,19 +69,23 @@ class PersistentStorageManager {
    * @param mediator - The mediator for accessing other components.
    * @param passwordExtraDict - Additional words to be used for password strength evaluation.
    * @param favaMeta - Meta info containing at least a unique identifier for this device.
-   * @param privateKey - The private key used for cryptographic operations.
-   * Never rotated: peers hold this device's public key.
-   * @param publicKey - This device's public key. Held here only so that
-   * exportUnlockedSession can carry it: a session-imported vault has to hand
-   * SyncManager the same key a password-imported one does, and there is no way
-   * back to it from the private key without a new CryptoLib member -- which is
-   * a break for any consumer supplying their own provider (see generateSalt in
-   * creationUtils.mts for the same argument). Deliberately NOT part of
-   * VaultKeyMaterial: it is not rotated, and putting it in the unit that
-   * snapshotKeyMaterial and replaceKeyMaterial move would imply it is.
+   * @param secretKeys - This device's X25519 and Ed25519 secret keys, which
+   * exportUnlockedSession carries and nothing else here rotates: peers hold the
+   * public halves, so replacing them is a re-pair
+   * (key-hierarchy-review/04-key-rotation.md). Deliberately NOT part of
+   * VaultKeyMaterial, which is the unit snapshotKeyMaterial and
+   * replaceKeyMaterial move -- putting them there would imply a password change
+   * rotates them.
+   *
+   * The public halves are NOT held, and the session blob does not carry them
+   * either: both are pure functions of the secret keys
+   * (`platformProviders/shared/curves.mts`), so a stored copy would only be one
+   * more value that could disagree with the key material it describes. That was
+   * not true of the RSA keypair this replaced, which is why this parameter used
+   * to come in pairs.
    * @param symmetricKey - The symmetric key the vault state is encrypted
    * under. An INITIAL value -- changePassword rotates it.
-   * @param encryptedPrivateKey - The encrypted private key
+   * @param encryptedSecretKeys - The sealed device secret keys
    * @param encryptedSymmetricKey - The encrypted symmetric key
    * @param salt - The salt used for key derivation. An INITIAL value --
    * changePassword rotates it.
@@ -94,10 +97,9 @@ class PersistentStorageManager {
     private mediator: FavaLibMediator,
     private readonly passwordExtraDict: PasswordExtraDict,
     private readonly favaMeta: FavaMeta,
-    private readonly privateKey: PrivateKey,
-    private readonly publicKey: PublicKey,
+    private readonly secretKeys: DeviceSecretKeys,
     private symmetricKey: SymmetricKey,
-    private encryptedPrivateKey: EncryptedPrivateKey,
+    private encryptedSecretKeys: EncryptedSecretKeys,
     private encryptedSymmetricKey: EncryptedSymmetricKey,
     private salt: Salt,
     private macKey: MacKey,
@@ -137,7 +139,7 @@ class PersistentStorageManager {
       STORAGE_VERSION,
       material.salt,
       material.kdf,
-      await this.cryptoLib.sha256(material.encryptedPrivateKey),
+      await this.cryptoLib.sha256(material.encryptedSecretKeys),
     )
   }
 
@@ -169,6 +171,7 @@ class PersistentStorageManager {
         devices: this.syncManager ? this.syncManager['syncDevices'] : [],
         serverUrl: this.syncManager?.serverUrl,
         commandSendQueue: this.syncManager?.getCommandSendQueue() ?? [],
+        processedCommands: this.syncManager?.getProcessedCommands(),
       },
     }
 
@@ -206,7 +209,7 @@ class PersistentStorageManager {
       storageVersion: STORAGE_VERSION,
       salt: material.salt,
       kdf: material.kdf,
-      encryptedPrivateKey: material.encryptedPrivateKey,
+      encryptedSecretKeys: material.encryptedSecretKeys,
       encryptedSymmetricKey: material.encryptedSymmetricKey,
       encryptedVaultState,
     }
@@ -280,8 +283,8 @@ class PersistentStorageManager {
 
     const session: UnlockedSession = {
       sessionVersion: SESSION_VERSION,
-      privateKey: this.privateKey,
-      publicKey: this.publicKey,
+      privateKey: this.secretKeys.privateKey,
+      signingSecretKey: this.secretKeys.signingSecretKey,
       symmetricKey: material.symmetricKey,
       macKey: material.macKey,
     }
@@ -302,7 +305,7 @@ class PersistentStorageManager {
     return {
       salt: this.salt,
       symmetricKey: this.symmetricKey,
-      encryptedPrivateKey: this.encryptedPrivateKey,
+      encryptedSecretKeys: this.encryptedSecretKeys,
       encryptedSymmetricKey: this.encryptedSymmetricKey,
       macKey: this.macKey,
       kdf: this.kdf,
@@ -335,7 +338,7 @@ class PersistentStorageManager {
   private replaceKeyMaterial(material: VaultKeyMaterial): void {
     this.salt = material.salt
     this.symmetricKey = material.symmetricKey
-    this.encryptedPrivateKey = material.encryptedPrivateKey
+    this.encryptedSecretKeys = material.encryptedSecretKeys
     this.encryptedSymmetricKey = material.encryptedSymmetricKey
     this.macKey = material.macKey
     this.kdf = material.kdf
@@ -404,7 +407,7 @@ class PersistentStorageManager {
       // vault loaded at other parameters would otherwise fail every password
       // check with a correct password.
       await this.cryptoLib.decryptKeys(
-        this.encryptedPrivateKey,
+        this.encryptedSecretKeys,
         this.encryptedSymmetricKey,
         salt,
         password,
@@ -464,9 +467,9 @@ class PersistentStorageManager {
     // costs one argon2id pass, not two.
     const salt = await generateSalt(this.cryptoLib)
     const symmetricKey = await this.cryptoLib.createSymmetricKey()
-    const { encryptedPrivateKey, encryptedSymmetricKey, macKey } =
+    const { encryptedSecretKeys, encryptedSymmetricKey, macKey } =
       await this.cryptoLib.encryptKeys(
-        this.privateKey,
+        this.secretKeys,
         symmetricKey,
         salt,
         newPassword,
@@ -481,7 +484,7 @@ class PersistentStorageManager {
     this.replaceKeyMaterial({
       salt,
       symmetricKey,
-      encryptedPrivateKey,
+      encryptedSecretKeys,
       encryptedSymmetricKey,
       macKey,
       kdf: V2_KDF_PARAMETERS,

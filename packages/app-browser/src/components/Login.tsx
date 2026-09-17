@@ -47,6 +47,9 @@ const Login: Component = () => {
         case 'warning':
           console.warn(event.detail.message)
           break
+        case 'error':
+          console.error(event.detail.message)
+          break
       }
     })
 

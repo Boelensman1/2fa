@@ -24,10 +24,19 @@ export const LIB_VERSION = '0.0.22'
  * the highest one it is able to read. A stored vault claiming a higher number
  * was written by a newer library and is refused rather than misread.
  *
- * Version 2 (key-hierarchy-review/01 and /02): argon2id at m=64 MiB/t=3/p=4,
- * AES-256-GCM with additional authenticated data in place of AES-256-CBC,
- * RSA-OAEP with MGF1-SHA-256 in place of MGF1-SHA-1, and an `envelopeMac`
- * keyed from the password hash.
+ * Version 2 (key-hierarchy-review/01, /02 and /13): argon2id at
+ * m=64 MiB/t=3/p=4, AES-256-GCM with additional authenticated data in place of
+ * AES-256-CBC, an `envelopeMac` keyed from the password hash, and -- in place
+ * of the whole RSA layer -- X25519 for key agreement and Ed25519 for
+ * signatures, with both secret keys sealed under a key derived from the
+ * password hash rather than wrapped to the device's own public key.
+ *
+ * Note that version 2 was REDEFINED rather than superseded when the curves
+ * landed. The rule, worth stating once because it applies to all three of these
+ * constants: a format that has never shipped is redefined in place, not
+ * re-versioned. Every install in the wild is on version 1, no version 2 vault
+ * has ever been written outside this repository, and a version 3 would only
+ * have added a read path for a format with no readers.
  */
 export const STORAGE_VERSION = 2
 
@@ -48,8 +57,17 @@ export const STORAGE_VERSION = 2
  * Compared with !==, not <. An older blob means the process was upgraded under
  * a live session and a newer one means a downgrade; neither is a shape this
  * build should guess at, and both cost exactly one password prompt.
+ *
+ * Version 2 carries the device's two curve secret keys where version 1 carried
+ * an RSA private key and its public key
+ * (key-hierarchy-review/13-sync-command-authentication.md). Note this is the
+ * one version constant that was BUMPED rather than redefined in place, and the
+ * paragraph above is the reason: a session blob is memory-backed, never
+ * migrated, and refusing one costs a single password prompt -- which is exactly
+ * the right outcome for a live session holding key material this build can no
+ * longer use.
  */
-export const SESSION_VERSION = 1
+export const SESSION_VERSION = 2
 
 /**
  * The storage version assumed for a stored vault that carries no
@@ -75,6 +93,14 @@ export const LEGACY_STORAGE_VERSION = 1
  * ciphertext envelope with no fallback. Note this is bookkeeping, not the
  * gate: `commandVersionIsSupported` accepts OLDER majors, so a v1 peer's
  * command fails earlier, in decryption.
+ *
+ * Version 2 also means SIGNED. A command now travels as a
+ * SignedCommandEnvelope and is refused unless a device currently in this
+ * vault's peer list signed it, for this recipient, under this command id
+ * (key-hierarchy-review/13-sync-command-authentication.md). There is no
+ * unsigned fallback and no grace period, which needs no version bump of its own
+ * for the reason STORAGE_VERSION gives: no 2.0 command has ever been sent
+ * outside this repository.
  */
 export const COMMAND_VERSION = '2.0'
 
@@ -94,6 +120,12 @@ export const COMMAND_VERSION = '2.0'
  * Major 2 is jpake-ts 2.x. A payload carrying no pairingVersion at all predates
  * this field, which means a build on jpake-ts 1.x, and so is treated as major 1
  * and refused.
+ *
+ * The handshake under it changed with storage version 2 -- the responder now
+ * sends both of its public keys where it used to send one RSA key -- and the
+ * major did NOT move for it, by the same "unshipped is redefined" rule. A peer
+ * that could send the old shape is on jpake-ts 1.x and is already refused here
+ * by version, before it can send anything at all.
  */
 export const PAIRING_VERSION = '2.0'
 

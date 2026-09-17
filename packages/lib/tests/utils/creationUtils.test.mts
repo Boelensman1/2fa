@@ -11,6 +11,7 @@ import {
   StorageVersionError,
   InitializationError,
   type PublicKey,
+  type SigningPublicKey,
   type SymmetricKey,
 } from '../../src/main.mjs'
 import type {
@@ -44,6 +45,7 @@ describe('creationUtils', () => {
   let macKey: MacKey
   let symmetricKey: SymmetricKey
   let devicePublicKey: PublicKey
+  let deviceSigningPublicKey: SigningPublicKey
 
   beforeAll(async () => {
     const saveFunction = (
@@ -56,6 +58,7 @@ describe('creationUtils', () => {
     macKey = result.macKey
     symmetricKey = result.symmetricKey
     devicePublicKey = result.publicKey
+    deviceSigningPublicKey = result.signingPublicKey
 
     await result.favaLib.storage.forceSave()
 
@@ -192,14 +195,20 @@ describe('creationUtils', () => {
       deviceType,
       offlineProviders,
       passwordExtraDict,
-      result.privateKey,
+      {
+        privateKey: result.privateKey,
+        signingSecretKey: result.signingSecretKey,
+      },
       result.symmetricKey,
-      result.encryptedPrivateKey,
+      result.encryptedSecretKeys,
       result.encryptedSymmetricKey,
       result.salt,
       result.macKey,
       result.kdf,
-      result.publicKey,
+      {
+        publicKey: result.publicKey,
+        signingPublicKey: result.signingPublicKey,
+      },
       { deviceId },
       [],
       (representation: LockedRepresentationString) => {
@@ -211,6 +220,7 @@ describe('creationUtils', () => {
           {
             deviceId: 'other-device' as DeviceId,
             publicKey: result.publicKey,
+            signingPublicKey: result.signingPublicKey,
             deviceInfo: { deviceType },
           },
         ],
@@ -261,7 +271,7 @@ describe('creationUtils', () => {
         parsed.storageVersion,
         parsed.salt,
         parsed.kdf,
-        await cryptoLib.sha256(parsed.encryptedPrivateKey),
+        await cryptoLib.sha256(parsed.encryptedSecretKeys),
       )
       const state = JSON.parse(
         await cryptoLib.decryptSymmetric(
@@ -311,6 +321,7 @@ describe('creationUtils', () => {
     const goodDevice = () => ({
       deviceId: 'peer-device-id' as DeviceId,
       publicKey: devicePublicKey,
+      signingPublicKey: deviceSigningPublicKey,
       deviceInfo: { deviceType },
     })
 
@@ -394,6 +405,56 @@ describe('creationUtils', () => {
       )
     })
 
+    it('accepts a vault with no replay-protection record at all', async () => {
+      // Absent means "this device has applied nothing yet", which is true of
+      // every vault written before the record existed.
+      const favaLib = await load(
+        await reseal((state) => {
+          delete state.sync.processedCommands
+        }),
+      )
+      await favaLib.ready
+      favaLib.sync?.closeServerConnection()
+    })
+
+    it.each([
+      [
+        'a non-array command list',
+        (state: VaultState) => {
+          state.sync.processedCommands = {
+            commands: null as never,
+            floors: {},
+          }
+        },
+      ],
+      [
+        'an entry with no timestamp',
+        (state: VaultState) => {
+          state.sync.processedCommands = {
+            commands: [{ id: 'x', from: 'peer' as DeviceId } as never],
+            floors: {},
+          }
+        },
+      ],
+      [
+        'a non-numeric floor',
+        (state: VaultState) => {
+          state.sync.processedCommands = {
+            commands: [],
+            floors: { peer: 'soon' } as never,
+          }
+        },
+      ],
+    ])('refuses %s in the replay-protection record', async (_label, mutate) => {
+      // REFUSED rather than reset, unlike the dropped remote commands above
+      // it: silently starting replay protection over is the one repair whose
+      // cost is invisible, because the vault works perfectly afterwards and
+      // simply accepts commands it has already applied.
+      await expect(load(await reseal(mutate))).rejects.toThrow(
+        /replay-protection record is unusable/,
+      )
+    })
+
     it('refuses more than MAX_SYNC_DEVICES devices', async () => {
       const representation = await reseal((state) => {
         state.sync.devices = Array.from(
@@ -440,7 +501,7 @@ describe('creationUtils', () => {
       ['a numeric salt', 'salt', 12345],
       ['an object salt', 'salt', { value: 'AAAA' }],
       ['a numeric encryptedVaultState', 'encryptedVaultState', 1],
-      ['an object encryptedPrivateKey', 'encryptedPrivateKey', {}],
+      ['an object encryptedSecretKeys', 'encryptedSecretKeys', {}],
     ])('refuses %s', async (_label, field, value) => {
       // These used to pass a truthiness check behind an unchecked
       // `as Partial<LockedRepresentation>` cast and fail much later, somewhere

@@ -16,7 +16,7 @@ import type {
   StartResilverClientMessage,
 } from '../../src/interfaces/protocol/ClientMessage.mjs'
 import {
-  EncryptedPrivateKey,
+  EncryptedSecretKeys,
   EncryptedSymmetricKey,
   Salt,
   MacKey,
@@ -24,8 +24,11 @@ import {
   FavaLib,
   DeviceType,
   PrivateKey,
+  Signature,
+  SigningSecretKey,
   SymmetricKey,
   PublicKey,
+  SigningPublicKey,
   EncryptedVaultStateString,
   PlatformProviders,
   type EntryId,
@@ -37,7 +40,11 @@ import {
   uint8ArrayToBase64,
 } from 'uint8array-extras'
 import { nodeProviders } from '../../src/platformProviders/node/index.mjs'
-import { buildCommandAad } from '../../src/utils/canonical.mjs'
+import {
+  buildCommandAad,
+  buildCommandSignatureMessage,
+} from '../../src/utils/canonical.mjs'
+import { COMMAND_VERSION } from '../../src/version.mjs'
 import type { SyncCommand } from '../../src/interfaces/CommandTypes.mjs'
 
 import {
@@ -48,6 +55,7 @@ import {
   send,
   connectDevices,
   handleSyncCommands,
+  password,
 } from '../testUtils.mjs'
 import { Client as WsClient } from 'mock-socket'
 import {
@@ -72,9 +80,11 @@ describe('SyncManager', () => {
   let serverUrl: string
   let platformProviders: PlatformProviders
   let privateKey: PrivateKey
+  let signingSecretKey: SigningSecretKey
   let symmetricKey: SymmetricKey
   let publicKey: PublicKey
-  let encryptedPrivateKey: EncryptedPrivateKey
+  let signingPublicKey: SigningPublicKey
+  let encryptedSecretKeys: EncryptedSecretKeys
   let encryptedSymmetricKey: EncryptedSymmetricKey
   let salt: Salt
   let macKey: MacKey
@@ -88,13 +98,15 @@ describe('SyncManager', () => {
   beforeAll(async () => {
     const result = await createFavaLibForTests()
     platformProviders = result.platformProviders
-    encryptedPrivateKey = result.encryptedPrivateKey
+    encryptedSecretKeys = result.encryptedSecretKeys
     encryptedSymmetricKey = result.encryptedSymmetricKey
     macKey = result.macKey
     kdf = result.kdf
     privateKey = result.privateKey
+    signingSecretKey = result.signingSecretKey
     symmetricKey = result.symmetricKey
     publicKey = result.publicKey
+    signingPublicKey = result.signingPublicKey
     salt = result.salt
 
     serverUrl = `${serverBaseUrl}:${serverPort}`
@@ -118,14 +130,14 @@ describe('SyncManager', () => {
       'sender' as DeviceType,
       platformProviders,
       ['test'],
-      privateKey,
+      { privateKey, signingSecretKey },
       symmetricKey,
-      encryptedPrivateKey,
+      encryptedSecretKeys,
       encryptedSymmetricKey,
       salt,
       macKey,
       kdf,
-      publicKey,
+      { publicKey, signingPublicKey },
       {
         deviceId: 'senderDeviceId' as DeviceId,
         deviceFriendlyName: 'senderFriendlyName' as DeviceFriendlyName,
@@ -142,14 +154,14 @@ describe('SyncManager', () => {
       'receiver' as DeviceType,
       platformProviders,
       ['test'],
-      privateKey,
+      { privateKey, signingSecretKey },
       symmetricKey,
-      encryptedPrivateKey,
+      encryptedSecretKeys,
       encryptedSymmetricKey,
       salt,
       macKey,
       kdf,
-      publicKey,
+      { publicKey, signingPublicKey },
       {
         deviceId: 'receiverDeviceId' as DeviceId,
         deviceFriendlyName: 'receiverFriendlyName' as DeviceFriendlyName,
@@ -193,14 +205,14 @@ describe('SyncManager', () => {
       'disconnected' as DeviceType,
       platformProviders,
       ['test'],
-      privateKey,
+      { privateKey, signingSecretKey },
       symmetricKey,
-      encryptedPrivateKey,
+      encryptedSecretKeys,
       encryptedSymmetricKey,
       salt,
       macKey,
       kdf,
-      publicKey,
+      { publicKey, signingPublicKey },
       { deviceId: 'disconnectedDeviceId' as DeviceId },
       [],
       undefined,
@@ -367,9 +379,13 @@ describe('SyncManager', () => {
       timeout: 200,
       interval: 5,
     })
-    // nonces must be different
-    const nonces = messageDatas.map((d) => (d as { nonce: string }).nonce)
-    expect(new Set(nonces).size).toEqual(nonces.length)
+    // The nonce field every client message used to carry is gone: the client
+    // generated one, the server never read it, and no client verified one
+    // either. A field that looks like a security control and is read by nobody
+    // is worse than no field -- key-hierarchy-review/15-sync-replay-protection.md.
+    expect(
+      messageDatas.some((d) => 'nonce' in (d as Record<string, unknown>)),
+    ).toBe(false)
 
     // receive the messages about adding the syncDevices
     const { syncCommandsExecutedMessages } = await handleSyncCommands(
@@ -726,6 +742,85 @@ describe('SyncManager', () => {
     ).toHaveLength(1)
   })
 
+  /**
+   * Puts the sending device in the receiver's peer list.
+   *
+   * Nothing below verifies without this, which is the finding in one line: a
+   * command is only acted on if a device CURRENTLY in this vault's list signed
+   * it. Both test libraries share one set of key material, so the sender's
+   * signing key is the same value the receiver holds.
+   * @returns A promise that resolves once the peer is known.
+   */
+  const registerSenderAsPeer = () =>
+    receiverFavaLib.sync!.addSyncDevice(
+      {
+        deviceId: 'senderDeviceId' as DeviceId,
+        publicKey,
+        signingPublicKey,
+        deviceInfo: { deviceType: 'sender' as DeviceType },
+      },
+      false,
+    )
+
+  /**
+   * Builds one command on the wire exactly as sendCommand does: signed by the
+   * sending device, then sealed to the recipient.
+   *
+   * Kept as one helper rather than inlined per test, because the point of most
+   * of the tests below is that ONE field of it is wrong.
+   * @param commandId - The id the command travels under.
+   * @param entryId - The entry the command adds.
+   * @param overrides - What to do differently from a well formed command.
+   * @param overrides.from - The device the command claims to be from.
+   * @param overrides.signWith - The key it is actually signed with.
+   * @param overrides.payloadCommandId - The id written inside the payload.
+   * @param overrides.toDeviceId - The recipient bound into the signature.
+   * @param overrides.omitSignature - Send no signature at all.
+   * @returns The wire representation of the command.
+   */
+  const encryptCommandFor = async (
+    commandId: string,
+    entryId: EntryId,
+    overrides: {
+      from?: string
+      signWith?: SigningSecretKey
+      payloadCommandId?: string
+      toDeviceId?: string
+      omitSignature?: boolean
+    } = {},
+  ) => {
+    const cryptoLib = new nodeProviders.CryptoLib()
+    const from = overrides.from ?? 'senderDeviceId'
+    const payload = JSON.stringify({
+      id: overrides.payloadCommandId ?? commandId,
+      type: 'AddEntry',
+      timestamp: Date.now(),
+      version: COMMAND_VERSION,
+      data: makeRemoteEntry(entryId),
+    })
+    const signature = await cryptoLib.sign(
+      overrides.signWith ?? signingSecretKey,
+      buildCommandSignatureMessage(
+        commandId,
+        from,
+        overrides.toDeviceId ?? 'receiverDeviceId',
+        payload,
+      ),
+    )
+    const commandKey = await cryptoLib.createSymmetricKey()
+    return {
+      commandId,
+      encryptedSymmetricKey: await cryptoLib.encrypt(publicKey, commandKey),
+      encryptedCommand: await cryptoLib.encryptSymmetric(
+        commandKey,
+        JSON.stringify(
+          overrides.omitSignature ? { payload } : { from, signature, payload },
+        ),
+        buildCommandAad(commandId, 'receiverDeviceId'),
+      ),
+    }
+  }
+
   it('should apply the rest of a batch when one command cannot be decrypted', async () => {
     // receiveCommands maps over the batch inside a Promise.all. Without a
     // per-command catch, one undecryptable command -- a peer still on the v1
@@ -738,30 +833,7 @@ describe('SyncManager', () => {
         warnings.push(event.detail.message)
     })
 
-    const cryptoLib = new nodeProviders.CryptoLib()
-    /**
-     * Encrypts one command the way sendCommand does.
-     * @param commandId - The id the command travels under.
-     * @param entryId - The entry the command adds.
-     * @returns The wire representation of the command.
-     */
-    const encryptCommandFor = async (commandId: string, entryId: EntryId) => {
-      const commandKey = await cryptoLib.createSymmetricKey()
-      return {
-        commandId,
-        encryptedSymmetricKey: await cryptoLib.encrypt(publicKey, commandKey),
-        encryptedCommand: await cryptoLib.encryptSymmetric(
-          commandKey,
-          JSON.stringify({
-            type: 'AddEntry',
-            timestamp: Date.now(),
-            version: '2.0',
-            data: makeRemoteEntry(entryId),
-          }),
-          buildCommandAad(commandId, 'receiverDeviceId'),
-        ),
-      }
-    }
+    await registerSenderAsPeer()
 
     const good1 = await encryptCommandFor('batch-good-1', 'batch-1' as EntryId)
     const good2 = await encryptCommandFor('batch-good-2', 'batch-2' as EntryId)
@@ -792,6 +864,285 @@ describe('SyncManager', () => {
     expect(warnings.filter((w) => w.includes('batch-bad'))).toHaveLength(1)
   })
 
+  describe('command authentication', () => {
+    // key-hierarchy-review/13-sync-command-authentication.md. Sealing a command
+    // to a device's public key proves nothing about who sealed it -- sealing is
+    // a public operation -- so before these checks anyone holding a public key
+    // could mint commands for that device. Every case below is a command that
+    // decrypts perfectly and is refused anyway.
+    let warnings: string[]
+
+    beforeEach(async () => {
+      warnings = []
+      receiverFavaLib.addEventListener(FavaLibEvent.Log, (event) => {
+        if (event.detail.severity === 'warning')
+          warnings.push(event.detail.message)
+      })
+      await registerSenderAsPeer()
+    })
+
+    /**
+     * Delivers one command and says whether it was applied.
+     * @param command - The command, from encryptCommandFor.
+     * @param entryId - The entry it would add.
+     * @returns Whether the entry exists afterwards.
+     */
+    const deliver = async (
+      command: Awaited<ReturnType<typeof encryptCommandFor>>,
+      entryId: EntryId,
+    ) => {
+      await receiverFavaLib.sync!.receiveCommands([command])
+      try {
+        return Boolean(receiverFavaLib.vault.getEntryMeta(entryId))
+      } catch {
+        return false
+      }
+    }
+
+    it('applies a command signed by a known peer', async () => {
+      // The control. Without it every refusal below could be passing for the
+      // wrong reason.
+      const command = await encryptCommandFor('auth-ok', 'auth-ok' as EntryId)
+      expect(await deliver(command, 'auth-ok' as EntryId)).toBe(true)
+    })
+
+    it('drops a command with no signature at all', async () => {
+      // The server relays the envelope untouched, so stripping the signature is
+      // the first thing a hostile one would try.
+      const command = await encryptCommandFor(
+        'auth-unsigned',
+        'auth-unsigned' as EntryId,
+        { omitSignature: true },
+      )
+      expect(await deliver(command, 'auth-unsigned' as EntryId)).toBe(false)
+    })
+
+    it('drops a command whose signature does not verify', async () => {
+      const cryptoLib = new nodeProviders.CryptoLib()
+      const stranger = await cryptoLib.createKeys(password)
+      const command = await encryptCommandFor(
+        'auth-forged',
+        'auth-forged' as EntryId,
+        { signWith: stranger.signingSecretKey },
+      )
+      expect(await deliver(command, 'auth-forged' as EntryId)).toBe(false)
+    })
+
+    it('drops a command from a device that is not a peer', async () => {
+      const command = await encryptCommandFor(
+        'auth-stranger',
+        'auth-stranger' as EntryId,
+        { from: 'someone-elses-device' },
+      )
+      expect(await deliver(command, 'auth-stranger' as EntryId)).toBe(false)
+    })
+
+    it('drops a command from a peer that has been removed', async () => {
+      // THE point of naming the signer. removeSyncDevice used to splice an
+      // array and change nothing about what the removed device could still do;
+      // now it is the revocation it always looked like.
+      await receiverFavaLib.sync!.removeSyncDevice(
+        'senderDeviceId' as DeviceId,
+        false,
+      )
+      const command = await encryptCommandFor(
+        'auth-revoked',
+        'auth-revoked' as EntryId,
+      )
+      expect(await deliver(command, 'auth-revoked' as EntryId)).toBe(false)
+    })
+
+    it('drops a command whose payload id differs from its envelope id', async () => {
+      // Only a device already in the peer list can reach this check -- an
+      // outsider fails the signature first -- which is exactly why it exists:
+      // a peer that signs for one command id and writes another inside the
+      // payload makes the id the dedup set records differ from the id the
+      // command is applied under.
+      const command = await encryptCommandFor(
+        'auth-id-envelope',
+        'auth-id' as EntryId,
+        { payloadCommandId: 'auth-id-payload' },
+      )
+      expect(await deliver(command, 'auth-id' as EntryId)).toBe(false)
+    })
+
+    it('drops a command signed for a different recipient', async () => {
+      const command = await encryptCommandFor(
+        'auth-recipient',
+        'auth-recipient' as EntryId,
+        { toDeviceId: 'some-other-device' },
+      )
+      expect(await deliver(command, 'auth-recipient' as EntryId)).toBe(false)
+    })
+
+    it('says nothing about which check failed', async () => {
+      // Every refusal produces the same message. Telling a prober whether a
+      // device id is known, or whether a signature merely did not verify, is
+      // telling them something.
+      const unsigned = await encryptCommandFor(
+        'auth-quiet-1',
+        'auth-quiet-1' as EntryId,
+        { omitSignature: true },
+      )
+      const stranger = await encryptCommandFor(
+        'auth-quiet-2',
+        'auth-quiet-2' as EntryId,
+        { from: 'someone-elses-device' },
+      )
+      await receiverFavaLib.sync!.receiveCommands([unsigned, stranger])
+
+      const messages = warnings
+        .filter((w) => w.includes('auth-quiet'))
+        .map((w) => w.replace(/auth-quiet-\d/, 'ID'))
+      expect(messages).toHaveLength(2)
+      expect(new Set(messages).size).toBe(1)
+    })
+  })
+
+  describe('replay protection', () => {
+    // key-hierarchy-review/15-sync-replay-protection.md. The server re-sends
+    // everything it has not been told was executed, so the same id arriving
+    // twice is routine; what was missing is that the record of what had been
+    // applied lived only in memory.
+    beforeEach(async () => {
+      await registerSenderAsPeer()
+    })
+
+    it('applies a redelivered command only once', async () => {
+      const command = await encryptCommandFor(
+        'replay-once',
+        'replay-once' as EntryId,
+      )
+      await receiverFavaLib.sync!.receiveCommands([command])
+      const before = receiverFavaLib.vault.size
+
+      await receiverFavaLib.sync!.receiveCommands([command])
+      expect(receiverFavaLib.vault.size).toBe(before)
+    })
+
+    it('records what it applied, so the record can be persisted', async () => {
+      const command = await encryptCommandFor(
+        'replay-recorded',
+        'replay-recorded' as EntryId,
+      )
+      await receiverFavaLib.sync!.receiveCommands([command])
+
+      expect(receiverFavaLib.sync!.getProcessedCommands()?.commands).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: 'replay-recorded',
+            from: 'senderDeviceId',
+          }),
+        ]),
+      )
+    })
+
+    it('refuses a command it applied before a restart', async () => {
+      // A restart used to empty the dedup set, and the server redelivers on
+      // every reconnect, so this is the case the in-memory set never covered.
+      const restarted = new FavaLib(
+        'restarted' as DeviceType,
+        platformProviders,
+        ['test'],
+        { privateKey, signingSecretKey },
+        symmetricKey,
+        encryptedSecretKeys,
+        encryptedSymmetricKey,
+        salt,
+        macKey,
+        kdf,
+        { publicKey, signingPublicKey },
+        { deviceId: 'receiverDeviceId' as DeviceId },
+        [],
+        undefined,
+        {
+          serverUrl,
+          devices: [
+            {
+              deviceId: 'senderDeviceId' as DeviceId,
+              publicKey,
+              signingPublicKey,
+              deviceInfo: { deviceType: 'sender' as DeviceType },
+            },
+          ],
+          commandSendQueue: [],
+          processedCommands: {
+            commands: [
+              {
+                id: 'replay-restarted',
+                from: 'senderDeviceId' as DeviceId,
+                timestamp: Date.now(),
+              },
+            ],
+            floors: {},
+          },
+        },
+        false,
+      )
+
+      const command = await encryptCommandFor(
+        'replay-restarted',
+        'replay-restarted' as EntryId,
+      )
+      await restarted.sync!.receiveCommands([command])
+
+      expect(() =>
+        restarted.vault.getEntryMeta('replay-restarted' as EntryId),
+      ).toThrow()
+      restarted.sync?.closeServerConnection()
+    })
+
+    it("refuses a command older than its sender's floor", async () => {
+      // The record is bounded, so forgetting an id must not make it acceptable
+      // again: pruning raises the sender's floor, and anything at or below it
+      // is refused without needing to remember why.
+      const withFloor = new FavaLib(
+        'floored' as DeviceType,
+        platformProviders,
+        ['test'],
+        { privateKey, signingSecretKey },
+        symmetricKey,
+        encryptedSecretKeys,
+        encryptedSymmetricKey,
+        salt,
+        macKey,
+        kdf,
+        { publicKey, signingPublicKey },
+        { deviceId: 'receiverDeviceId' as DeviceId },
+        [],
+        undefined,
+        {
+          serverUrl,
+          devices: [
+            {
+              deviceId: 'senderDeviceId' as DeviceId,
+              publicKey,
+              signingPublicKey,
+              deviceInfo: { deviceType: 'sender' as DeviceType },
+            },
+          ],
+          commandSendQueue: [],
+          processedCommands: {
+            commands: [],
+            floors: { ['senderDeviceId' as DeviceId]: Date.now() + 60_000 },
+          },
+        },
+        false,
+      )
+
+      const command = await encryptCommandFor(
+        'replay-below-floor',
+        'replay-below-floor' as EntryId,
+      )
+      await withFloor.sync!.receiveCommands([command])
+
+      expect(() =>
+        withFloor.vault.getEntryMeta('replay-below-floor' as EntryId),
+      ).toThrow()
+      withFloor.sync?.closeServerConnection()
+    })
+  })
+
   it('should emit ready event after receiving syncCommands message', async () => {
     const readyPromise = new Promise<void>((resolve) => {
       senderFavaLib.addEventListener(FavaLibEvent.Ready, () => resolve())
@@ -801,14 +1152,14 @@ describe('SyncManager', () => {
       'newSender' as DeviceType,
       platformProviders,
       ['test'],
-      privateKey,
+      { privateKey, signingSecretKey },
       symmetricKey,
-      encryptedPrivateKey,
+      encryptedSecretKeys,
       encryptedSymmetricKey,
       salt,
       macKey,
       kdf,
-      publicKey,
+      { publicKey, signingPublicKey },
       { deviceId: 'newSenderDeviceId' as DeviceId },
       [],
       undefined,
@@ -877,7 +1228,6 @@ describe('SyncManager', () => {
     expect(syncCommandsMessage).toEqual({
       type: 'syncCommands',
       data: {
-        nonce: expect.any(String) as string,
         commands: [
           expect.objectContaining({
             deviceId: expect.any(String) as string,
@@ -909,18 +1259,23 @@ describe('SyncManager', () => {
     // importVaultState, AddSyncDeviceCommand, and the constructor's own
     // registration. See key-hierarchy-review/05-load-path-validation.md.
     //
-    // A shape gate ONLY. A well formed record carrying an attacker's public key
-    // still passes every one of these, because nothing authenticates the sender
-    // of an AddSyncDeviceCommand -- that is 14-sync-device-injection.md, open.
+    // A shape gate ONLY. A well formed record carrying an attacker's public
+    // keys still passes every one of these; what stops it reaching here is that
+    // an AddSyncDeviceCommand must now be signed by a device already in the
+    // peer list -- 14-sync-device-injection.md is still open for the rest.
     const goodDevice = () => ({
       deviceId: 'shape-check-peer' as DeviceId,
       publicKey,
+      signingPublicKey,
       deviceInfo: { deviceType: 'test' as DeviceType },
     })
 
     it.each([
       ['no publicKey', { publicKey: undefined }],
-      ['a publicKey that is not a PEM', { publicKey: 'not-a-pem' }],
+      ['a publicKey that is not base64', { publicKey: '!'.repeat(44) }],
+      ['a publicKey of the wrong length', { publicKey: 'AAAA' }],
+      ['no signingPublicKey', { signingPublicKey: undefined }],
+      ['a signingPublicKey of the wrong length', { signingPublicKey: 'AAAA' }],
       ['no deviceId', { deviceId: undefined }],
       ['a non-object deviceInfo', { deviceInfo: 'cli' }],
     ])('refuses to add a device with %s', async (_label, overrides) => {
@@ -943,8 +1298,8 @@ describe('SyncManager', () => {
     })
 
     it('refuses to go past the device cap', async () => {
-      // Every outgoing command is encrypted once per device, so an unbounded
-      // list is an unbounded amount of RSA work per keystroke.
+      // Every outgoing command is sealed and signed once per device, so an
+      // unbounded list is an unbounded amount of work per keystroke.
       // The cap counts the STORED list, which includes this device's own
       // record; getSyncDevices filters that one out, so the peer count tops out
       // one lower. Both enforcement points count the stored list so that they
@@ -1104,14 +1459,14 @@ describe('SyncManager', () => {
       'otherReceiver' as DeviceType,
       platformProviders,
       ['test'],
-      privateKey,
+      { privateKey, signingSecretKey },
       symmetricKey,
-      encryptedPrivateKey,
+      encryptedSecretKeys,
       encryptedSymmetricKey,
       salt,
       macKey,
       kdf,
-      publicKey,
+      { publicKey, signingPublicKey },
       { deviceId: 'otherReceiverDeviceId' as DeviceId },
       [],
       undefined,
@@ -1221,7 +1576,7 @@ describe('SyncManager', () => {
     expect(senderFavaLib.vault.listEntries()).toHaveLength(2)
     expect(receiverFavaLib.vault.listEntries()).toHaveLength(1)
 
-    await receiverFavaLib.sync!.requestResilver()
+    receiverFavaLib.sync!.requestResilver()
     const startResilverMessage =
       (await server.nextMessage) as StartResilverClientMessage
     expect(startResilverMessage).toEqual({
@@ -1231,7 +1586,6 @@ describe('SyncManager', () => {
           senderFavaLib.meta.deviceId,
           receiverFavaLib.meta.deviceId,
         ]) as string[],
-        nonce: expect.any(String) as string,
       },
     })
 
@@ -1268,14 +1622,72 @@ describe('SyncManager', () => {
         },
     )
   })
+  it('refuses resilvered vault data that is not signed by the peer it claims', async () => {
+    // A resilver carries the WHOLE vault and is sealed to this device's public
+    // key, which anyone can do. `fromDeviceId` is stamped by the server, so on
+    // its own it is a claim; the signature is what makes it testable.
+    const warnings: string[] = []
+    receiverFavaLib.addEventListener(FavaLibEvent.Log, (event) => {
+      warnings.push(event.detail.message)
+    })
+    await registerSenderAsPeer()
+    receiverFavaLib.sync!.requestResilver()
+
+    const vaultMessage: VaultServerMessage = {
+      type: 'vault',
+      data: {
+        forDeviceId: 'receiverDeviceId' as DeviceId,
+        encryptedVaultData: 'v2:AAAA:AAAA' as EncryptedVaultStateString,
+        encryptedSymmetricKey: 'v2:AAAA:AAAA:AAAA' as EncryptedSymmetricKey,
+        signature: 'not-a-signature' as Signature,
+        fromDeviceId: 'senderDeviceId' as DeviceId,
+      },
+    }
+
+    // eslint-disable-next-line @typescript-eslint/dot-notation
+    receiverFavaLib.sync!['handleServerMessage'](vaultMessage)
+
+    await vi.waitUntil(
+      () => warnings.some((w) => w.includes('signature does not verify')),
+      { timeout: 500, interval: 10 },
+    )
+  })
+
+  it('refuses resilvered vault data from a device that is not a peer', async () => {
+    const warnings: string[] = []
+    receiverFavaLib.addEventListener(FavaLibEvent.Log, (event) => {
+      warnings.push(event.detail.message)
+    })
+    receiverFavaLib.sync!.requestResilver()
+
+    const vaultMessage: VaultServerMessage = {
+      type: 'vault',
+      data: {
+        forDeviceId: 'receiverDeviceId' as DeviceId,
+        encryptedVaultData: 'v2:AAAA:AAAA' as EncryptedVaultStateString,
+        encryptedSymmetricKey: 'v2:AAAA:AAAA:AAAA' as EncryptedSymmetricKey,
+        signature: 'not-a-signature' as Signature,
+        fromDeviceId: 'a-device-we-have-never-met' as DeviceId,
+      },
+    }
+
+    // eslint-disable-next-line @typescript-eslint/dot-notation
+    receiverFavaLib.sync!['handleServerMessage'](vaultMessage)
+
+    await vi.waitUntil(() => warnings.some((w) => w.includes('not a peer')), {
+      timeout: 500,
+      interval: 10,
+    })
+  })
+
   it('should error when vault data is received but no sync request was made', () => {
     const vaultMessage: VaultServerMessage = {
       type: 'vault',
       data: {
         forDeviceId: 'receiverDeviceId' as DeviceId,
-        nonce: 'dazPAriJJIy5CaF7fRKrWA==',
         encryptedVaultData: '' as EncryptedVaultStateString,
         encryptedSymmetricKey: '' as EncryptedSymmetricKey,
+        signature: '' as Signature,
         fromDeviceId: 'senderDeviceId' as DeviceId,
       },
     }
@@ -1291,9 +1703,9 @@ describe('SyncManager', () => {
       type: 'vault',
       data: {
         forDeviceId: 'notReceiverDeviceId' as DeviceId,
-        nonce: 'dazPAriJJIy5CaF7fRKrWA==',
         encryptedVaultData: '' as EncryptedVaultStateString,
         encryptedSymmetricKey: '' as EncryptedSymmetricKey,
+        signature: '' as Signature,
         fromDeviceId: 'senderDeviceId' as DeviceId,
       },
     }

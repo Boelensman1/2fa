@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import BaseCommand from '../../src/Command/BaseCommand.mjs'
 import type { EntryId } from '../../src/main.mjs'
+import { COMMAND_VERSION } from '../../src/version.mjs'
 
 // Mock uuid
 vi.mock('uuid', () => ({
@@ -35,7 +36,7 @@ describe('BaseCommand', () => {
     expect(command.type).toBe('TestCommand')
     expect(command.data).toEqual(testData)
     expect(command.timestamp).toBeLessThanOrEqual(Date.now())
-    expect(command.version).toBe('1.0')
+    expect(command.version).toBe(COMMAND_VERSION)
     expect(command.fromRemote).toBe(false)
   })
 

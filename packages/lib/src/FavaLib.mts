@@ -2,12 +2,12 @@ import { TypedEventTarget } from 'typescript-event-target'
 
 import type { PlatformProviders } from './interfaces/PlatformProviders.mjs'
 import type {
-  EncryptedPrivateKey,
+  DevicePublicKeys,
+  DeviceSecretKeys,
+  EncryptedSecretKeys,
   EncryptedSymmetricKey,
   KdfParameters,
   MacKey,
-  PrivateKey,
-  PublicKey,
   Salt,
   SymmetricKey,
 } from './interfaces/CryptoLib.mjs'
@@ -61,8 +61,8 @@ class FavaLib extends TypedEventTarget<FavaLibEventMapEvents> {
 
   private mediator: FavaLibMediator
 
-  private readonly publicKey: PublicKey
-  private readonly privateKey: PrivateKey
+  private readonly publicKeys: DevicePublicKeys
+  private readonly secretKeys: DeviceSecretKeys
 
   public readonly ready: Promise<unknown>
 
@@ -82,14 +82,14 @@ class FavaLib extends TypedEventTarget<FavaLibEventMapEvents> {
    * @param deviceType - The identifier for this device type (e.g. 2fa-cli).
    * @param platformProviders - The platform-specific providers containing CryptoLib and other providers.
    * @param passwordExtraDict - Additional words to be used for password strength evaluation.
-   * @param privateKey - The private key used for cryptographic operations.
+   * @param secretKeys - The device's X25519 and Ed25519 secret keys.
    * @param symmetricKey - The symmetric key used for cryptographic operations.
-   * @param encryptedPrivateKey - The encrypted private key
+   * @param encryptedSecretKeys - The sealed device secret keys
    * @param encryptedSymmetricKey - The encrypted symmetric key
    * @param salt - The salt used for key derivation.
    * @param macKey - The envelope MAC key, derived from the password hash.
    * @param kdf - The argon2id parameters this vault's keys were derived with.
-   * @param publicKey - The public key of the device.
+   * @param publicKeys - The device's two public keys, as its peers know it.
    * @param favaMeta - Meta info about this device containing at least a unique identifier for this device.
    * @param vault - The vault data (entries)
    * @param saveFunction - The function to save the data.
@@ -103,14 +103,14 @@ class FavaLib extends TypedEventTarget<FavaLibEventMapEvents> {
     deviceType: DeviceType,
     platformProviders: PlatformProviders,
     passwordExtraDict: PasswordExtraDict,
-    privateKey: PrivateKey,
+    secretKeys: DeviceSecretKeys,
     symmetricKey: SymmetricKey,
-    encryptedPrivateKey: EncryptedPrivateKey,
+    encryptedSecretKeys: EncryptedSecretKeys,
     encryptedSymmetricKey: EncryptedSymmetricKey,
     salt: Salt,
     macKey: MacKey,
     kdf: KdfParameters,
-    publicKey: PublicKey,
+    publicKeys: DevicePublicKeys,
     favaMeta: FavaMeta,
     vault?: Vault,
     saveFunction?: SaveFunction,
@@ -144,8 +144,8 @@ class FavaLib extends TypedEventTarget<FavaLibEventMapEvents> {
     }
     this.favaMeta = favaMeta
     this.deviceType = deviceType
-    this.publicKey = publicKey
-    this.privateKey = privateKey
+    this.publicKeys = publicKeys
+    this.secretKeys = secretKeys
 
     this.mediator = new FavaLibMediator()
     this.mediator.registerComponents([
@@ -156,10 +156,9 @@ class FavaLib extends TypedEventTarget<FavaLibEventMapEvents> {
           this.mediator,
           passwordExtraDict,
           favaMeta,
-          privateKey,
-          publicKey,
+          secretKeys,
           symmetricKey,
-          encryptedPrivateKey,
+          encryptedSecretKeys,
           encryptedSymmetricKey,
           salt,
           macKey,
@@ -190,8 +189,8 @@ class FavaLib extends TypedEventTarget<FavaLibEventMapEvents> {
         'syncManager',
         new SyncManager(
           this.mediator,
-          this.publicKey,
-          this.privateKey,
+          this.publicKeys,
+          this.secretKeys,
           this.favaMeta,
           syncState as VaultSyncStateWithServerUrl,
           this.deviceType,
@@ -279,8 +278,8 @@ class FavaLib extends TypedEventTarget<FavaLibEventMapEvents> {
     }
     const newSyncManager = new SyncManager(
       this.mediator,
-      this.publicKey,
-      this.privateKey,
+      this.publicKeys,
+      this.secretKeys,
       this.favaMeta,
       newSyncState,
       this.deviceType,
@@ -404,14 +403,18 @@ class FavaLib extends TypedEventTarget<FavaLibEventMapEvents> {
           `This vault was stored at storage version ${fromVersion} and has ` +
             `been read through the legacy path. ` +
             (persisted
-              ? `It has been re-encrypted at version ${STORAGE_VERSION}.`
+              ? `It has been re-encrypted at version ${STORAGE_VERSION}. ` +
+                `This device's keys were replaced as part of that upgrade -- ` +
+                `version ${fromVersion} used an RSA keypair that version ` +
+                `${STORAGE_VERSION} cannot use -- so any devices this one was ` +
+                `paired with have to be paired again.`
               : `It was NOT upgraded, because no save function is configured.`),
         ),
       1,
     )
   }
 
-  private log(severity: 'info' | 'warning', message: string) {
+  private log(severity: 'info' | 'warning' | 'error', message: string) {
     this.dispatchLibEvent(FavaLibEvent.Log, { severity, message })
   }
 }

@@ -14,7 +14,6 @@ vi.mock('../src/ConnectedDevicesManager.mjs')
 interface AddDeviceRequest {
   initiatorDeviceId: DeviceId
   timestamp: number
-  nonce: string
   wsInitiator: WebSocket
   wsResponder?: WebSocket
 }
@@ -219,7 +218,6 @@ describe('Server Message Handling', () => {
         data: {
           initiatorDeviceId: 'device-1' as DeviceId,
           timestamp: Date.now(),
-          nonce: 'test-nonce',
         },
       }
 
@@ -245,13 +243,11 @@ describe('Server Message Handling', () => {
         initiatorDeviceId: 'device-1' as DeviceId,
         wsInitiator: mockInitiatorWs,
         timestamp: Date.now(),
-        nonce: 'test-nonce',
       })
 
       const message: ClientMessage = {
         type: 'JPAKEPass2',
         data: {
-          nonce: 'test-nonce',
           pass2Result: {
             round1Result: {
               G1: { 0: 1, 1: 2, 2: 3 },
@@ -287,7 +283,6 @@ describe('Server Message Handling', () => {
       const message: ClientMessage = {
         type: 'JPAKEPass2',
         data: {
-          nonce: 'test-nonce',
           pass2Result: {
             round1Result: {
               G1: { 0: 1, 1: 2, 2: 3 },
@@ -321,7 +316,6 @@ describe('Server Message Handling', () => {
       const message: ClientMessage = {
         type: 'syncCommands',
         data: {
-          nonce: 'test-nonce',
           commands: [
             {
               commandId: commandId,
@@ -409,7 +403,6 @@ describe('Server Message Handling', () => {
         wsInitiator: mockInitiatorWs,
         wsResponder: mockWs,
         timestamp: Date.now(),
-        nonce: 'test-nonce',
       }
       ongoingAddDeviceRequests.push(request)
 
@@ -457,7 +450,6 @@ describe('Server Message Handling', () => {
       const message: ClientMessage = {
         type: 'syncCommands',
         data: {
-          nonce: 'test-nonce',
           commands: [
             {
               commandId: commandId,
@@ -489,7 +481,6 @@ describe('Server Message Handling', () => {
       const message: ClientMessage = {
         type: 'syncCommands',
         data: {
-          nonce: 'test-nonce',
           commands: [
             {
               commandId: duplicateCommandId,

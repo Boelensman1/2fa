@@ -14,7 +14,7 @@ import {
   type LockedRepresentationString,
   type Password,
   type Salt,
-  EncryptedPrivateKey,
+  EncryptedSecretKeys,
   EncryptedSymmetricKey,
   STORAGE_VERSION,
   type KdfParameters,
@@ -46,7 +46,7 @@ describe('PersistentStorageManager', () => {
   let persistentStorageManager: PersistentStorageManager
   let password: Password
   let salt: Salt
-  let encryptedPrivateKey: EncryptedPrivateKey
+  let encryptedSecretKeys: EncryptedSecretKeys
   let encryptedSymmetricKey: EncryptedSymmetricKey
   let symmetricKey: SymmetricKey
   let kdf: KdfParameters
@@ -56,7 +56,7 @@ describe('PersistentStorageManager', () => {
     favaLib = result.favaLib
     password = result.password
     salt = result.salt
-    encryptedPrivateKey = result.encryptedPrivateKey
+    encryptedSecretKeys = result.encryptedSecretKeys
     encryptedSymmetricKey = result.encryptedSymmetricKey
     symmetricKey = result.symmetricKey
     kdf = result.kdf
@@ -88,6 +88,7 @@ describe('PersistentStorageManager', () => {
       syncDevices: 'syncDevicesFromMock',
       serverUrl: 'serverUrlFromMock',
       getCommandSendQueue: () => 'syncCommandSendQueueFromMock',
+      getProcessedCommands: () => 'processedCommandsFromMock',
     } as unknown as SyncManager
     mediator.registerComponent('syncManager', mockedSyncManager)
 
@@ -103,7 +104,7 @@ describe('PersistentStorageManager', () => {
     expect(parsed).toEqual({
       libVersion: FavaLib.version,
       storageVersion: STORAGE_VERSION,
-      encryptedPrivateKey,
+      encryptedSecretKeys,
       encryptedSymmetricKey,
       salt,
       kdf,
@@ -131,7 +132,7 @@ describe('PersistentStorageManager', () => {
       STORAGE_VERSION,
       salt,
       kdf,
-      await cryptoLib.sha256(encryptedPrivateKey),
+      await cryptoLib.sha256(encryptedSecretKeys),
     )
     expect(cipherBytes.length).toBe(
       new TextEncoder().encode(
@@ -155,6 +156,7 @@ describe('PersistentStorageManager', () => {
         devices: 'syncDevicesFromMock',
         serverUrl: 'serverUrlFromMock',
         commandSendQueue: 'syncCommandSendQueueFromMock',
+        processedCommands: 'processedCommandsFromMock',
       },
       vault: [
         {
@@ -297,7 +299,7 @@ describe('PersistentStorageManager', () => {
     // not anything rotated, and asserting on it would pass against the old
     // no-rotation behaviour too.
     const { symmetricKey: newSymmetricKey } = await cryptoLib.decryptKeys(
-      after.encryptedPrivateKey,
+      after.encryptedSecretKeys,
       after.encryptedSymmetricKey,
       after.salt,
       newPassword,
@@ -309,7 +311,7 @@ describe('PersistentStorageManager', () => {
       STORAGE_VERSION,
       after.salt,
       after.kdf,
-      await cryptoLib.sha256(after.encryptedPrivateKey),
+      await cryptoLib.sha256(after.encryptedSecretKeys),
     )
 
     // 3. The whole point of the finding: whoever kept the old key cannot read
@@ -347,7 +349,7 @@ describe('PersistentStorageManager', () => {
           STORAGE_VERSION,
           oldSalt,
           after.kdf,
-          await cryptoLib.sha256(after.encryptedPrivateKey),
+          await cryptoLib.sha256(after.encryptedSecretKeys),
         ),
       ),
     ).rejects.toThrow('Could not decrypt data')
@@ -418,7 +420,7 @@ describe('PersistentStorageManager', () => {
     // The caller saw a rejection, so the user was told their password is
     // unchanged. The instance has to agree with that, or the next autosave
     // commits a password nobody was ever given -- a lockout with no recovery
-    // path, since the old encryptedPrivateKey is gone.
+    // path, since the old encryptedSecretKeys is gone.
     vault.psm.setSaveFunction(vault.saveFunction)
     await vault.favaLib.storage.forceSave()
 
@@ -479,10 +481,10 @@ describe('PersistentStorageManager', () => {
 
     expect(after.symmetricKey).not.toBe(before.symmetricKey)
     expect(after.macKey).not.toBe(before.macKey)
-    // Deliberately NOT rotated -- peers hold this device's public key
-    // (04-key-rotation.md).
+    // Deliberately NOT rotated -- peers hold the public halves of both of
+    // these (04-key-rotation.md).
     expect(after.privateKey).toBe(before.privateKey)
-    expect(after.publicKey).toBe(before.publicKey)
+    expect(after.signingSecretKey).toBe(before.signingSecretKey)
   }, 45000) // long running test
 
   it('should throw an error when changing to a weak password', async () => {

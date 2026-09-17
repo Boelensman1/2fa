@@ -13,7 +13,14 @@ export interface FavaLibEventMap {
     newStatus: ConnectionStatus
   }
   [FavaLibEvent.Log]: {
-    severity: 'info' | 'warning'
+    /**
+     * `error` is for a refusal the user should be told about even though the
+     * library carried on -- a vault arriving unrequested, a command that does
+     * not verify. It is deliberately distinct from `warning`, which covers the
+     * ordinary noise of a sync connection, so that a consumer can surface the
+     * two differently. See key-hierarchy-review/15-sync-replay-protection.md.
+     */
+    severity: 'info' | 'warning' | 'error'
     message: string
   }
   [FavaLibEvent.Ready]: EmptyObject

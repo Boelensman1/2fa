@@ -71,7 +71,8 @@ Ordering matters — this depends on [13](13-sync-command-authentication.md), si
 
 ## Resolution
 
-_Not started._ Still **open**, and the direction above is unchanged.
+Still **open**, but materially narrowed — read the two amendments below in
+order.
 
 [05](05-load-path-validation.md) landed 2026-09-17 and took the _shape_ half of
 this off the table: `SyncManager.addSyncDevice` is now the chokepoint for all
@@ -79,7 +80,22 @@ three enrolment routes and rejects a record without a usable `deviceId` or a
 public-key PEM, the stored device list is capped at 64, and
 `AddSyncDeviceCommand.validate()` is no longer `return true`.
 
-**That changes nothing about the finding above.** Every attack described here
+[13](13-sync-command-authentication.md) landed 2026-09-17 and took the larger
+half: an `AddSyncDeviceCommand` is now refused unless a device **currently in
+this vault's peer list** signed it, for this recipient. The headline attack in
+this file — "any party that knows device B's public key can inject an arbitrary
+device record" — is closed, because knowing a public key is no longer a
+credential for anything. Revocation works too: a removed device cannot inject,
+because it is no longer in the list its commands would be verified against.
+
+**What is left is the part this finding names last, and it is still open.**
+Enrolment by a peer that is trusted but hostile or compromised; no key pinning
+on first receipt; no confirmation that surfaces a new device to the user. A
+signed command still says only "a device you trust asked for this", and for
+device enrolment specifically that is not enough — which is exactly why the
+Direction section above asks for all three.
+
+**The shape gate alone changed nothing about the finding.** Every attack described here
 uses a _well formed_ device record; it is the attacker's own public key, in a
 valid PEM, under a plausible device id. A shape gate cannot tell that record
 from a real one, because nothing authenticates who sent it. What is still

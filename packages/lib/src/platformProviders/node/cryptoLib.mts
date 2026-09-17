@@ -1,18 +1,13 @@
 /* eslint no-restricted-globals: ["error", "Error"] */
 import { promisify } from 'node:util'
 import {
-  generateKeyPair as generateKeyPairCb,
   generateKey as generateKeyCb,
   hkdf as hkdfCb,
-  publicEncrypt,
   privateDecrypt,
   createHash,
   createHmac,
   createPrivateKey,
-  createPublicKey,
   timingSafeEqual,
-  constants,
-  KeyObject,
   randomBytes,
   createCipheriv,
   createDecipheriv,
@@ -23,23 +18,40 @@ import { toUint8Array } from 'uint8array-extras'
 import { CryptoError } from '../../FavaLibError.mjs'
 import type CryptoLib from '../../interfaces/CryptoLib.mjs'
 import type {
+  DeviceSecretKeys,
   Encrypted,
-  EncryptedPrivateKey,
+  EncryptedSecretKeys,
   EncryptedSymmetricKey,
   KdfParameters,
+  LegacyEncryptedPrivateKey,
   MacKey,
   Password,
   PasswordHash,
   PrivateKey,
   PublicKey,
   Salt,
+  Signature,
+  SigningPublicKey,
+  SigningSecretKey,
   SymmetricKey,
   SyncKey,
 } from '../../interfaces/CryptoLib.mjs'
 import { V1_KDF_PARAMETERS, V2_KDF_PARAMETERS } from '../../version.mjs'
+import { buildKeyWrapAad } from '../../utils/canonical.mjs'
 import { generatePasswordHash } from '../browser/cryptoLib.mjs'
+import {
+  createEncryptionKeyPair,
+  createSigningKeyPair,
+  encryptionPublicKeyFromSecret,
+  openSeal,
+  parseSecretKeys,
+  sealTo,
+  serialiseSecretKeys,
+  signMessage,
+  signingPublicKeyFromSecret,
+  verifyMessage,
+} from '../shared/curves.mjs'
 
-const generateKeyPair = promisify(generateKeyPairCb)
 const generateKey = promisify(generateKeyCb)
 const hkdf = promisify(hkdfCb)
 
@@ -51,6 +63,15 @@ const GCM_TAG_BYTES = 16
 
 /** Marks a storage version 2 ciphertext envelope. */
 const V2_ENVELOPE_PREFIX = 'v2'
+
+/** HKDF info for the key that seals the device's two secret keys at rest. */
+const KEY_WRAP_INFO = 'favalib:key-wrap:v2'
+
+/** HKDF info for the key that seals the vault's symmetric key at rest. */
+const DEK_WRAP_INFO = 'favalib:dek-wrap:v2'
+
+/** HKDF info for the envelope MAC key. */
+const ENVELOPE_MAC_INFO = 'favalib:envelope-mac:v2'
 
 /**
  * @inheritdoc
@@ -90,46 +111,27 @@ class NodeCryptoLib implements CryptoLib {
       V2_KDF_PARAMETERS,
     )
 
-    // Generate public/private key pair, unencrypted: the plaintext private key
-    // is what the library runs on, and the encrypted form is derived from it
-    // below.
-    const { publicKey, privateKey } = await generateKeyPair('rsa', {
-      modulusLength: 4096,
-      publicKeyEncoding: {
-        type: 'spki',
-        format: 'pem',
-      },
-      privateKeyEncoding: {
-        type: 'pkcs8',
-        format: 'pem',
-      },
-    })
-
-    const encryptedPrivateKey = createPrivateKey({
-      key: privateKey,
-      format: 'pem',
-    }).export({
-      type: 'pkcs8',
-      format: 'pem',
-      cipher: 'aes-256-cbc',
-      passphrase: passwordHash,
-    }) as EncryptedPrivateKey
-
-    // Create and encrypt symmetric key with public key
+    const { privateKey, publicKey } = createEncryptionKeyPair()
+    const { signingSecretKey, signingPublicKey } = createSigningKeyPair()
     const symmetricKey = await this.createSymmetricKey()
-    const encryptedSymmetricKey = await this.encrypt(
-      publicKey as PublicKey,
+
+    const sealed = await this.sealKeyMaterial(
+      { privateKey, signingSecretKey },
       symmetricKey,
+      passwordHash,
+      salt,
+      V2_KDF_PARAMETERS,
     )
     const macKey = await this.deriveEnvelopeMacKey(passwordHash, salt)
 
     return {
-      privateKey: privateKey as PrivateKey,
+      privateKey,
+      signingSecretKey,
       symmetricKey,
-      publicKey: publicKey as PublicKey,
-      salt: salt,
-      encryptedPrivateKey,
-      encryptedSymmetricKey: encryptedSymmetricKey as EncryptedSymmetricKey,
+      publicKey,
+      signingPublicKey,
+      salt,
+      ...sealed,
       macKey,
       kdf: V2_KDF_PARAMETERS,
     }
@@ -139,7 +141,7 @@ class NodeCryptoLib implements CryptoLib {
    * @inheritdoc
    */
   async encryptKeys(
-    privateKey: PrivateKey,
+    secretKeys: DeviceSecretKeys,
     symmetricKey: SymmetricKey,
     salt: Salt,
     password: Password,
@@ -148,30 +150,59 @@ class NodeCryptoLib implements CryptoLib {
     // recreate passwordHash
     const passwordHash = await generatePasswordHash(salt, password, kdf)
 
-    // Encrypt private key
-    const privateKeyObject = createPrivateKey({
-      key: privateKey,
-      format: 'pem',
-    })
-    const encryptedPrivateKey = privateKeyObject.export({
-      type: 'pkcs8',
-      format: 'pem',
-      cipher: 'aes-256-cbc',
-      passphrase: passwordHash,
-    }) as EncryptedPrivateKey
+    const sealed = await this.sealKeyMaterial(
+      secretKeys,
+      symmetricKey,
+      passwordHash,
+      salt,
+      kdf,
+    )
+    const macKey = await this.deriveEnvelopeMacKey(passwordHash, salt)
 
-    // Encrypt symmetric key with public key
-    const publicKeyObject = createPublicKey(privateKeyObject)
-    const publicKey = publicKeyObject.export({
-      type: 'spki',
-      format: 'pem',
-    }) as PublicKey
-    const encryptedSymmetricKey = await this.encrypt(publicKey, symmetricKey)
+    return { ...sealed, macKey }
+  }
+
+  /**
+   * @inheritdoc
+   */
+  async decryptKeys(
+    encryptedSecretKeys: EncryptedSecretKeys,
+    encryptedSymmetricKey: EncryptedSymmetricKey,
+    salt: Salt,
+    password: Password,
+    kdf: KdfParameters = V2_KDF_PARAMETERS,
+  ): Promise<{
+    privateKey: PrivateKey
+    signingSecretKey: SigningSecretKey
+    symmetricKey: SymmetricKey
+    publicKey: PublicKey
+    signingPublicKey: SigningPublicKey
+    macKey: MacKey
+  }> {
+    // recreate passwordHash
+    const passwordHash = await generatePasswordHash(salt, password, kdf)
+
+    const secretKeys = await this.openSecretKeys(
+      encryptedSecretKeys,
+      passwordHash,
+      salt,
+      kdf,
+    )
+    const symmetricKey = await this.decryptSymmetric(
+      await this.deriveWrappingKey(passwordHash, salt, DEK_WRAP_INFO),
+      encryptedSymmetricKey,
+      buildKeyWrapAad('symmetric-key', salt, kdf),
+    )
+
+    // Same passwordHash, no second derivation: at m=64 MiB/t=3/p=4 a second
+    // argon2 run would add ~260 ms to every unlock.
     const macKey = await this.deriveEnvelopeMacKey(passwordHash, salt)
 
     return {
-      encryptedPrivateKey,
-      encryptedSymmetricKey: encryptedSymmetricKey as EncryptedSymmetricKey,
+      ...secretKeys,
+      publicKey: encryptionPublicKeyFromSecret(secretKeys.privateKey),
+      signingPublicKey: signingPublicKeyFromSecret(secretKeys.signingSecretKey),
+      symmetricKey,
       macKey,
     }
   }
@@ -179,67 +210,33 @@ class NodeCryptoLib implements CryptoLib {
   /**
    * @inheritdoc
    */
-  async decryptKeys(
-    encryptedPrivateKey: EncryptedPrivateKey,
-    encryptedSymmetricKey: EncryptedSymmetricKey,
-    salt: Salt,
-    password: Password,
-    kdf: KdfParameters = V2_KDF_PARAMETERS,
-  ): Promise<{
-    privateKey: PrivateKey
-    symmetricKey: SymmetricKey
-    publicKey: PublicKey
-    macKey: MacKey
-  }> {
-    // recreate passwordHash
-    const passwordHash = await generatePasswordHash(salt, password, kdf)
-
-    const { privateKey, publicKey } = this.unwrapPrivateKey(
-      encryptedPrivateKey,
-      passwordHash,
-    )
-
-    // Decrypt the symmetric key
-    const symmetricKey = await this.decrypt(privateKey, encryptedSymmetricKey)
-    // Same passwordHash, no second derivation: at m=64 MiB/t=3/p=4 a second
-    // argon2 run would add ~260 ms to every unlock.
-    const macKey = await this.deriveEnvelopeMacKey(passwordHash, salt)
-
-    return { privateKey, publicKey, symmetricKey, macKey }
-  }
-
-  /**
-   * @inheritdoc
-   */
   async decryptKeysV1(
-    encryptedPrivateKey: EncryptedPrivateKey,
+    encryptedPrivateKey: LegacyEncryptedPrivateKey,
     encryptedSymmetricKey: EncryptedSymmetricKey,
     salt: Salt,
     password: Password,
-  ): Promise<{
-    privateKey: PrivateKey
-    symmetricKey: SymmetricKey
-    publicKey: PublicKey
-  }> {
+  ): Promise<{ symmetricKey: SymmetricKey }> {
     const passwordHash = await generatePasswordHash(
       salt,
       password,
       V1_KDF_PARAMETERS,
     )
 
-    const { privateKey, publicKey } = this.unwrapPrivateKey(
+    const privateKey = this.unwrapLegacyPrivateKey(
       encryptedPrivateKey,
       passwordHash,
     )
 
     // v1 wrapped the symmetric key with RSA-OAEP/MGF1-SHA-1, which is node's
-    // default OAEP hash -- hence no oaepHash here, unlike decrypt().
+    // default OAEP hash -- hence no oaepHash here. The RSA keypair itself is
+    // not returned: the upgrade mints a fresh curve pair, so this key is read
+    // exactly once and then discarded.
     const symmetricKey = privateDecrypt(
       { key: privateKey },
       Buffer.from(encryptedSymmetricKey, 'base64'),
     ).toString('utf8') as SymmetricKey
 
-    return { privateKey, publicKey, symmetricKey }
+    return { symmetricKey }
   }
 
   /**
@@ -249,6 +246,30 @@ class NodeCryptoLib implements CryptoLib {
     passwordHash: PasswordHash,
     salt: Salt,
   ): Promise<MacKey> {
+    return (await this.deriveWrappingKey(
+      passwordHash,
+      salt,
+      ENVELOPE_MAC_INFO,
+    )) as string as MacKey
+  }
+
+  /**
+   * Derives one of the three keys the password hash feeds: the two at-rest
+   * wrapping keys and the envelope MAC key.
+   *
+   * They differ only in the HKDF info, which is what keeps them independent --
+   * a seal made under one can never be opened with another, whatever a caller
+   * confuses.
+   * @param passwordHash - The argon2id password hash (hex).
+   * @param salt - The vault salt, used as the HKDF salt.
+   * @param info - The domain separator for this key's purpose.
+   * @returns A promise resolving to the derived key, base64 encoded.
+   */
+  private async deriveWrappingKey(
+    passwordHash: PasswordHash,
+    salt: Salt,
+    info: string,
+  ): Promise<SymmetricKey> {
     // Buffer.from(hash, 'hex'), NOT 'utf8': the input keying material is the
     // 64 bytes the hash represents, not the 128 characters it is printed as.
     // Both readings "work" in isolation and diverge silently between
@@ -258,10 +279,81 @@ class NodeCryptoLib implements CryptoLib {
       'sha256',
       ikm,
       Buffer.from(salt, 'utf8'),
-      Buffer.from('favalib:envelope-mac:v2', 'utf8'),
+      Buffer.from(info, 'utf8'),
       32,
     )
-    return Buffer.from(bits).toString('base64') as MacKey
+    return Buffer.from(bits).toString('base64') as SymmetricKey
+  }
+
+  /**
+   * Seals a device's secret keys and its symmetric key under the password.
+   *
+   * Two seals under two separately derived keys, rather than one blob holding
+   * everything: `changePassword` rewrites both, but a resilver and an unlock
+   * need only one of them, and keeping them apart means neither path can be
+   * made to read the other's bytes.
+   * @param secretKeys - The device's two secret keys.
+   * @param symmetricKey - The key the vault state is encrypted under.
+   * @param passwordHash - The argon2id password hash (hex).
+   * @param salt - The vault salt.
+   * @param kdf - The parameters the hash was produced with.
+   * @returns A promise resolving to both sealed forms.
+   */
+  private async sealKeyMaterial(
+    secretKeys: DeviceSecretKeys,
+    symmetricKey: SymmetricKey,
+    passwordHash: PasswordHash,
+    salt: Salt,
+    kdf: KdfParameters,
+  ): Promise<{
+    encryptedSecretKeys: EncryptedSecretKeys
+    encryptedSymmetricKey: EncryptedSymmetricKey
+  }> {
+    const encryptedSecretKeys = await this.encryptSymmetric(
+      await this.deriveWrappingKey(passwordHash, salt, KEY_WRAP_INFO),
+      serialiseSecretKeys(secretKeys),
+      buildKeyWrapAad('secret-keys', salt, kdf),
+    )
+    const encryptedSymmetricKey = await this.encryptSymmetric(
+      await this.deriveWrappingKey(passwordHash, salt, DEK_WRAP_INFO),
+      symmetricKey,
+      buildKeyWrapAad('symmetric-key', salt, kdf),
+    )
+
+    return { encryptedSecretKeys, encryptedSymmetricKey }
+  }
+
+  /**
+   * Opens the seal around a device's secret keys.
+   *
+   * A failure here is reported as an invalid password, which is what it almost
+   * always is: at rest the password is the only variable, and the alternative
+   * -- a modified vault -- is what the envelope MAC is checked for immediately
+   * afterwards, with a message that says so.
+   * @param encryptedSecretKeys - The sealed secret keys.
+   * @param passwordHash - The argon2id password hash (hex).
+   * @param salt - The vault salt.
+   * @param kdf - The parameters the hash was produced with.
+   * @returns A promise resolving to the two secret keys.
+   * @throws {CryptoError} If the seal does not open.
+   */
+  private async openSecretKeys(
+    encryptedSecretKeys: EncryptedSecretKeys,
+    passwordHash: PasswordHash,
+    salt: Salt,
+    kdf: KdfParameters,
+  ): Promise<DeviceSecretKeys> {
+    let serialised: string
+    try {
+      serialised = await this.decryptSymmetric(
+        await this.deriveWrappingKey(passwordHash, salt, KEY_WRAP_INFO),
+        encryptedSecretKeys,
+        buildKeyWrapAad('secret-keys', salt, kdf),
+      )
+    } catch {
+      throw new CryptoError('Invalid password')
+    }
+    return parseSecretKeys(serialised)
   }
 
   /**
@@ -300,18 +392,7 @@ class NodeCryptoLib implements CryptoLib {
    * @inheritdoc
    */
   async encrypt<T extends string>(publicKey: PublicKey, plainText: T) {
-    const buffer = Buffer.from(plainText, 'utf8')
-    // oaepHash sets BOTH the label digest and MGF1, unlike node-forge, which
-    // takes them separately. See the browser provider's oaepSha256Options.
-    const encrypted = publicEncrypt(
-      {
-        key: publicKey,
-        padding: constants.RSA_PKCS1_OAEP_PADDING,
-        oaepHash: 'sha256',
-      },
-      buffer,
-    )
-    return Promise.resolve(encrypted.toString('base64') as Encrypted<T>)
+    return sealTo(this, publicKey, plainText)
   }
 
   /**
@@ -321,16 +402,25 @@ class NodeCryptoLib implements CryptoLib {
     privateKey: PrivateKey,
     encryptedText: Encrypted<T>,
   ) {
-    const buffer = Buffer.from(encryptedText, 'base64')
-    const decrypted = privateDecrypt(
-      {
-        key: privateKey,
-        padding: constants.RSA_PKCS1_OAEP_PADDING,
-        oaepHash: 'sha256',
-      },
-      buffer,
-    )
-    return Promise.resolve(decrypted.toString('utf8') as T)
+    return openSeal(this, privateKey, encryptedText)
+  }
+
+  /**
+   * @inheritdoc
+   */
+  async sign(signingSecretKey: SigningSecretKey, message: string) {
+    return Promise.resolve(signMessage(signingSecretKey, message))
+  }
+
+  /**
+   * @inheritdoc
+   */
+  async verify(
+    signingPublicKey: SigningPublicKey,
+    message: string,
+    signature: Signature,
+  ) {
+    return Promise.resolve(verifyMessage(signingPublicKey, message, signature))
   }
 
   /**
@@ -449,32 +539,29 @@ class NodeCryptoLib implements CryptoLib {
   }
 
   /**
-   * Unwraps the PBES2-encrypted private key and recovers the public key from
-   * it. Shared by decryptKeys and decryptKeysV1, which differ only in the
-   * argon2 parameters that produced the passphrase and in how the symmetric
-   * key is unwrapped afterwards.
-   * @param encryptedPrivateKey - The stored, encrypted private key
+   * Unwraps a storage version 1 PBES2-encrypted RSA private key.
+   *
+   * MIGRATION PATH ONLY, reachable from decryptKeysV1 and nowhere else. It is
+   * the last RSA operation in the provider and goes with the v1 read path.
+   * @param encryptedPrivateKey - The stored v1 encrypted private key
    * @param passwordHash - The argon2id hash used as the PKCS#8 passphrase
-   * @returns The plaintext private key and its public key
+   * @returns The plaintext private key PEM
    * @throws {CryptoError} If the password or the key is not usable.
    */
-  private unwrapPrivateKey(
-    encryptedPrivateKey: EncryptedPrivateKey,
+  private unwrapLegacyPrivateKey(
+    encryptedPrivateKey: LegacyEncryptedPrivateKey,
     passwordHash: PasswordHash,
-  ): { privateKey: PrivateKey; publicKey: PublicKey } {
-    let privateKeyObject: KeyObject
-    let privateKey: PrivateKey
+  ): string {
     try {
-      privateKeyObject = createPrivateKey({
+      return createPrivateKey({
         key: encryptedPrivateKey,
         type: 'pkcs8',
         format: 'pem',
         passphrase: passwordHash,
-      })
-      privateKey = privateKeyObject.export({
+      }).export({
         type: 'pkcs8',
         format: 'pem',
-      }) as PrivateKey
+      }) as string
     } catch (err) {
       // eslint-disable-next-line no-restricted-globals
       if (err instanceof Error && 'code' in err) {
@@ -487,13 +574,6 @@ class NodeCryptoLib implements CryptoLib {
       }
       throw err
     }
-    const publicKeyObject = createPublicKey(privateKeyObject)
-    const publicKey = publicKeyObject.export({
-      type: 'spki',
-      format: 'pem',
-    }) as PublicKey
-
-    return { privateKey, publicKey }
   }
 }
 

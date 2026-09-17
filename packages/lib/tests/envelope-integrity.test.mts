@@ -13,7 +13,7 @@ import {
   type PublicKey,
   type Salt,
   type SymmetricKey,
-  type EncryptedPrivateKey,
+  type EncryptedSecretKeys,
   type EncryptedVaultStateString,
 } from '../src/main.mjs'
 import type { VaultStateString } from '../src/interfaces/Vault.mjs'
@@ -37,7 +37,7 @@ describe('stored envelope integrity', () => {
   let salt: Salt
   let kdf: KdfParameters
   let publicKey: PublicKey
-  let encryptedPrivateKey: EncryptedPrivateKey
+  let encryptedSecretKeys: EncryptedSecretKeys
   let favaLib: FavaLib
 
   const utils = () =>
@@ -61,7 +61,7 @@ describe('stored envelope integrity', () => {
     salt = result.salt
     kdf = result.kdf
     publicKey = result.publicKey
-    encryptedPrivateKey = result.encryptedPrivateKey
+    encryptedSecretKeys = result.encryptedSecretKeys
 
     await favaLib.vault.addEntry(newTotpEntry)
     await favaLib.storage.forceSave()
@@ -160,35 +160,32 @@ describe('stored envelope integrity', () => {
     })
   })
 
-  describe('forged envelope (02-ciphertext-authenticity.md)', () => {
-    // THIS TEST IS THE FINDING. The data encryption key arrives RSA-OAEP
-    // wrapped under this device's OWN public key, so the AES-GCM tag proves
-    // only that the writer held that key -- and anyone who has seen the public
-    // key can mint one. The practical route to the public key is a compromised
-    // peer, whose vault state carries it in sync.devices; the keypair is never
-    // rotated, so one leak is permanent.
+  describe('the forgery that made the MAC necessary (02-ciphertext-authenticity.md)', () => {
+    // THIS TEST WAS THE FINDING, and what it asserts has changed.
+    //
+    // The data encryption key used to arrive RSA-OAEP wrapped under this
+    // device's OWN public key, so anyone who had ever seen that public key --
+    // a compromised peer, whose vault state carries it in sync.devices -- could
+    // choose their own symmetric key, wrap it, re-encrypt the whole vault state
+    // and build a matching AAD out of the cleartext they were writing. The
+    // AES-GCM tag proved only that the writer held a key of their own choosing,
+    // which is exactly why the envelope MAC had to be added.
+    //
+    // Storage version 2 no longer wraps anything to this device's public key:
+    // `encryptedSymmetricKey` is sealed under a key derived from the password
+    // hash. The attack has no entry point left, and this is what says so.
     let forged: LockedRepresentation
     let attackerKey: SymmetricKey
-    let attackerAad: string
 
     beforeAll(async () => {
       forged = parse()
 
-      // The attacker picks their own key and wraps it to the victim's public
-      // key, which the victim's own private key will happily unwrap.
+      // The attacker does exactly what used to work: picks their own key and
+      // seals it to the victim's public key, which is public by definition.
       attackerKey = await cryptoLib.createSymmetricKey()
       forged.encryptedSymmetricKey = await cryptoLib.encrypt(
         publicKey,
         attackerKey,
-      )
-
-      // Every AAD input is cleartext in the file they are writing, so they
-      // build a perfectly valid one.
-      attackerAad = buildVaultAad(
-        STORAGE_VERSION,
-        forged.salt,
-        forged.kdf,
-        await cryptoLib.sha256(forged.encryptedPrivateKey),
       )
       forged.encryptedVaultState = await cryptoLib.encryptSymmetric(
         attackerKey,
@@ -201,38 +198,35 @@ describe('stored envelope integrity', () => {
             commandSendQueue: [],
           },
         }) as VaultStateString,
-        attackerAad,
+        // Every AAD input is cleartext in the file they are writing, so they
+        // still build a perfectly valid one. That was never the weak part.
+        buildVaultAad(
+          STORAGE_VERSION,
+          forged.salt,
+          forged.kdf,
+          await cryptoLib.sha256(forged.encryptedSecretKeys),
+        ),
       )
-      // encryptedPrivateKey, salt, kdf and libVersion are left untouched, so
-      // the victim's real password still unwraps the private key.
     })
 
-    it('is a real forgery: the AEAD layer accepts it completely', async () => {
-      // Without this assertion the test below would pass for the wrong reason.
-      // The forged ciphertext IS valid under its own key and AAD; nothing in
-      // AES-GCM objects to any of it.
-      const plaintext = await cryptoLib.decryptSymmetric(
-        attackerKey,
-        forged.encryptedVaultState,
-        attackerAad,
-      )
-      expect(JSON.parse(plaintext)).toMatchObject({
-        sync: { serverUrl: 'wss://attacker.example' },
-      })
-
-      const { symmetricKey } = await cryptoLib.decryptKeys(
-        forged.encryptedPrivateKey,
-        forged.encryptedSymmetricKey,
-        forged.salt,
-        password,
-        forged.kdf,
-      )
-      // The victim's own private key unwraps the attacker's chosen key.
-      expect(symmetricKey).toBe(attackerKey)
+    it('no longer reaches the victim: the key slot is not public any more', async () => {
+      // The victim's own secret key used to unwrap the attacker's chosen key
+      // here, and the assertion was `expect(symmetricKey).toBe(attackerKey)`.
+      // Now the slot holds a seal under a PASSWORD-derived key, so a value
+      // sealed to the public key is not a value this path can open at all.
+      await expect(
+        cryptoLib.decryptKeys(
+          forged.encryptedSecretKeys,
+          forged.encryptedSymmetricKey,
+          forged.salt,
+          password,
+          forged.kdf,
+        ),
+      ).rejects.toThrow('Could not decrypt data')
     })
 
-    it('is rejected by the envelope MAC', async () => {
-      await expect(load(forged)).rejects.toThrow(/failed its integrity check/)
+    it('is refused on load', async () => {
+      await expect(load(forged)).rejects.toThrow()
     })
   })
 
@@ -257,20 +251,22 @@ describe('stored envelope integrity', () => {
         STORAGE_VERSION,
         salt,
         kdf,
-        await cryptoLib.sha256(encryptedPrivateKey),
+        await cryptoLib.sha256(encryptedSecretKeys),
       )
 
-      const { encryptedPrivateKey: afterPasswordChange } =
+      const opened = await cryptoLib.decryptKeys(
+        encryptedSecretKeys,
+        parse().encryptedSymmetricKey,
+        salt,
+        password,
+        kdf,
+      )
+      const { encryptedSecretKeys: afterPasswordChange } =
         await cryptoLib.encryptKeys(
-          (
-            await cryptoLib.decryptKeys(
-              encryptedPrivateKey,
-              parse().encryptedSymmetricKey,
-              salt,
-              password,
-              kdf,
-            )
-          ).privateKey,
+          {
+            privateKey: opened.privateKey,
+            signingSecretKey: opened.signingSecretKey,
+          },
           symmetricKey,
           salt,
           'a-completely-different-password' as Password,

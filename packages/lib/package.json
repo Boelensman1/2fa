@@ -45,6 +45,8 @@
     "vitest-websocket-mock": "^0.7.0"
   },
   "dependencies": {
+    "@noble/curves": "^2.4.0",
+    "@noble/hashes": "^2.4.0",
     "@types/node": "catalog:",
     "@zxcvbn-ts/core": "catalog:",
     "@zxcvbn-ts/language-common": "^4.1.3",

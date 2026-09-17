@@ -1,3 +1,7 @@
+import { base64ToUint8Array } from 'uint8array-extras'
+
+import { SyncError } from '../FavaLibError.mjs'
+import type { DevicePublicKeys } from '../interfaces/CryptoLib.mjs'
 import type { DeviceInfo, SyncDevice } from '../interfaces/SyncTypes.mjs'
 
 /**
@@ -10,27 +14,28 @@ import type { DeviceInfo, SyncDevice } from '../interfaces/SyncTypes.mjs'
  * agree about the same vault.
  *
  * Not a capacity limit -- it is a bound on how much damage one malformed or
- * hostile vault state can do. Every outgoing command is encrypted once per
- * device (`SyncManager.sendCommand`), so an unbounded list is an unbounded
- * amount of RSA work per keystroke.
+ * hostile vault state can do. Every outgoing command is sealed and signed once
+ * per device (`SyncManager.sendCommand`), so an unbounded list is an unbounded
+ * amount of work per keystroke.
  */
 export const MAX_SYNC_DEVICES = 64
 
 /**
- * The longest a public key PEM may be. An RSA-4096 SPKI PEM is around 800
- * characters, so this leaves room for a larger key without leaving room for a
- * blob.
+ * How long a base64 public key is: 32 raw bytes, so 44 characters including the
+ * single padding character.
+ *
+ * An exact length, where storage version 1's RSA PEMs could only be given an
+ * upper bound. X25519 and Ed25519 keys are both exactly this size, which is
+ * also why nothing but the field name and the branded type keeps the two roles
+ * apart -- there is no length to tell them by.
  */
-export const MAX_PUBLIC_KEY_LENGTH = 4096
+export const PUBLIC_KEY_LENGTH = 44
 
 /** The longest a device id may be. Ours are uuidv4, but a peer's is a string. */
 const MAX_DEVICE_ID_LENGTH = 256
 
 /** The longest a deviceType or deviceFriendlyName may be. */
 const MAX_DEVICE_NAME_LENGTH = 256
-
-const PEM_HEADER = '-----BEGIN PUBLIC KEY-----'
-const PEM_FOOTER = '-----END PUBLIC KEY-----'
 
 /**
  * Checks that a value is a string within a length limit.
@@ -40,6 +45,26 @@ const PEM_FOOTER = '-----END PUBLIC KEY-----'
  */
 const isBoundedString = (value: unknown, maxLength: number): boolean =>
   typeof value === 'string' && value.length > 0 && value.length <= maxLength
+
+/**
+ * Checks that a value is a base64 public key of exactly the right length.
+ *
+ * Both the length and the decode matter: 32 bytes is what the curves accept,
+ * and a string that is the right length but not base64 would otherwise reach
+ * noble and fail there, in an error message that names a primitive.
+ * @param value - The value to check, which may be anything at all.
+ * @returns True when the value is a usable public key.
+ */
+const isPublicKey = (value: unknown): boolean => {
+  if (typeof value !== 'string' || value.length !== PUBLIC_KEY_LENGTH) {
+    return false
+  }
+  try {
+    return base64ToUint8Array(value).length === 32
+  } catch {
+    return false
+  }
+}
 
 /**
  * Checks the optional deviceInfo of a sync device.
@@ -73,17 +98,18 @@ const validateDeviceInfo = (deviceInfo: unknown): string | null => {
 /**
  * Checks the parts of a sync device without which it is simply unusable.
  *
- * This is a *shape* gate, not a key validity gate. It deliberately does not
- * parse the PEM: that would pull a platform provider into a leaf util, and the
- * two providers disagree about line endings anyway -- node writes `\n` and
- * node-forge `\r\n`, which is why the header and footer are matched against the
- * trimmed string rather than with a whole-string regex. See
- * `canonical.mts`'s note on the same split.
+ * A *shape* gate, and since storage version 2 an exact one: both public keys
+ * are 32 raw bytes, so this checks the length and the base64 rather than
+ * bounding a PEM the way it had to when the keys were RSA.
  *
- * It is also **not** the check that makes device enrolment safe. A well formed
- * record carrying an attacker's public key passes every test here; nothing
- * authenticates the sender of an `AddSyncDeviceCommand`. That is
- * key-hierarchy-review/14-sync-device-injection.md, and it stays open.
+ * It is still **not** the check that makes device enrolment safe. A well formed
+ * record carrying an attacker's public keys passes every test here. What has
+ * changed is who can get such a record in front of this function: an
+ * `AddSyncDeviceCommand` now has to arrive signed by a device already in the
+ * peer list, so enrolment is no longer open to anyone who has seen a public
+ * key. Enrolment by a *trusted but hostile* peer, key pinning and a visible
+ * new-device confirmation are still open --
+ * key-hierarchy-review/14-sync-device-injection.md.
  * @param raw - The device to check, which may be anything at all.
  * @returns Null when the device is usable, otherwise the reason it is not.
  */
@@ -97,14 +123,42 @@ export const validateSyncDevice = (raw: unknown): string | null => {
   if (!isBoundedString(device.deviceId, MAX_DEVICE_ID_LENGTH)) {
     return 'device has no usable deviceId'
   }
-  if (!isBoundedString(device.publicKey, MAX_PUBLIC_KEY_LENGTH)) {
+  if (!isPublicKey(device.publicKey)) {
     return 'device has no usable publicKey'
   }
-
-  const publicKey = (device.publicKey as string).trim()
-  if (!publicKey.startsWith(PEM_HEADER) || !publicKey.endsWith(PEM_FOOTER)) {
-    return 'device.publicKey is not a public key PEM'
+  if (!isPublicKey(device.signingPublicKey)) {
+    return 'device has no usable signingPublicKey'
   }
 
   return validateDeviceInfo(device.deviceInfo)
+}
+
+/**
+ * Reads a peer's two public keys out of the pairing handshake.
+ *
+ * They arrive encrypted under the JPAKE-derived sync key, so this is not a
+ * trust boundary -- it is what makes a peer on a build that sends a different
+ * shape fail here, while the user is still standing in front of both devices,
+ * rather than at the first command it tries to verify.
+ * @param serialised - The decrypted JSON from the handshake.
+ * @returns The peer's public keys.
+ * @throws {SyncError} If the payload is not a pair of usable public keys.
+ */
+export const parseDevicePublicKeys = (serialised: string): DevicePublicKeys => {
+  let parsed: Partial<DevicePublicKeys>
+  try {
+    parsed = JSON.parse(serialised) as Partial<DevicePublicKeys>
+  } catch {
+    throw new SyncError('The other device sent unreadable public keys')
+  }
+  const { publicKey, signingPublicKey } = parsed ?? {}
+  if (
+    !publicKey ||
+    !signingPublicKey ||
+    !isPublicKey(publicKey) ||
+    !isPublicKey(signingPublicKey)
+  ) {
+    throw new SyncError('The other device sent unusable public keys')
+  }
+  return { publicKey, signingPublicKey }
 }

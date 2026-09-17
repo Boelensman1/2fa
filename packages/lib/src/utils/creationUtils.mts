@@ -4,13 +4,15 @@ import { uint8ArrayToBase64 } from 'uint8array-extras'
 import type { PlatformProviders } from '../interfaces/PlatformProviders.mjs'
 import type CryptoLib from '../interfaces/CryptoLib.mjs'
 import type {
-  EncryptedPrivateKey,
+  EncryptedSecretKeys,
   EncryptedSymmetricKey,
   MacKey,
   Password,
   PrivateKey,
   PublicKey,
   Salt,
+  SigningPublicKey,
+  SigningSecretKey,
   SymmetricKey,
 } from '../interfaces/CryptoLib.mjs'
 import type { DeviceId, DeviceType } from '../interfaces/SyncTypes.mjs'
@@ -26,7 +28,6 @@ import {
   LEGACY_STORAGE_VERSION,
   SESSION_VERSION,
   STORAGE_VERSION,
-  V2_KDF_PARAMETERS,
 } from '../version.mjs'
 import {
   buildEnvelopeMacMessage,
@@ -36,8 +37,10 @@ import {
 
 import LibraryLoader from '../subclasses/LibraryLoader.mjs'
 import type {
+  LegacyLockedRepresentation,
   LockedRepresentation,
   LockedRepresentationString,
+  ProcessedCommand,
   UnlockedSession,
   UnlockedSessionString,
   VaultState,
@@ -49,6 +52,10 @@ import {
   MAX_SYNC_DEVICES,
   validateSyncDevice,
 } from './syncDeviceValidation.mjs'
+import {
+  encryptionPublicKeyFromSecret,
+  signingPublicKeyFromSecret,
+} from '../platformProviders/shared/curves.mjs'
 
 /** Appended to every message that refuses a vault the user can still recover. */
 const DATA_IS_INTACT = 'Do not reset or delete the vault, its data is intact.'
@@ -186,16 +193,19 @@ const createNewFavaLibVault = async (
 ) => {
   const cryptoLib = libraryLoader.getCryptoLib()
   const platformProviders = libraryLoader.getPlatformProviders()
-  // Before createKeys, not after: createKeys runs a full RSA-4096 keygen plus
-  // argon2 at the v2 cost, and rejecting a weak password afterwards spends all
-  // of that for nothing. See key-hierarchy-review/10-rsa-layer.md.
+  // Before createKeys, not after: createKeys runs argon2 at the v2 cost, and
+  // rejecting a weak password afterwards spends all of that for nothing. Curve
+  // keygen is no longer the expensive half -- it used to be an RSA-4096
+  // keygen, see key-hierarchy-review/10-rsa-layer.md -- but argon2 still is.
   await validatePasswordStrength(libraryLoader, passwordExtraDict, password)
 
   const {
     publicKey,
+    signingPublicKey,
     privateKey,
+    signingSecretKey,
     symmetricKey,
-    encryptedPrivateKey,
+    encryptedSecretKeys,
     encryptedSymmetricKey,
     salt,
     macKey,
@@ -207,14 +217,14 @@ const createNewFavaLibVault = async (
     deviceType,
     platformProviders,
     passwordExtraDict,
-    privateKey,
+    { privateKey, signingSecretKey },
     symmetricKey,
-    encryptedPrivateKey,
+    encryptedSecretKeys,
     encryptedSymmetricKey,
     salt,
     macKey,
     kdf,
-    publicKey,
+    { publicKey, signingPublicKey },
     {
       deviceId,
     },
@@ -230,7 +240,8 @@ const createNewFavaLibVault = async (
   return {
     favaLib,
     publicKey,
-    encryptedPrivateKey,
+    signingPublicKey,
+    encryptedSecretKeys,
     encryptedSymmetricKey,
     salt,
     macKey,
@@ -247,13 +258,12 @@ const createNewFavaLibVault = async (
  * legitimately has neither, and requireV2EnvelopeFields is what says so by
  * name rather than calling a v2 vault "incomplete".
  */
-type CompleteLockedRepresentation = Partial<LockedRepresentation> &
+type CompleteLockedRepresentation = Partial<
+  LockedRepresentation & LegacyLockedRepresentation
+> &
   Pick<
     LockedRepresentation,
-    | 'encryptedPrivateKey'
-    | 'encryptedSymmetricKey'
-    | 'salt'
-    | 'encryptedVaultState'
+    'encryptedSymmetricKey' | 'salt' | 'encryptedVaultState'
   >
 
 /** The two fields a storage version 2 envelope must carry. */
@@ -273,10 +283,12 @@ interface V2EnvelopeFields {
  */
 interface UnlockedVaultKeys {
   privateKey: PrivateKey
+  signingSecretKey: SigningSecretKey
   publicKey: PublicKey
+  signingPublicKey: SigningPublicKey
   symmetricKey: SymmetricKey
   macKey: MacKey
-  encryptedPrivateKey: EncryptedPrivateKey
+  encryptedSecretKeys: EncryptedSecretKeys
   encryptedSymmetricKey: EncryptedSymmetricKey
   salt: Salt
   kdf: KdfParameters
@@ -329,8 +341,16 @@ const readStorageVersion = (parsed: unknown): number => {
 }
 
 /**
- * Checks that a parsed stored vault carries the four fields every storage
+ * Checks that a parsed stored vault carries the three fields every storage
  * version has.
+ *
+ * Three, not four: the slot holding the device's key material is named
+ * differently in each version, and the names are the honest part. A v1
+ * `encryptedPrivateKey` is a PBES2 PEM wrapping an RSA key; a v2
+ * `encryptedSecretKeys` is an AES-GCM seal over two curve keys. Nothing can
+ * read one as the other, so neither is required until the version has said
+ * which one should be there -- `requireEncryptedSecretKeys` below, and the
+ * legacy branch of the password path.
  *
  * The typeof half is not redundant with the truthiness half. Every one of
  * these is read through a Partial<LockedRepresentation> cast that claims a
@@ -339,17 +359,15 @@ const readStorageVersion = (parsed: unknown): number => {
  * truthiness half is what narrows away undefined for the code downstream.
  * @param parsed - The parsed stored vault.
  * @returns The same object, narrowed.
- * @throws {InitializationError} If any of the four is missing or not a string.
+ * @throws {InitializationError} If any of the three is missing or not a string.
  */
 const requireCompleteLockedRepresentation = (
   parsed: Partial<LockedRepresentation> | undefined,
 ): CompleteLockedRepresentation => {
   if (
-    !parsed?.encryptedPrivateKey ||
-    !parsed.encryptedSymmetricKey ||
+    !parsed?.encryptedSymmetricKey ||
     !parsed.salt ||
     !parsed.encryptedVaultState ||
-    typeof parsed.encryptedPrivateKey !== 'string' ||
     typeof parsed.encryptedSymmetricKey !== 'string' ||
     typeof parsed.salt !== 'string' ||
     typeof parsed.encryptedVaultState !== 'string'
@@ -359,6 +377,29 @@ const requireCompleteLockedRepresentation = (
     )
   }
   return parsed as CompleteLockedRepresentation
+}
+
+/**
+ * Reads the sealed secret keys of a storage version 2 vault.
+ *
+ * Called by everything downstream of the version gate rather than checked once
+ * in the completeness check, because a version 1 vault legitimately has no
+ * such field -- and calling that vault "incomplete" would be a worse message
+ * than the one the legacy path gives.
+ * @param stored - The stored vault, already known to be complete.
+ * @returns The sealed secret keys.
+ * @throws {InitializationError} If the field is missing or not a string.
+ */
+const requireEncryptedSecretKeys = (
+  stored: CompleteLockedRepresentation,
+): EncryptedSecretKeys => {
+  const encryptedSecretKeys = stored.encryptedSecretKeys
+  if (!encryptedSecretKeys || typeof encryptedSecretKeys !== 'string') {
+    throw new InitializationError(
+      'lockedRepresentation is incomplete or corrupted',
+    )
+  }
+  return encryptedSecretKeys
 }
 
 /**
@@ -443,7 +484,7 @@ const decryptV2VaultState = async (
       storageVersion,
       salt: stored.salt,
       kdf: envelope.kdf,
-      encryptedPrivateKey: stored.encryptedPrivateKey,
+      encryptedSecretKeys: requireEncryptedSecretKeys(stored),
       encryptedSymmetricKey: stored.encryptedSymmetricKey,
       encryptedVaultState: stored.encryptedVaultState,
     }),
@@ -463,7 +504,7 @@ const decryptV2VaultState = async (
       storageVersion,
       stored.salt,
       envelope.kdf,
-      await cryptoLib.sha256(stored.encryptedPrivateKey),
+      await cryptoLib.sha256(requireEncryptedSecretKeys(stored)),
     ),
   )
 }
@@ -506,6 +547,36 @@ const parseVaultState = (vaultStateString: string): VaultState => {
   ) {
     throw new InitializationError(
       'encryptedVaultState is incomplete or corrupted',
+    )
+  }
+
+  // Absent is fine and means "this device has applied nothing yet", which is
+  // true of every vault written before the record existed. Present but the
+  // wrong shape is REFUSED rather than reset, unlike the entries below it and
+  // unlike a dropped remote command: silently starting replay protection over
+  // is the one repair whose cost is invisible, because the vault would work
+  // perfectly afterwards and simply accept commands it had already applied.
+  // See key-hierarchy-review/15-sync-replay-protection.md.
+  const processedCommands = vaultState.sync.processedCommands
+  if (
+    processedCommands !== undefined &&
+    (typeof processedCommands !== 'object' ||
+      !Array.isArray(processedCommands.commands) ||
+      typeof processedCommands.floors !== 'object' ||
+      processedCommands.floors === null ||
+      !processedCommands.commands.every(
+        (entry) =>
+          typeof (entry as Partial<ProcessedCommand>)?.id === 'string' &&
+          typeof (entry as Partial<ProcessedCommand>).from === 'string' &&
+          typeof (entry as Partial<ProcessedCommand>).timestamp === 'number',
+      ) ||
+      !Object.values(processedCommands.floors).every(
+        (floor) => typeof floor === 'number',
+      ))
+  ) {
+    throw new InitializationError(
+      `The stored vault's replay-protection record is unusable. ` +
+        DATA_IS_INTACT,
     )
   }
 
@@ -568,14 +639,14 @@ const constructFavaLib = (
     deviceType,
     platformProviders,
     passwordExtraDict,
-    keys.privateKey,
+    { privateKey: keys.privateKey, signingSecretKey: keys.signingSecretKey },
     keys.symmetricKey,
-    keys.encryptedPrivateKey,
+    keys.encryptedSecretKeys,
     keys.encryptedSymmetricKey,
     keys.salt,
     keys.macKey,
     keys.kdf,
-    keys.publicKey,
+    { publicKey: keys.publicKey, signingPublicKey: keys.signingPublicKey },
     {
       deviceId: vaultState.deviceId,
       deviceFriendlyName: vaultState.deviceFriendlyName,
@@ -630,8 +701,14 @@ const loadFavaLibFromLockedRepesentation = async (
   let vaultStateString: string
 
   if (isLegacy) {
+    const legacyKeyField = stored.encryptedPrivateKey
+    if (!legacyKeyField || typeof legacyKeyField !== 'string') {
+      throw new InitializationError(
+        'lockedRepresentation is incomplete or corrupted',
+      )
+    }
     const legacyKeys = await cryptoLib.decryptKeysV1(
-      stored.encryptedPrivateKey,
+      legacyKeyField,
       stored.encryptedSymmetricKey,
       stored.salt,
       password,
@@ -641,43 +718,47 @@ const loadFavaLibFromLockedRepesentation = async (
       stored.encryptedVaultState,
     )
 
-    // The re-wrap, done here rather than after the FavaLib is built, so that
-    // the salt, both encrypted keys, the MAC key and the kdf block that reach
-    // PersistentStorageManager are consistent BY CONSTRUCTION. The salt feeds
-    // both the at-rest AAD and the envelope MAC, so a half-applied swap would
-    // produce a vault that saves successfully and never opens again; deriving
-    // the new material up front makes that state unrepresentable rather than
-    // merely avoided.
+    // A whole fresh generation, derived here rather than after the FavaLib is
+    // built, so that the salt, both seals, the MAC key and the kdf block that
+    // reach PersistentStorageManager are consistent BY CONSTRUCTION. The salt
+    // feeds both the at-rest AAD and the envelope MAC, so a half-applied swap
+    // would produce a vault that saves successfully and never opens again.
     //
     // It is also why an unlocked session cannot open a v1 vault: this step
     // needs the password, and the session path does not have one.
     //
-    // The RSA keypair is deliberately NOT rotated: peers hold this device's
-    // public key, and rotation is key-hierarchy-review/04-key-rotation.md.
-    const salt = await generateSalt(cryptoLib)
-    const kdf = V2_KDF_PARAMETERS
-    const rewrapped = await cryptoLib.encryptKeys(
-      legacyKeys.privateKey,
-      legacyKeys.symmetricKey,
-      salt,
-      password,
-      kdf,
-    )
+    // `createKeys` rather than a re-wrap of what was read, because nothing
+    // from a v1 vault can be carried across: it holds an RSA keypair, and v2
+    // speaks X25519 and Ed25519. The symmetric key goes with it, which costs
+    // nothing -- the vault state is re-encrypted from plaintext on the save
+    // below either way -- and rotates the data encryption key on migration as
+    // a side effect. It is one argon2id pass, the same as the re-wrap it
+    // replaces.
+    //
+    // The consequence is the one part of this migration a user can see: this
+    // device's public keys change, so every peer's record of it is stale and
+    // the devices have to pair again. That is stated rather than worked around
+    // -- announcing new keys over the old channel would authenticate them with
+    // exactly the primitive that authenticates nothing. See
+    // key-hierarchy-review/13-sync-command-authentication.md.
+    const fresh = await cryptoLib.createKeys(password)
     keys = {
-      privateKey: legacyKeys.privateKey,
-      publicKey: legacyKeys.publicKey,
-      symmetricKey: legacyKeys.symmetricKey,
-      macKey: rewrapped.macKey,
-      encryptedPrivateKey: rewrapped.encryptedPrivateKey,
-      encryptedSymmetricKey: rewrapped.encryptedSymmetricKey,
-      salt,
-      kdf,
+      privateKey: fresh.privateKey,
+      signingSecretKey: fresh.signingSecretKey,
+      publicKey: fresh.publicKey,
+      signingPublicKey: fresh.signingPublicKey,
+      symmetricKey: fresh.symmetricKey,
+      macKey: fresh.macKey,
+      encryptedSecretKeys: fresh.encryptedSecretKeys,
+      encryptedSymmetricKey: fresh.encryptedSymmetricKey,
+      salt: fresh.salt,
+      kdf: fresh.kdf,
     }
   } else {
     const envelope = requireV2EnvelopeFields(stored, storageVersion)
 
     const decrypted = await cryptoLib.decryptKeys(
-      stored.encryptedPrivateKey,
+      requireEncryptedSecretKeys(stored),
       stored.encryptedSymmetricKey,
       stored.salt,
       password,
@@ -685,7 +766,7 @@ const loadFavaLibFromLockedRepesentation = async (
     )
     keys = {
       ...decrypted,
-      encryptedPrivateKey: stored.encryptedPrivateKey,
+      encryptedSecretKeys: requireEncryptedSecretKeys(stored),
       encryptedSymmetricKey: stored.encryptedSymmetricKey,
       salt: stored.salt,
       kdf: envelope.kdf,
@@ -766,7 +847,7 @@ const parseUnlockedSession = (
 
   for (const field of [
     'privateKey',
-    'publicKey',
+    'signingSecretKey',
     'symmetricKey',
     'macKey',
   ] as const) {
@@ -909,7 +990,13 @@ const loadFavaLibFromUnlockedSession = async (
     saveFunction,
     {
       ...session,
-      encryptedPrivateKey: stored.encryptedPrivateKey,
+      // Both public keys are derived from the secret keys rather than carried
+      // in the session blob, for the same reason the blob carries no salt: a
+      // stored copy is one more value that can disagree with the key material
+      // it claims to describe.
+      publicKey: encryptionPublicKeyFromSecret(session.privateKey),
+      signingPublicKey: signingPublicKeyFromSecret(session.signingSecretKey),
+      encryptedSecretKeys: requireEncryptedSecretKeys(stored),
       encryptedSymmetricKey: stored.encryptedSymmetricKey,
       salt: stored.salt,
       kdf: envelope.kdf,

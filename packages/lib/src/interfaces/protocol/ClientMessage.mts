@@ -1,9 +1,10 @@
 import type {
   DeviceId,
   Encrypted,
-  EncryptedPublicKey,
+  EncryptedPublicKeys,
   EncryptedSymmetricKey,
   EncryptedVaultStateString,
+  Signature,
 } from '../BrandedTypes.mjs'
 import type JsonifiedUint8Array from './JsonifiedUint8Array.mjs'
 
@@ -19,14 +20,12 @@ export interface AddSyncDeviceInitialiseDataClientMessage {
   data: {
     initiatorDeviceId: DeviceId
     timestamp: number
-    nonce: string
   }
 }
 
 export interface JPAKEPass2ClientMessage {
   type: 'JPAKEPass2'
   data: {
-    nonce: string
     pass2Result: {
       round1Result: {
         G1: JsonifiedUint8Array
@@ -47,7 +46,6 @@ export interface JPAKEPass2ClientMessage {
 export interface JPAKEPass3ClientMessage {
   type: 'JPAKEPass3'
   data: {
-    nonce: string
     initiatorDeviceId: DeviceId
     pass3Result: { A: JsonifiedUint8Array; ZKPx2s: JsonifiedUint8Array }
   }
@@ -57,8 +55,7 @@ export interface PublicKeyAndDeviceInfoClientMessage {
   type: 'publicKeyAndDeviceInfo'
   data: {
     initiatorDeviceId: DeviceId
-    nonce: string
-    responderEncryptedPublicKey: EncryptedPublicKey
+    responderEncryptedPublicKeys: EncryptedPublicKeys
     responderEncryptedDeviceInfo: Encrypted<string>
   }
 }
@@ -67,7 +64,6 @@ export interface InitialVaultClientMessage {
   type: 'initialVault'
   data: {
     initiatorDeviceId: DeviceId
-    nonce: string
     encryptedVaultData: EncryptedVaultStateString
   }
 }
@@ -76,9 +72,17 @@ export interface VaultClientMessage {
   type: 'vault'
   data: {
     forDeviceId: DeviceId
-    nonce: string
     encryptedVaultData: EncryptedVaultStateString
     encryptedSymmetricKey: EncryptedSymmetricKey
+    /**
+     * Ed25519 over buildVaultDataSignatureMessage, by the sending device.
+     *
+     * Without it a resilvered vault is only sealed, and sealing is a public
+     * operation: the `fromDeviceId` the server stamps on the way through would
+     * be the only statement about who sent it. See
+     * key-hierarchy-review/13-sync-command-authentication.md.
+     */
+    signature: Signature
   }
 }
 
@@ -91,14 +95,15 @@ export interface AddSyncDeviceCancelledClientMessage {
 
 export interface SyncCommandFromClient {
   commandId: string
+  /** The RECIPIENT. The sender is named inside the ciphertext, and signed. */
   deviceId: DeviceId
+  /** A SignedCommandEnvelope, sealed to the recipient. */
   encryptedCommand: Encrypted<string>
   encryptedSymmetricKey: EncryptedSymmetricKey
 }
 export interface SyncCommandsClientMessage {
   type: 'syncCommands'
   data: {
-    nonce: string
     commands: SyncCommandFromClient[]
   }
 }
@@ -114,7 +119,6 @@ export interface StartResilverClientMessage {
   type: 'startResilver'
   data: {
     deviceIds: DeviceId[]
-    nonce: string
   }
 }
 

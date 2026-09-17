@@ -15,7 +15,10 @@ import {
 } from '../src/main.mjs'
 import { nodeProviders } from '../src/platformProviders/node/index.mjs'
 import { browserProviders } from '../src/platformProviders/browser/index.mjs'
-import type { VaultState } from '../src/interfaces/Vault.mjs'
+import type {
+  LegacyLockedRepresentation,
+  VaultState,
+} from '../src/interfaces/Vault.mjs'
 import { buildVaultAad } from '../src/utils/canonical.mjs'
 
 // The browser CryptoLib reads window.crypto inside its method bodies only, and
@@ -53,15 +56,19 @@ const fixture = readFileSync(
 
 // The v2 fixture. Same two secrets as v1, so the same expected OTPs apply --
 // and those were cross-checked against an independent RFC 6238 implementation.
+// Regenerated once, when storage version 2 was REDEFINED to the curve hierarchy
+// before it ever shipped; see tests/fixtures/README.md on why that is not a
+// breach of the never-regenerate rule. That the OTPs came back unchanged is the
+// end-to-end evidence that the new chain is correct and not merely consistent.
 const V2_FIXTURE_PASSWORD = 'fixture!Vault7#Frozen$v2' as Password
-const V2_FIXTURE_DEVICE_ID = '9ad6d991-a1b0-45a2-8e3f-01de0a956272'
+const V2_FIXTURE_DEVICE_ID = '822d43ef-ab39-4a9e-a106-2e96eb3fdb82'
 const V2_ENTRY_ONE = {
-  id: '9898f013-9e8c-412b-b892-a5eb8a583851' as EntryId,
+  id: 'bc068e83-2a34-4d0d-8550-650d45a45e3c' as EntryId,
   name: 'Fixture Entry One',
   otpAtFixedTimestamp: '324550',
 }
 const V2_ENTRY_TWO = {
-  id: '09e3a359-3764-4a73-ba55-bc5ce2fec2d5' as EntryId,
+  id: '0d72d157-a5c1-469c-b021-c985492ebe85' as EntryId,
   name: 'Fixture Entry Two',
   otpAtFixedTimestamp: '017492',
 }
@@ -139,7 +146,7 @@ describe('stored format fixtures', () => {
       // this fixture IS a v1 blob, and reading it is the one thing the legacy
       // path exists for.
       const { symmetricKey } = await browserCrypto.decryptKeysV1(
-        parsed.encryptedPrivateKey,
+        (parsed as unknown as LegacyLockedRepresentation).encryptedPrivateKey,
         parsed.encryptedSymmetricKey,
         parsed.salt,
         FIXTURE_PASSWORD,
@@ -195,8 +202,8 @@ describe('stored format fixtures', () => {
 
     it('produces the same OTPs it did when it was written', async () => {
       // As with v1, this one assertion pins the whole chain: the v2 argon2id
-      // parameters, the PBES2-wrapped RSA key, RSA-OAEP/MGF1-SHA-256
-      // unwrapping, the "v2:nonce:ct||tag" AES-GCM envelope with its at-rest
+      // parameters, the HKDF-derived key-wrap keys, the AES-GCM seal over the
+      // two curve secret keys, the "v2:nonce:ct||tag" envelope with its at-rest
       // AAD, the envelope MAC, and the TOTP derivation.
       for (const expected of [V2_ENTRY_ONE, V2_ENTRY_TWO]) {
         const token = await favaLib.vault.generateTokenForEntry(
@@ -209,9 +216,9 @@ describe('stored format fixtures', () => {
 
     it('is readable by the browser provider too', async () => {
       // Written by the node provider; opening it with the browser one gates
-      // the v2 format on both implementations. This is also where the
-      // encryptedPrivateKey-digest line-ending trap in the at-rest AAD would
-      // surface, since node writes PEM with "\n" and node-forge with "\r\n".
+      // the v2 format on both implementations -- the two share their curve
+      // code but not their AES, HKDF or argon2, so this is where a disagreement
+      // between those would surface.
       const { loadFavaLibFromLockedRepesentation } =
         getFavaLibVaultCreationUtils(
           browserProviders,
@@ -318,7 +325,7 @@ describe('stored format fixtures', () => {
       const migrated = JSON.parse(written!) as LockedRepresentation
       const crypto = new nodeProviders.CryptoLib()
       const { symmetricKey } = await crypto.decryptKeys(
-        migrated.encryptedPrivateKey,
+        migrated.encryptedSecretKeys,
         migrated.encryptedSymmetricKey,
         migrated.salt,
         FIXTURE_PASSWORD,
@@ -332,7 +339,7 @@ describe('stored format fixtures', () => {
             migrated.storageVersion,
             migrated.salt,
             migrated.kdf,
-            await crypto.sha256(migrated.encryptedPrivateKey),
+            await crypto.sha256(migrated.encryptedSecretKeys),
           ),
         ),
       ) as VaultState
@@ -341,7 +348,7 @@ describe('stored format fixtures', () => {
     })
 
     it('a vault migrated by node opens in the browser, and vice versa', async () => {
-      // The at-rest AAD folds in a SHA-256 of encryptedPrivateKey, and node
+      // The at-rest AAD folds in a SHA-256 of encryptedSecretKeys, and node
       // writes PEM with "\n" while node-forge writes "\r\n". Hashing anything
       // but the exact stored bytes would pass within one provider and fail
       // across them, which is the case a user hits on their second device.

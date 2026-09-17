@@ -20,19 +20,19 @@ file as work lands, and change its `Status:` line, the row here and the box in
 [TODO.md](TODO.md) — the short checklist of what is fixed and what is left — to
 match.
 
-| #                                   | Finding                                       | Verdict                  | Priority | Status             |
-| ----------------------------------- | --------------------------------------------- | ------------------------ | -------- | ------------------ |
-| [01](01-kdf-parameters.md)          | Argon2id parameters                           | weak                     | P0       | done               |
-| [02](02-ciphertext-authenticity.md) | Vault ciphertext is unauthenticated           | broken                   | P0       | done               |
-| [03](03-storage-versioning.md)      | `storageVersion` is write-only                | weak                     | P0       | done               |
-| [04](04-key-rotation.md)            | No rotation; `changePassword` revokes nothing | weak                     | P1       | done               |
-| [05](05-load-path-validation.md)    | Load path skips the entry validators          | weak                     | P1       | done               |
-| [06](06-crypto-test-coverage.md)    | Nothing pins the KDF or the stored format     | weak                     | P1       | done               |
-| [07](07-session-key-api.md)         | Extension stores the raw master password      | untidy                   | P2       | done               |
-| [18](18-anti-rollback.md)           | Rollback to an earlier vault is undetectable  | weak                     | P1       | open               |
-| [08](08-whole-vault-blob.md)        | Whole-vault blob vs per-item                  | **sound**                | —        | closed — no action |
-| [09](09-iv-handling.md)             | IV handling                                   | **sound**                | —        | closed — no action |
-| [10](10-rsa-layer.md)               | Why the RSA layer exists                      | **sound but incidental** | —        | closed — no action |
+| #                                   | Finding                                       | Verdict                  | Priority | Status              |
+| ----------------------------------- | --------------------------------------------- | ------------------------ | -------- | ------------------- |
+| [01](01-kdf-parameters.md)          | Argon2id parameters                           | weak                     | P0       | done                |
+| [02](02-ciphertext-authenticity.md) | Vault ciphertext is unauthenticated           | broken                   | P0       | done                |
+| [03](03-storage-versioning.md)      | `storageVersion` is write-only                | weak                     | P0       | done                |
+| [04](04-key-rotation.md)            | No rotation; `changePassword` revokes nothing | weak                     | P1       | done                |
+| [05](05-load-path-validation.md)    | Load path skips the entry validators          | weak                     | P1       | done                |
+| [06](06-crypto-test-coverage.md)    | Nothing pins the KDF or the stored format     | weak                     | P1       | done                |
+| [07](07-session-key-api.md)         | Extension stores the raw master password      | untidy                   | P2       | done                |
+| [18](18-anti-rollback.md)           | Rollback to an earlier vault is undetectable  | weak                     | P1       | open                |
+| [08](08-whole-vault-blob.md)        | Whole-vault blob vs per-item                  | **sound**                | —        | closed — no action  |
+| [09](09-iv-handling.md)             | IV handling                                   | **sound**                | —        | closed — no action  |
+| [10](10-rsa-layer.md)               | Why the RSA layer exists                      | **sound but incidental** | —        | closed — superseded |
 
 [11 — threat model](11-threat-model.md) is reference, not an action item: what
 each layer does and does not defend against.
@@ -46,14 +46,17 @@ review did and did not do with them.
 
 | #                                       | Finding                                         | Verdict                             | Status |
 | --------------------------------------- | ----------------------------------------------- | ----------------------------------- | ------ |
-| [13](13-sync-command-authentication.md) | Sync commands have no sender authentication     | broken                              | open   |
+| [13](13-sync-command-authentication.md) | Sync commands have no sender authentication     | broken                              | done   |
 | [14](14-sync-device-injection.md)       | Unvalidated sync-device injection               | broken — most severe found anywhere | open   |
-| [15](15-sync-replay-protection.md)      | Replay protection is bypassable by construction | broken                              | open   |
+| [15](15-sync-replay-protection.md)      | Replay protection is bypassable by construction | broken                              | done   |
 | [16](16-server-authentication.md)       | The sync server authenticates nothing           | weak by design, one real hijack     | open   |
 | [17](17-synckey-salt.md)                | `createSyncKey`'s salt is a public device id    | untidy                              | open   |
 
-`14` is the one to read first: combined with `13` it means an attacker can have
-every newly enrolled TOTP seed encrypted to them, silently.
+`13` and `15` landed 2026-09-17 and took the asymmetric layer with them; see
+`13` first, then [10](10-rsa-layer.md)'s amendment. `14` is the one still worth
+reading closely: it is narrower than it was — enrolment is no longer open to
+anyone holding a public key — but a trusted peer can still enrol anything, and
+nothing surfaces a new device to the user.
 
 **Status vocabulary:** `open` · `in progress` · `done` · `closed — no action`
 (reviewed, deliberately nothing to do).
@@ -94,12 +97,12 @@ closed the `JSON.parse`/`SyntaxError` item `03` deferred, and took the shape hal
 of `14` with it without closing `14`.
 
 `07` landed 2026-09-17, library half only: `favalib` now exports an unlocked
-session — the four secrets a password unlock derives — and rehydrates a
-`FavaLib` from it with no argon2id and no PBES2 unwrap. Everything else is read
-back from the `LockedRepresentation`, and a stale session is refused by the
-envelope MAC rather than by a counter, because `04` rotates the MAC key. The
-vault state it decrypts goes through `05`'s validators, the same as the password
-path. The blob is plaintext key material under a documented storage contract
+session — the secrets a password unlock derives — and rehydrates a `FavaLib`
+from it with no argon2id and no key unwrapping. Everything else is read back
+from the `LockedRepresentation`, and a stale session is refused by the envelope
+MAC rather than by a counter, because `04` rotates the MAC key. The vault state
+it decrypts goes through `05`'s validators, the same as the password path. The
+blob is plaintext key material under a documented storage contract
 (memory-backed, process-lifetime, nothing else): wrapping it would need a key
 with a different lifetime, and there is none. `CryptoError` is exported now, so
 a consumer can branch on "session unusable" without matching on a message
@@ -108,71 +111,117 @@ vault it was exported beside still opens (`18`) — and confidentiality. The
 extension half is open, and is one commit on the `app-extension` branch
 together with `04`'s.
 
+**`13` and `15` landed the same day, and they moved the hierarchy under it.**
+Sync commands are signed by the sending device and refused unless a peer
+currently in the vault's device list signed them, for this recipient, under this
+command id; the record of what has been applied is now persisted and bounded.
+Getting there meant replacing the asymmetric layer — RSA-OAEP cannot sign, and
+the library had no signing path — so X25519 and Ed25519 are in, `@noble/curves`
+is shared by both providers, the at-rest self-wrap and the PBES2 blob are gone,
+and [10](10-rsa-layer.md)'s Decision is reversed. The server was not touched and
+its tests pass unedited. `07`'s session blob got smaller as a result: both
+public keys are pure functions of the secret keys now, so it carries neither,
+and `SESSION_VERSION` is 2 — the one version constant that was bumped rather
+than redefined, because refusing a live session costs a single password prompt.
+
+**Storage version 2 was redefined rather than superseded.** Every install in the
+wild is on version 1 and no version 2 vault had ever been written outside this
+repository, so `STORAGE_VERSION`, `COMMAND_VERSION` and `PAIRING_VERSION` keep
+their values and only their documentation moved. The rule, stated once in
+`version.mts`: a format that has not shipped is redefined in place, not
+re-versioned. The one visible cost is that a v1 vault's migration now mints a
+fresh keypair, so paired devices have to pair again — stated to the user rather
+than engineered around, because the alternative authenticates new keys with the
+primitive `13` says authenticates nothing.
+
 Remaining, in order: `18`. Whoever raises the KDF parameters
 again must move the policy assertion in `kdf-vectors.test.ts` to a v3 vector and
 leave **both** existing anchors beside it; the v1 anchor survives until the v1
-read path itself is deleted (`18`, item 1).
+read path itself is deleted (`18`, item 1) — which now also removes the last RSA
+code in the library.
 
 ## The verified hierarchy
 
-As of `storageVersion: 2`. The v1 chain is unchanged from what is described
-below it, and is still read by the named legacy path.
+As of `storageVersion: 2`, **as redefined on 2026-09-17** by
+[13](13-sync-command-authentication.md) — the RSA layer is gone. The v1 chain is
+unchanged (argon2id at the v1 parameters → PBES2-wrapped RSA-4096 →
+RSA-OAEP/MGF1-SHA-1 → AES-256-CBC) and is still read by the named legacy path,
+which is now the only RSA code in the library.
 
 ```
 master password
-  │   zxcvbn score ≥ 3 enforced — now BEFORE createKeys() runs (10-rsa-layer.md)
+  │   zxcvbn score ≥ 3 enforced — BEFORE createKeys() runs (10-rsa-layer.md)
   ▼
 argon2id (hash-wasm)
   salt = base64(16 CSPRNG bytes), used as a 24-byte UTF-8 string
   m = 64 MiB, t = 3, p = 4, len = 64  →  passwordHash (128 hex chars)
   parameters recorded per vault in LockedRepresentation.kdf
-  ├────────────────────────────────────────────────┐
-  ▼                                                ▼
-PBES2 (PBKDF2 + AES-256-CBC), passphrase =    HKDF-SHA256(hex-DECODED
-  passwordHash                                  passwordHash, salt,
-  → RSA-4096 private key                        'favalib:envelope-mac:v2')
-  ▼                                              → macKey
-RSA-OAEP, MGF1 = SHA-256                         ▼
-  unwraps encryptedSymmetricKey — wrapped      HMAC-SHA256 over every other
-  to *this device's own* public key              LockedRepresentation field
-  → symmetricKey (AES-256, base64)             → envelopeMac
-  ▼                                              │
-AES-256-GCM, fresh 12-byte CSPRNG nonce,         │  this is the layer that
-  128-bit tag, bound to AAD                      │  authenticates the vault to
-  format: "v2:" base64(nonce) ":"                │  the PASSWORD holder rather
-          base64(ciphertext||tag)                │  than to whoever chose the
-  AAD = storageVersion, salt, kdf,               │  symmetric key above
-        SHA-256(encryptedPrivateKey)             │
+  │
+  ├─ HKDF-SHA256(hex-DECODED passwordHash, salt, 'favalib:key-wrap:v2')
+  │    → AES-256-GCM seals {X25519 secret key, Ed25519 secret key}
+  │    → encryptedSecretKeys        (both public keys are DERIVED on unlock)
+  │
+  ├─ HKDF-SHA256(…, 'favalib:dek-wrap:v2')
+  │    → AES-256-GCM seals the symmetric key
+  │    → encryptedSymmetricKey      (nothing is wrapped to a public key)
+  │
+  └─ HKDF-SHA256(…, 'favalib:envelope-mac:v2')  → macKey
+       → HMAC-SHA256 over every other LockedRepresentation field
+       → envelopeMac
+  ▼
+symmetricKey (AES-256, base64)
+  ▼
+AES-256-GCM, fresh 12-byte CSPRNG nonce, 128-bit tag, bound to AAD
+  format: "v2:" base64(nonce) ":" base64(ciphertext||tag)
+  AAD = storageVersion, salt, kdf, SHA-256(encryptedSecretKeys)
   → encryptedVaultState = JSON.stringify(VaultState)
 ```
 
-`LockedRepresentation` (`interfaces/Vault.mts`) = `{encryptedPrivateKey,
+On the sync path the same two keypairs do the work the RSA one used to:
+
+```
+per command, per recipient
+  ephemeral X25519 keypair
+    → ECDH to the recipient's public key
+    → HKDF-SHA256, info binds (ephemeral public key, recipient public key)
+    → AES-256-GCM over the command's symmetric key
+    → encryptedSymmetricKey = "v2:" epk ":" nonce ":" ct||tag
+  Ed25519 over (commandId, fromDeviceId, toDeviceId, payload)
+    → signature, carried INSIDE the ciphertext with the sender's id
+    → refused unless a device currently in this vault's list signed it
+```
+
+`LockedRepresentation` (`interfaces/Vault.mts`) = `{encryptedSecretKeys,
 encryptedSymmetricKey, salt, encryptedVaultState, libVersion, storageVersion,
 kdf, envelopeMac}`.
 
-**Not GCM everywhere**: `encryptedPrivateKey` is still PBES2/AES-256-CBC, and
-`decryptKeys` still distinguishes its failure modes. See
-[10](10-rsa-layer.md)'s amendment — that blob exists only because the DEK is
-routed through an RSA private key that must itself be stored encrypted.
+**AES-GCM everywhere, at last.** The PBES2/AES-256-CBC blob is gone with the RSA
+layer it existed for; see [10](10-rsa-layer.md)'s amendment. The only cipher
+outside AES-256-GCM is in the v1 read path.
 
 Five details that are easy to get wrong:
 
 1. **The whole hierarchy is per-device, not per-vault.** Each device runs its own
-   `createKeys` and holds its own password, salt, RSA keypair and symmetric key.
+   `createKeys` and holds its own password, salt, keypairs and symmetric key.
    Only _entries_ and _public keys_ sync between devices. This is the most
    consequential fact in the review — it is why [04](04-key-rotation.md) was
    cheap.
-2. **The symmetric key is wrapped to the device's own public key.** The RSA layer
-   is a self-wrap for the at-rest path; it is a genuine peer-to-peer key only on
-   the sync path.
-3. **OAEP uses SHA-1** on both providers. Verified: node's default-padding
-   `privateDecrypt` accepts a forge `'RSA-OAEP'` ciphertext, and forcing
-   `oaepHash: 'sha256'` fails. Cross-provider interop locks this in.
+2. **Two keypairs, not one, and nothing self-wraps.** X25519 seals, Ed25519
+   signs, and both are 32 base64-encoded bytes — so nothing but the field name
+   and the branded type tells them apart. The at-rest path no longer uses either
+   of them: both seals are under password-derived keys, which is what closed
+   [02](02-ciphertext-authenticity.md)'s forgery at its source.
+3. **The curve code is shared by both providers** (`@noble/curves`, in
+   `platformProviders/shared/curves.mts`), where the RSA layer was implemented
+   twice — node-forge in the browser, OpenSSL in node. That split is what
+   produced the OAEP MGF1 hazard; there are no parameters left to mismatch. The
+   symmetric half is still per-provider, and still pinned by
+   `tests/CryptoProviders`.
 4. **The argon2 salt is the base64 _string_**, passed to hash-wasm as 24 UTF-8
    bytes, not the 16 raw bytes. Harmless (128 bits of entropy either way). Note
-   the MAC key derivation goes the other way: its input keying material is the
-   **hex-decoded** password hash, 64 raw bytes rather than 128 characters. Both
-   readings are plausible and diverge silently between providers, so
+   the three HKDF derivations go the other way: their input keying material is
+   the **hex-decoded** password hash, 64 raw bytes rather than 128 characters.
+   Both readings are plausible and diverge silently between providers, so
    `tests/CryptoProviders/envelope-mac.test.ts` pins it.
 5. **`libVersion` was the hardcoded literal `'0.0.1'`** until
    [03](03-storage-versioning.md); it now tracks package.json and is covered by

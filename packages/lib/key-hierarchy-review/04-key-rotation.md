@@ -161,3 +161,27 @@ for a smaller reason.
 - **`save()` silently no-ops without a save function**, so `changePassword` on
   a read-only instance rotates in memory and evaporates with no error. Harmless
   before rotation, since the in-memory and on-disk keys at least still agreed.
+
+## Amendment: "the RSA keypair" is now two curve keypairs, and nothing else moves
+
+[13](13-sync-command-authentication.md) replaced the asymmetric layer on
+2026-09-17 — X25519 for key agreement, Ed25519 for signatures — which changes
+the wording of this finding's standing decision but not the decision itself.
+
+- **`changePassword` still rotates the salt and the symmetric key, and not the
+  keypairs.** The reason is unchanged: peers hold the public halves, and the
+  only channel for new ones is a pairing flow. Full revocation is still a
+  re-pair.
+- **What a password change re-seals is different, and simpler.** Both secret
+  keys are sealed as one AES-GCM envelope under an HKDF-derived key, so
+  `encryptKeys` no longer re-wraps a PBES2 PEM and no longer wraps the symmetric
+  key to a public key at all.
+- **Revocation of a REMOVED device is now real**, which this finding did not
+  claim and could not have. `removeSyncDevice` used to splice an array while the
+  removed device kept every peer's public key; commands are verified against the
+  device list now, so removal takes effect immediately for anything that device
+  tries to say. Its ability to _read_ what it already had is unchanged — that is
+  what re-pairing and a fresh symmetric key are for.
+- **One new case.** Migrating a v1 vault mints a fresh keypair, because an RSA
+  one cannot be carried across. That is the only path in the library that
+  replaces a device's identity keys, and the user is told about it.

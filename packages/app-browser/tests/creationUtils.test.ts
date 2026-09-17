@@ -117,7 +117,10 @@ describe('browser vault loading', () => {
     const lib = await loadStoredVault(v2Password)
     await lib.ready
 
-    expect(lib.meta.deviceId).toBe('9ad6d991-a1b0-45a2-8e3f-01de0a956272')
+    // The v2 fixture's device id; it changed when storage version 2 was
+    // redefined to the curve hierarchy and the fixture was regenerated. See
+    // packages/lib/tests/fixtures/README.md.
+    expect(lib.meta.deviceId).toBe('822d43ef-ab39-4a9e-a106-2e96eb3fdb82')
     expect(lib.vault.listEntriesMetas()).toHaveLength(2)
     expect(setItem).not.toHaveBeenCalled()
     expect(localStorage.getItem(storageKey)).toBe(v2Fixture)

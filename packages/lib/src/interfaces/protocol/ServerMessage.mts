@@ -29,6 +29,13 @@ export type StartResilverServerMessage = StartResilverClientMessage
 
 export interface SyncCommandFromServer {
   commandId: string
+  /**
+   * A SignedCommandEnvelope, sealed to this device.
+   *
+   * There is still no sender on the envelope, and there deliberately is not:
+   * the sender names itself INSIDE the ciphertext and signs that name, so the
+   * server cannot read who is talking to whom, and cannot change it either.
+   */
   encryptedCommand: Encrypted<string>
   encryptedSymmetricKey: EncryptedSymmetricKey
 }
@@ -43,6 +50,11 @@ export interface SyncCommandReceivedServerMessage {
 
 export interface VaultServerMessage extends Omit<VaultClientMessage, 'data'> {
   data: VaultClientMessage['data'] & {
+    /**
+     * Stamped by the server, so on its own it is a claim rather than a fact.
+     * The recipient checks the `signature` beside it against the key it holds
+     * for this device, which is what makes the claim testable.
+     */
     fromDeviceId: DeviceId
   }
 }

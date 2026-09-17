@@ -92,7 +92,7 @@ export const createFavaLibForTests = async (saveFunction?: SaveFunction) => {
   const result = await createNewFavaLibVault(password)
   const cryptoLib = new nodeProviders.CryptoLib()
   const keys = await cryptoLib.decryptKeys(
-    result.encryptedPrivateKey,
+    result.encryptedSecretKeys,
     result.encryptedSymmetricKey,
     result.salt,
     password,

@@ -30,17 +30,19 @@ import { createFavaLibForTests, newTotpEntry } from './testUtils.mjs'
 // @ts-expect-error node crypto and webcrypto don't have the exact same types
 globalThis.window = { crypto: crypto.webcrypto }
 
-// The frozen v2 fixture. See tests/fixtures/README.md -- never regenerated,
-// and opened here with no saveFunction so a test run cannot rewrite it.
+// The frozen v2 fixture. See tests/fixtures/README.md -- opened here with no
+// saveFunction so a test run cannot rewrite it. Regenerated once, when storage
+// version 2 was redefined to the curve hierarchy before it ever shipped, which
+// is why these ids are not the ones this file was written with.
 const V2_FIXTURE_PASSWORD = 'fixture!Vault7#Frozen$v2' as Password
-const V2_FIXTURE_DEVICE_ID = '9ad6d991-a1b0-45a2-8e3f-01de0a956272'
+const V2_FIXTURE_DEVICE_ID = '822d43ef-ab39-4a9e-a106-2e96eb3fdb82'
 const V2_ENTRY_ONE = {
-  id: '9898f013-9e8c-412b-b892-a5eb8a583851' as EntryId,
+  id: 'bc068e83-2a34-4d0d-8550-650d45a45e3c' as EntryId,
   // Cross-checked against an independent RFC 6238 implementation.
   otpAtFixedTimestamp: '324550',
 }
 const V2_ENTRY_TWO = {
-  id: '09e3a359-3764-4a73-ba55-bc5ce2fec2d5' as EntryId,
+  id: '0d72d157-a5c1-469c-b021-c985492ebe85' as EntryId,
   otpAtFixedTimestamp: '017492',
 }
 const FIXED_TIMESTAMP = 1_700_000_000_000
@@ -259,7 +261,7 @@ describe('unlocked session (07-session-key-api.md)', () => {
 
   describe('the exported blob', () => {
     it('carries only the four derived secrets', async () => {
-      const { favaLib, salt, encryptedPrivateKey, password } =
+      const { favaLib, salt, encryptedSecretKeys, publicKey, password } =
         await createFavaLibForTests()
 
       const blob = favaLib.storage.exportUnlockedSession()
@@ -268,16 +270,19 @@ describe('unlocked session (07-session-key-api.md)', () => {
       expect(Object.keys(parsed).sort()).toEqual([
         'macKey',
         'privateKey',
-        'publicKey',
         'sessionVersion',
+        'signingSecretKey',
         'symmetricKey',
       ])
       // Nothing the stored vault already holds is duplicated into it, so the
       // two can never disagree -- and nothing upstream of argon2id is in it,
       // which is the whole finding.
       expect(blob).not.toContain(salt)
-      expect(blob).not.toContain(encryptedPrivateKey)
+      expect(blob).not.toContain(encryptedSecretKeys)
       expect(blob).not.toContain(password)
+      // The public keys are not in it either: they are pure functions of the
+      // two secret keys, so a copy here could only ever disagree with them.
+      expect(blob).not.toContain(publicKey)
       expect(parsed.sessionVersion).toBe(SESSION_VERSION)
     })
   })
@@ -520,7 +525,7 @@ describe('unlocked session (07-session-key-api.md)', () => {
       ).rejects.toThrow(InitializationError)
     })
 
-    it.each([0, 2, '1', 1.5, null, undefined])(
+    it.each([0, 1, 3, '2', 1.5, null, undefined])(
       'refuses sessionVersion %s',
       async (sessionVersion) => {
         await expect(
@@ -532,22 +537,24 @@ describe('unlocked session (07-session-key-api.md)', () => {
     it('checks the version before the secrets', async () => {
       // Otherwise a blob from a future shape is reported as corrupt rather
       // than as one this build does not read.
-      await expect(importSession({ sessionVersion: 2 })).rejects.toThrow(
+      await expect(importSession({ sessionVersion: 3 })).rejects.toThrow(
         /only reads version/,
       )
     })
 
-    it.each(['privateKey', 'publicKey', 'symmetricKey', 'macKey'] as const)(
-      'refuses a session with no %s',
-      async (field) => {
-        const broken: Record<string, unknown> = { ...good }
-        delete broken[field]
-        await expect(importSession(broken)).rejects.toThrow(InitializationError)
-        await expect(importSession({ ...good, [field]: '' })).rejects.toThrow(
-          InitializationError,
-        )
-      },
-    )
+    it.each([
+      'privateKey',
+      'signingSecretKey',
+      'symmetricKey',
+      'macKey',
+    ] as const)('refuses a session with no %s', async (field) => {
+      const broken: Record<string, unknown> = { ...good }
+      delete broken[field]
+      await expect(importSession(broken)).rejects.toThrow(InitializationError)
+      await expect(importSession({ ...good, [field]: '' })).rejects.toThrow(
+        InitializationError,
+      )
+    })
   })
 
   describe('sync', () => {
@@ -570,8 +577,13 @@ describe('unlocked session (07-session-key-api.md)', () => {
         { connectToSyncServer: false },
       )
 
+      // Derived back from the session's secret keys rather than carried in it,
+      // and this is what says the derivation agrees with the password path.
       // eslint-disable-next-line @typescript-eslint/dot-notation
-      expect(lib.sync!['publicKey']).toBe(result.publicKey)
+      expect(lib.sync!['publicKeys']).toEqual({
+        publicKey: result.publicKey,
+        signingPublicKey: result.signingPublicKey,
+      })
       lib.sync?.closeServerConnection()
     }, 30000)
   })

@@ -98,7 +98,7 @@ const loadVault = async (
     throw err
   }
   favaLib.addEventListener(FavaLibEvent.Log, (ev) => {
-    if (ev.detail.severity === 'warning') {
+    if (ev.detail.severity === 'warning' || ev.detail.severity === 'error') {
       addError(new Error(ev.detail.message))
       return
     }

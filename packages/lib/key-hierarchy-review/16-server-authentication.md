@@ -59,4 +59,17 @@ accounts, rate limiting — is a product decision, not a security prerequisite.
 
 ## Resolution
 
-_Not started._
+_Not started._ Still **open**, and the Direction above is unchanged.
+
+[13](13-sync-command-authentication.md) landed 2026-09-17 and changes what a
+hijacked connection is worth, without touching this finding. A socket that
+claims someone else's `deviceId` still displaces the real device and still
+consumes its queued commands, so **denial of service and message suppression are
+untouched**. What it can no longer do is act: commands are signed, so a hijacker
+cannot inject one, and a resilvered vault it sends is refused. The "much better
+position from which to mount [15](15-sync-replay-protection.md)" is also gone —
+replays are refused by a record that now survives a restart.
+
+Proving possession of the device key on connect, and not evicting a proven
+connection for an unproven one, is still the fix. The primitive it needs
+(`CryptoLib.sign`/`verify`) now exists.

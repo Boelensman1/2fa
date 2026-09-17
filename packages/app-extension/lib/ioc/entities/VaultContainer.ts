@@ -165,7 +165,15 @@ class VaultContainer {
     })
 
     favaLib.addEventListener(FavaLibEvent.Log, (event) => {
-      if (event.detail.severity === 'warning') {
+      // Three severities since favalib gained `error`, which is not a louder
+      // `warning`: `warning` is the ordinary noise of a sync connection, and
+      // `error` is a refusal the user should hear about even though the
+      // library carried on -- a vault arriving unrequested, a command that
+      // does not verify. Folding it into the default branch logged exactly
+      // those at info.
+      if (event.detail.severity === 'error') {
+        log.error(event.detail.message)
+      } else if (event.detail.severity === 'warning') {
         log.warn(event.detail.message)
       } else {
         log.info(event.detail.message)

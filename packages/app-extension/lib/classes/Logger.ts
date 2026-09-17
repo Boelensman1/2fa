@@ -130,7 +130,21 @@ class Logger {
   warn(msg: string, data?: any, color?: string) {
     this.sendLog(LEVEL_WARN, msg, data, color)
   }
-  error(error: Error) {
+  /**
+   * An `Error`, or a message for something that was never thrown.
+   *
+   * favalib's `Log` event has an `error` severity whose payload is a plain
+   * string -- a refusal the library reported and carried on from, so there is
+   * no exception to pass. Wrapping it in a synthetic `Error` just to satisfy
+   * this signature would attach a stack pointing at the wrapper, which is
+   * worse than no stack at all.
+   * @param error - The error, or the message.
+   */
+  error(error: Error | string) {
+    if (typeof error === 'string') {
+      this.sendLog(LEVEL_ERROR, error)
+      return
+    }
     this.sendLog(LEVEL_ERROR, error.message, error)
   }
 }

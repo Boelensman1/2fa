@@ -40,6 +40,7 @@ import type {
   UnlockedSession,
   UnlockedSessionString,
   VaultState,
+  VaultSyncStateWithServerUrl,
 } from '../interfaces/Vault.mjs'
 import type { PasswordExtraDict } from '../interfaces/PasswordExtraDict.js'
 import { SaveFunction } from '../interfaces/SaveFunction.mjs'
@@ -92,6 +93,11 @@ const parseJson = (json: string, what: string): unknown => {
 export interface LoadFavaLibOptions {
   /** Whether to connect to the configured sync server while loading. */
   connectToSyncServer?: boolean
+  /**
+   * Overrides the stored connection settings before any socket opens, keeping
+   * paired devices and pending commands. Included in subsequent vault saves.
+   */
+  syncServer?: Pick<VaultSyncStateWithServerUrl, 'serverUrl' | 'serverSecret'>
 }
 
 /**
@@ -650,7 +656,7 @@ const constructFavaLib = (
     },
     vaultState.vault,
     saveFunction,
-    vaultState.sync,
+    { ...vaultState.sync, ...options.syncServer },
     options.connectToSyncServer ?? true,
   )
 

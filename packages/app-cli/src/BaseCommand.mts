@@ -1,10 +1,15 @@
 import { Command, Option } from 'clipanion'
 import type { Jsonifiable } from 'type-fest'
-import type { LockedRepresentationString, FavaLib } from 'favalib'
+import type {
+  LockedRepresentationString,
+  FavaLib,
+  LoadFavaLibOptions,
+} from 'favalib'
 
 import loadVault from './utils/loadVault.mjs'
 import init, { saveSettings, Settings } from './utils/init.mjs'
 import { shouldConnectToSyncServer } from './utils/syncPolicy.mjs'
+import { readSyncServerConfig } from './utils/syncConfig.mjs'
 
 export interface ErrorInCommand {
   timestamp: number
@@ -70,6 +75,12 @@ abstract class BaseCommand extends Command {
     }
   }
 
+  protected async vaultLoadOptions(
+    connectToSyncServer: boolean,
+  ): Promise<LoadFavaLibOptions> {
+    return { connectToSyncServer, syncServer: await readSyncServerConfig() }
+  }
+
   async execute() {
     if (
       this.format !== undefined &&
@@ -107,7 +118,7 @@ abstract class BaseCommand extends Command {
         settings,
         this.addError.bind(this),
         this.verbose,
-        connectToSyncServer,
+        await this.vaultLoadOptions(connectToSyncServer),
       )
       syncRecorded = await this.recordSuccessfulSync(connectToSyncServer)
     } else {

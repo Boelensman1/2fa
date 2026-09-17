@@ -10,6 +10,7 @@ import {
   FavaLibEvent,
   StorageVersionError,
   UnsupportedStorageVersionError,
+  type LoadFavaLibOptions,
 } from 'favalib'
 import NodePlatformProvider from 'favalib/platformProviders/node'
 import { Settings } from './init.mjs'
@@ -19,7 +20,7 @@ const loadVault = async (
   settings: Settings,
   addError: (err: Error) => void,
   verbose = false,
-  connectToSyncServer = true,
+  options: LoadFavaLibOptions = {},
 ) => {
   const saveFunction: SaveFunction = async (newLockedRepresentationString) => {
     const tempFile = `${settings.vaultLocation}.tmp`
@@ -85,7 +86,7 @@ const loadVault = async (
       await favaLibVaultCreationUtils.loadFavaLibFromLockedRepesentation(
         vaultData,
         password,
-        { connectToSyncServer },
+        options,
       )
   } catch (err) {
     if (err instanceof UnsupportedStorageVersionError) {

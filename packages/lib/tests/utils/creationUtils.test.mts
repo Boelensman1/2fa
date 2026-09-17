@@ -6,6 +6,7 @@ import {
   type DeviceId,
   type MacKey,
   type Password,
+  type ServerSecret,
   LockedRepresentation,
   LockedRepresentationString,
   StorageVersionError,
@@ -243,6 +244,7 @@ describe('creationUtils', () => {
           },
         ],
         commandSendQueue: [],
+        removedDevices: { ['removed-peer' as DeviceId]: 1234 },
       },
       false,
     )
@@ -271,6 +273,60 @@ describe('creationUtils', () => {
     expect(reloadedFavaLib.vault.size).toBe(1)
     expect(reloadedFavaLib.sync?.getCommandSendQueue()).toHaveLength(1)
     reloadedFavaLib.sync?.closeServerConnection()
+
+    const syncServer = {
+      serverUrl: 'wss://replacement.example.com/sync',
+      serverSecret: 'rotated-secret' as ServerSecret,
+    }
+    const overridden =
+      await offlineCreationUtils.loadFavaLibFromLockedRepesentation(
+        savedRepresentation!,
+        password,
+        { connectToSyncServer: false, syncServer },
+      )
+    await overridden.ready
+    expect(WebSocketLib).not.toHaveBeenCalled()
+    expect(overridden.sync?.serverUrl).toBe(syncServer.serverUrl)
+    expect(overridden.sync?.serverSecret).toBe(syncServer.serverSecret)
+    expect(overridden.sync?.getSyncDevices()).toEqual(
+      reloadedFavaLib.sync?.getSyncDevices(),
+    )
+    expect(overridden.sync?.getCommandSendQueue()).toEqual(
+      reloadedFavaLib.sync?.getCommandSendQueue(),
+    )
+    expect(overridden.sync?.getRemovedDevices()).toEqual({
+      'removed-peer': 1234,
+    })
+
+    const saved =
+      await overridden.storage.persistentStorage.getLockedRepresentation()
+    const restored =
+      await offlineCreationUtils.loadFavaLibFromLockedRepesentation(
+        saved,
+        password,
+        { connectToSyncServer: false },
+      )
+    expect(restored.sync?.serverUrl).toBe(syncServer.serverUrl)
+    expect(restored.sync?.serverSecret).toBe(syncServer.serverSecret)
+    overridden.sync?.closeServerConnection()
+    restored.sync?.closeServerConnection()
+  })
+
+  it('configures a previously unsynced vault on load', async () => {
+    const syncServer = {
+      serverUrl: 'wss://sync.example.com',
+      serverSecret: testServerSecret,
+    }
+    const favaLib = await creationUtils.loadFavaLibFromLockedRepesentation(
+      lockedRepresentation,
+      password,
+      { connectToSyncServer: false, syncServer },
+    )
+    await favaLib.ready
+    expect(favaLib.sync?.serverUrl).toBe(syncServer.serverUrl)
+    expect(favaLib.sync?.serverSecret).toBe(syncServer.serverSecret)
+    expect(favaLib.sync?.webSocketConnected).toBe(false)
+    favaLib.sync?.closeServerConnection()
   })
 
   // Reaching the load path's validation means a blob that is cryptographically

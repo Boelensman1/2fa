@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   init: vi.fn(),
@@ -48,7 +48,12 @@ describe('BaseCommand sync lifecycle', () => {
     mocks.loadVault.mockReset()
     mocks.saveSettings.mockReset()
     vi.spyOn(Date, 'now').mockReturnValue(now)
+    vi.stubEnv('FAVACLI_SYNC_SERVER_URL', undefined)
+    vi.stubEnv('FAVACLI_SYNC_SERVER_SECRET', undefined)
+    vi.stubEnv('FAVACLI_SYNC_SERVER_SECRET_FILE', undefined)
   })
+
+  afterEach(() => vi.unstubAllEnvs())
 
   it('records a successful sync and passes the online load option', async () => {
     const settings = {
@@ -68,7 +73,7 @@ describe('BaseCommand sync lifecycle', () => {
       settings,
       expect.any(Function),
       false,
-      true,
+      { connectToSyncServer: true, syncServer: undefined },
     )
     expect(mocks.saveSettings).toHaveBeenCalledWith({
       ...settings,
@@ -95,7 +100,40 @@ describe('BaseCommand sync lifecycle', () => {
       settings,
       expect.any(Function),
       false,
+      { connectToSyncServer: false, syncServer: undefined },
+    )
+    expect(mocks.saveSettings).not.toHaveBeenCalled()
+  })
+
+  it('applies runtime settings while respecting no-sync', async () => {
+    vi.stubEnv('FAVACLI_SYNC_SERVER_URL', 'wss://sync.example.com')
+    vi.stubEnv('FAVACLI_SYNC_SERVER_SECRET', 'runtime-secret')
+    const settings = {
+      vaultLocation: '/tmp/vault.json',
+      syncIntervalMinutes: 5,
+    }
+    mocks.init.mockResolvedValue({
+      lockedRepresentationString: 'vault-data',
+      settings,
+    })
+    mocks.loadVault.mockResolvedValue(makeFavaLib(false))
+    const command = makeCommand()
+    command.noSync = true
+
+    await command.execute()
+
+    expect(mocks.loadVault).toHaveBeenCalledWith(
+      'vault-data',
+      settings,
+      expect.any(Function),
       false,
+      {
+        connectToSyncServer: false,
+        syncServer: {
+          serverUrl: 'wss://sync.example.com',
+          serverSecret: 'runtime-secret',
+        },
+      },
     )
     expect(mocks.saveSettings).not.toHaveBeenCalled()
   })

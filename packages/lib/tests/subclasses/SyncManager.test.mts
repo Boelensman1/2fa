@@ -374,9 +374,11 @@ describe('SyncManager', () => {
       send(sender, type, data)
     }
 
-    // wait for the import to finish
+    // wait for the import to finish -- an argon2id derivation on both sides,
+    // so the same generous budget as connectDevices in testUtils.mts, and for
+    // the reason spelled out there.
     await vi.waitUntil(() => !receiverFavaLib.sync?.inAddDeviceFlow, {
-      timeout: 200,
+      timeout: 5000,
       interval: 5,
     })
     // The nonce field every client message used to carry is gone: the client

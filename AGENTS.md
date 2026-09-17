@@ -67,6 +67,9 @@ graph. Prefer them over calling `pnpm exec` or `vitest` directly.
 - `make lint` is `prettier --check` + `tsc --noEmit` + `eslint`. Run it, and
   `make test`, before considering a change done.
 - Server migrations: `make -C packages/server migrate-latest` / `migrate-rollback`.
+- Server in production: `make -C packages/server run` — builds, then runs plain
+  node on the compiled output with `NODE_ENV=production`. `dev` is the tsx
+  watcher instead. Neither migrates; run `migrate-latest` first.
 - `packages/lib` also has `test-watch`, `test-debug`, `coverage`, and `docs`.
 
 Shared dependency versions live in the `catalog:` block of `pnpm-workspace.yaml`;

@@ -11,6 +11,14 @@ build: $(INSTALL_DEPS) $(SRC_FILES) tsconfig.json tsconfig.build.json
 dev: $(INSTALL_DEPS)
 	pnpm exec tsx --watch ./src/server.mts
 
+# Production: plain node on the compiled output, no tsx and no watcher. The
+# `build` prerequisite is the directory rule above, so this recompiles when the
+# sources (or ../lib/build) are newer. It runs from this directory because
+# src/config.mts resolves `config/` relative to the working directory. Migrating
+# the database is a separate step - run `make migrate-latest` first.
+run: build
+	NODE_ENV=production node ./build/src/server.mjs
+
 
 node_modules: package.json ../../pnpm-lock.yaml
 	$(MAKE) -C ../.. node_modules
@@ -36,4 +44,4 @@ lint: $(INSTALL_DEPS)
 	pnpm exec tsc --noEmit
 	pnpm exec eslint
 
-.PHONY: clean lint test test-watch all dev migrate-latest migrate-rollback
+.PHONY: clean lint test test-watch all dev run migrate-latest migrate-rollback

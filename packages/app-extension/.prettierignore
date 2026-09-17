@@ -1,5 +1,11 @@
 .output
+dev-output
 .wxt
 web-ext-artifacts
 artifacts
 pnpm-lock.yaml
+
+# Whitespace between inputs is exactly the kind of thing a dom-walking
+# heuristic can be sensitive to, so prettier must not reformat what is under
+# test.
+tests/fixtures

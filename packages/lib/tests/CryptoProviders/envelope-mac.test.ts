@@ -11,9 +11,6 @@ import type { PasswordHash, Salt } from '../../src/main.mjs'
 import { nodeProviders } from '../../src/platformProviders/node/index.mjs'
 import { browserProviders } from '../../src/platformProviders/browser/index.mjs'
 
-// @ts-expect-error node crypto and webcrypto don't have the exact same types
-globalThis.window = { crypto: crypto.webcrypto }
-
 // The envelope MAC authenticates a stored vault to the holder of the PASSWORD,
 // not merely of the data encryption key. Its key derivation is implemented once
 // per provider over two different primitives (node:crypto hkdf and WebCrypto

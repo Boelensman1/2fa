@@ -16,11 +16,17 @@ class ConfigContainer {
 
   async init() {
     const configFromDb = await this.db.getMetaValue('config')
-    if (!configFromDb) {
-      this.config = defaultConfig
-    } else {
-      this.config = JSON.parse(configFromDb) as Config
-    }
+    // Spread over the defaults rather than casting the parsed object: what is
+    // on disk was written by whatever version of Config existed at the time,
+    // so a key added later is simply absent from it. Casting would leave that
+    // key `undefined` -- which reads as "off" for a boolean -- for every
+    // existing install, while a fresh one got the default.
+    //
+    // The spread also copies, which matters: set() mutates this.config in
+    // place and defaultConfig is a shared module constant.
+    this.config = configFromDb
+      ? { ...defaultConfig, ...(JSON.parse(configFromDb) as Partial<Config>) }
+      : { ...defaultConfig }
   }
 
   async set<T extends keyof Config>(key: T, value: Config[T]) {
@@ -59,7 +65,7 @@ class ConfigContainer {
       )
     }
 
-    this.config = defaultConfig
+    this.config = { ...defaultConfig }
     await this.db.upsertMetaKV('config', JSON.stringify(this.config))
   }
 }

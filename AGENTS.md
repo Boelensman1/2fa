@@ -33,6 +33,14 @@ backend overrides it by name) and keep `src = self.sourceInfo` in its
 `flake.nix`: under `?dir=milly2-container`, `self.outPath` is the subdirectory
 and only `sourceInfo` is the repo root.
 
+`favalib`'s `platformProviders/browser` must stay usable **outside a page**.
+`favabrowserext` unlocks its vault in an mv3 service worker, where there is no
+`window` and no `document`: the crypto provider therefore reads WebCrypto off
+`globalThis`, and the dom-bound half of the qr provider is only ever reached on
+the qr-*reading* path, which that client does not take. `packages/lib`'s own
+tests used to define a fake `globalThis.window`, which hid exactly this for as
+long as it existed; they no longer do, so a regression fails the suite.
+
 `favalib` and `favacli` are published to npm; `favaserver`, `favabrowser` and
 `favabrowserext` are marked `private`. A published package must have no
 `workspace:*` dependencies — `pnpm publish` rewrites those to versions that

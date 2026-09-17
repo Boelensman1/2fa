@@ -14,7 +14,38 @@ const BASE_OUTPUT_LEVEL = Number(
 )
 const ADD_TIMEINFO = false
 
+/** What `config.debug` turns the level down to. */
+const VERBOSE_OUTPUT_LEVEL = LEVEL_TRACE
+
 const loggers: Logger[] = []
+
+let verboseLogging = false
+
+const currentLevel = (): number =>
+  verboseLogging ? VERBOSE_OUTPUT_LEVEL : BASE_OUTPUT_LEVEL
+
+/**
+ * Applies `config.debug` to every logger in this context.
+ *
+ * Retained rather than only applied, so that loggers constructed later -- a
+ * module imported lazily, say -- start at the level the user asked for
+ * instead of the build default.
+ *
+ * Worth knowing where this needs calling. All level filtering happens in the
+ * *receiving* context: a content script's logger forwards every entry to the
+ * background through `sendLog` regardless of level, and the background filters
+ * on receipt. So calling this in the background covers background logs and
+ * every content script's logs alike, and the content script needs nothing.
+ * The popup runs at a `-extension:` origin, so `inBackgroundScript()` is true
+ * for it and it logs to its own console -- which is why it calls this too.
+ * @param enabled - Whether verbose logging is on.
+ */
+export const setVerboseLogging = (enabled: boolean): void => {
+  if (enabled === verboseLogging) return
+  verboseLogging = enabled
+  const level = currentLevel()
+  loggers.forEach((logger) => (logger.outputLevel = level))
+}
 
 class Logger {
   private identifier: string
@@ -22,7 +53,7 @@ class Logger {
 
   constructor(identifier: string) {
     this.identifier = identifier
-    this.outputLevel = BASE_OUTPUT_LEVEL
+    this.outputLevel = currentLevel()
     loggers.push(this)
   }
 
@@ -99,7 +130,21 @@ class Logger {
   warn(msg: string, data?: any, color?: string) {
     this.sendLog(LEVEL_WARN, msg, data, color)
   }
-  error(error: Error) {
+  /**
+   * An `Error`, or a message for something that was never thrown.
+   *
+   * favalib's `Log` event has an `error` severity whose payload is a plain
+   * string -- a refusal the library reported and carried on from, so there is
+   * no exception to pass. Wrapping it in a synthetic `Error` just to satisfy
+   * this signature would attach a stack pointing at the wrapper, which is
+   * worse than no stack at all.
+   * @param error - The error, or the message.
+   */
+  error(error: Error | string) {
+    if (typeof error === 'string') {
+      this.sendLog(LEVEL_ERROR, error)
+      return
+    }
     this.sendLog(LEVEL_ERROR, error.message, error)
   }
 }

@@ -43,6 +43,20 @@ import {
 } from '../shared/curves.mjs'
 
 /**
+ * The WebCrypto implementation, named so that it resolves in every browser
+ * context rather than only in a page.
+ *
+ * `globalThis` is the same object as `window` in a page and as `self` in a
+ * worker, so this one expression covers all of them -- including an MV3
+ * extension service worker, which is where `favabrowserext` unlocks the vault
+ * and which has no `window` at all. Keep it that way: a `window.crypto`
+ * fallback chain would throw a ReferenceError on the `window` lookup itself
+ * before it could fall back, so it would need a `typeof` guard just to reach
+ * the object `globalThis` already names directly.
+ */
+const webcrypto = globalThis.crypto
+
+/**
  * The AES-GCM nonce length, in bytes. Twelve, not the sixteen the AES-CBC it
  * replaced used: 96 bits is the only length GCM's counter construction handles
  * without an extra GHASH pass, and it is what every implementation agrees on.
@@ -100,14 +114,14 @@ class BrowserCryptoLib implements CryptoLib {
    * @inheritdoc
    */
   async getRandomBytes(count: number) {
-    return Promise.resolve(window.crypto.getRandomValues(new Uint8Array(count)))
+    return Promise.resolve(webcrypto.getRandomValues(new Uint8Array(count)))
   }
 
   /**
    * @inheritdoc
    */
   async sha256(data: string): Promise<string> {
-    const digest = await window.crypto.subtle.digest(
+    const digest = await webcrypto.subtle.digest(
       'SHA-256',
       stringToUint8Array(data),
     )
@@ -120,7 +134,7 @@ class BrowserCryptoLib implements CryptoLib {
   async createKeys(password: Password) {
     // create random salt
     const salt = uint8ArrayToBase64(
-      window.crypto.getRandomValues(new Uint8Array(16)),
+      webcrypto.getRandomValues(new Uint8Array(16)),
     ) as Salt
 
     // create passwordHash
@@ -262,14 +276,10 @@ class BrowserCryptoLib implements CryptoLib {
     // as. Both readings "work" in isolation and diverge silently between
     // providers, so this line is the cross-provider contract.
     const ikm = hexToUint8Array(passwordHash)
-    const key = await window.crypto.subtle.importKey(
-      'raw',
-      ikm,
-      'HKDF',
-      false,
-      ['deriveBits'],
-    )
-    const bits = await window.crypto.subtle.deriveBits(
+    const key = await webcrypto.subtle.importKey('raw', ikm, 'HKDF', false, [
+      'deriveBits',
+    ])
+    const bits = await webcrypto.subtle.deriveBits(
       {
         name: 'HKDF',
         hash: 'SHA-256',
@@ -357,14 +367,14 @@ class BrowserCryptoLib implements CryptoLib {
    * @inheritdoc
    */
   async createEnvelopeMac(macKey: MacKey, message: string): Promise<string> {
-    const key = await window.crypto.subtle.importKey(
+    const key = await webcrypto.subtle.importKey(
       'raw',
       base64ToUint8Array(macKey),
       { name: 'HMAC', hash: 'SHA-256' },
       false,
       ['sign'],
     )
-    const mac = await window.crypto.subtle.sign(
+    const mac = await webcrypto.subtle.sign(
       'HMAC',
       key,
       stringToUint8Array(message),
@@ -445,17 +455,17 @@ class BrowserCryptoLib implements CryptoLib {
     plainText: T,
     aad: string,
   ) {
-    const key = await window.crypto.subtle.importKey(
+    const key = await webcrypto.subtle.importKey(
       'raw',
       base64ToUint8Array(symmetricKey),
       { name: 'AES-GCM', length: 256 },
       false,
       ['encrypt'],
     )
-    const nonce = window.crypto.getRandomValues(new Uint8Array(GCM_NONCE_BYTES))
+    const nonce = webcrypto.getRandomValues(new Uint8Array(GCM_NONCE_BYTES))
     // WebCrypto appends the 16-byte tag to the ciphertext itself, so the
     // envelope's second field already is ciphertext || tag.
-    const encrypted = await window.crypto.subtle.encrypt(
+    const encrypted = await webcrypto.subtle.encrypt(
       {
         name: 'AES-GCM',
         iv: nonce,
@@ -492,14 +502,14 @@ class BrowserCryptoLib implements CryptoLib {
     const [, nonceString, encryptedData] = parts
 
     try {
-      const key = await window.crypto.subtle.importKey(
+      const key = await webcrypto.subtle.importKey(
         'raw',
         base64ToUint8Array(symmetricKey),
         { name: 'AES-GCM', length: 256 },
         false,
         ['decrypt'],
       )
-      const decrypted = await window.crypto.subtle.decrypt(
+      const decrypted = await webcrypto.subtle.decrypt(
         {
           name: 'AES-GCM',
           iv: base64ToUint8Array(nonceString),
@@ -522,12 +532,12 @@ class BrowserCryptoLib implements CryptoLib {
    * @inheritdoc
    */
   async createSymmetricKey(): Promise<SymmetricKey> {
-    const key = await window.crypto.subtle.generateKey(
+    const key = await webcrypto.subtle.generateKey(
       { name: 'AES-GCM', length: 256 },
       true,
       ['encrypt', 'decrypt'],
     )
-    const exportedKey = await window.crypto.subtle.exportKey('raw', key)
+    const exportedKey = await webcrypto.subtle.exportKey('raw', key)
     return uint8ArrayToBase64(new Uint8Array(exportedKey)) as SymmetricKey
   }
 

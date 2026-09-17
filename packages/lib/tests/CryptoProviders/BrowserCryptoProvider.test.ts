@@ -1,10 +1,15 @@
 import { describe, expect, test } from 'vitest'
-import crypto from 'node:crypto'
 
 import { browserProviders } from '../../src/platformProviders/browser/index.mjs'
 
-// @ts-expect-error node crypto and webcrypto don't have the exact same types
-globalThis.window = { crypto: crypto.webcrypto }
+// No `globalThis.window` shim here, deliberately.
+//
+// The browser provider reads WebCrypto off `globalThis`, which resolves in a
+// page, a worker and an mv3 service worker alike. These tests used to define a
+// fake `window` so the provider could find `window.crypto`, and that shim was
+// precisely what hid the fact that it could not run in a service worker at
+// all. Running window-less is the point; a regression to `window.crypto` must
+// fail here.
 
 describe('BrowserCryptoLib', () => {
   const browserCrypto = new browserProviders.CryptoLib()

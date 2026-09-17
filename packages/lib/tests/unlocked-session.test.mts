@@ -1,5 +1,4 @@
 import { readFileSync } from 'node:fs'
-import crypto from 'node:crypto'
 import { describe, it, expect, beforeAll, vi } from 'vitest'
 
 import {
@@ -28,12 +27,6 @@ import {
   newTotpEntry,
   testServerSecret,
 } from './testUtils.mjs'
-
-// The browser CryptoLib reads window.crypto inside its method bodies only, so
-// this shim cannot perturb the node half of this file. Same trick as
-// fixtures.test.mts and CryptoProviders/compare-node-browser.
-// @ts-expect-error node crypto and webcrypto don't have the exact same types
-globalThis.window = { crypto: crypto.webcrypto }
 
 // The frozen v2 fixture. See tests/fixtures/README.md -- opened here with no
 // saveFunction so a test run cannot rewrite it. Regenerated once, when storage

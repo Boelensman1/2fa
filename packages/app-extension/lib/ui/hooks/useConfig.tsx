@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import type { Config } from '@/lib/types'
 import { bgActions, defaultConfig } from '@/lib/state'
+import { setVerboseLogging } from '@/lib/classes/Logger'
 
 const useConfig = () => {
   const [config, setConfig] = useState<Config>(defaultConfig)
@@ -20,6 +21,13 @@ const useConfig = () => {
       void updateConfig()
     }
   }, [shouldReloadConfig])
+
+  // The popup runs at a `-extension:` origin, so its loggers print to its own
+  // console rather than forwarding to the background -- which means the
+  // background applying config.debug does not cover them.
+  useEffect(() => {
+    setVerboseLogging(config.debug)
+  }, [config.debug])
 
   const reloadConfig = () => setShouldReloadConfig(true)
 

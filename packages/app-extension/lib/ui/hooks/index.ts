@@ -1,2 +1,7 @@
 export { default as useConfig } from './useConfig'
 export { default as useGlobalState } from './useGlobalState'
+export { default as useVault } from './useVault'
+export { default as useEntries } from './useEntries'
+export { default as useActiveTab } from './useActiveTab'
+export type { ActiveTab } from './useActiveTab'
+export { default as useFillTarget } from './useFillTarget'

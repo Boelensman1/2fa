@@ -66,6 +66,12 @@ export type ActiveAddDeviceFlow =
   | AddDeviceFlowResponder_SyncKeyCreated
 
 export interface InitiateAddDeviceFlowResult {
+  /**
+   * The JPAKE wire version this payload was produced with; see PAIRING_VERSION.
+   * Absent on a payload written before the field existed, which is why the
+   * responder checks it at runtime rather than trusting this type.
+   */
+  pairingVersion: string
   addDevicePassword: string
   initiatorDeviceId: DeviceId
   timestamp: number

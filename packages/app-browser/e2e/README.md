@@ -5,6 +5,13 @@ a fresh browser context with isolated localStorage. The migration tests load
 the frozen v1 fixture, which has no sync server configured, so they do not
 connect to the sync backend or modify its database.
 
+The pairing tests do open a sync socket -- the app refuses a pairing code
+before reading it when there is no server connection, so there is no way to
+reach the checks without one. They still write nothing: every payload they
+submit is rejected client-side, before any message is sent, so the server only
+ever answers the connect handshake with an empty command queue. The `server`
+dev service has to be running for them.
+
 ## Running
 
 Start the app before running the suite. In Milly it is the managed `browser`

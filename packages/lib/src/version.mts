@@ -59,6 +59,25 @@ export const LEGACY_STORAGE_VERSION = 1
 export const COMMAND_VERSION = '2.0'
 
 /**
+ * The version of the add-device pairing payload -- the JSON behind the QR code
+ * or connection string an initiator hands to a responder out of band.
+ *
+ * Only the major component is compared, and unlike COMMAND_VERSION the gate is
+ * an exact match in both directions rather than "anything older is fine". The
+ * major tracks the JPAKE wire format, and that format is not backward
+ * compatible: jpake-ts 2 binds each Schnorr proof to its generator and hashes
+ * the session key over a transcript, so it rejects a 1.x peer's pass 1 outright
+ * and would not reach the same key even if it did not. There is nothing useful
+ * a mismatched pair can do, so the responder refuses early with an error naming
+ * which side is behind, rather than letting it surface as a proof failure.
+ *
+ * Major 2 is jpake-ts 2.x. A payload carrying no pairingVersion at all predates
+ * this field, which means a build on jpake-ts 1.x, and so is treated as major 1
+ * and refused.
+ */
+export const PAIRING_VERSION = '2.0'
+
+/**
  * The argon2id parameters used by storage version 1.
  *
  * These are hash-wasm's README example, copied verbatim; see

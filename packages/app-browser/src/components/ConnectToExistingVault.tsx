@@ -21,14 +21,22 @@ const ConnectToExistingVault = () => {
     await favaLib.sync.respondToAddDeviceFlow(data, type)
   }
 
+  // Every way this can fail -- an unreadable QR code, a malformed connection
+  // string, a device on a pairing version this build cannot exchange keys with
+  // -- arrives as a rejection here. favalib writes those messages for the
+  // person holding the two devices, so show them rather than a generic one.
+  const reportFailure = (err: unknown) => {
+    setErrorMessage(
+      err instanceof Error ? err.message : 'Could not connect to the vault.',
+    )
+  }
+
   const handlePaste = (event: ClipboardEvent) => {
     const [state] = useStore()
     const { favaLib } = state
-    if (!favaLib) {
-      throw new Error('favaLib not loaded')
-    }
-    if (!favaLib.sync) {
-      throw new Error('sync not loaded / no server connection')
+    if (!favaLib?.sync) {
+      setErrorMessage('Error: favaLib not loaded or no server connection')
+      return
     }
 
     const items = event.clipboardData?.items
@@ -56,7 +64,7 @@ const ConnectToExistingVault = () => {
       return
     }
 
-    void respondWithName(blob, 'qr')
+    respondWithName(blob, 'qr').catch(reportFailure)
   }
 
   const handleTextSubmit = () => {
@@ -74,7 +82,7 @@ const ConnectToExistingVault = () => {
     }
 
     setErrorMessage(null)
-    void respondWithName(text, 'text')
+    respondWithName(text, 'text').catch(reportFailure)
   }
 
   return (

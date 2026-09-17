@@ -351,8 +351,8 @@ importers:
         specifier: ^4.12.0
         version: 4.12.0
       jpake-ts:
-        specifier: ^1.0.1
-        version: 1.0.1
+        specifier: ^2.0.0
+        version: 2.0.0
       jsqr:
         specifier: ^1.4.0
         version: 1.4.0
@@ -1543,13 +1543,13 @@ packages:
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
 
-  '@noble/curves@1.9.7':
-    resolution: {integrity: sha512-gbKGcRUYIjA3/zCCNaWDciTMFI0dCkvou3TL8Zmy5Nc7sJ47a0jtOeZoTaMxkuqRo9cRhjOdZJXegxYE5FN/xw==}
-    engines: {node: ^14.21.3 || >=16}
+  '@noble/curves@2.4.0':
+    resolution: {integrity: sha512-P4/62zrgfH33CneE3Dn4WhJVA22YUU0eR51wKIan4NVRvwsA0YnPTwWGpNbpuacSujmSFLvyzpyuR30+fbq2Ew==}
+    engines: {node: '>= 20.19.0'}
 
-  '@noble/hashes@1.8.0':
-    resolution: {integrity: sha512-jCs9ldd7NwzpgXDIf6P3+NrHh9/sD6CQdxHyjQI+h/6rDNo88ypBxxz45UDuZHz9r3tNz7N/VInSVoVdtXEI4A==}
-    engines: {node: ^14.21.3 || >=16}
+  '@noble/hashes@2.4.0':
+    resolution: {integrity: sha512-X5XaVWZIBCT7HHZGm5I7ZQXDwLG+bGXuSrMQAW+7Zvl87h1kmc1ZB1VSRJcpUfoUrGQp4Fkoxm5kZ+Ms+aW+eA==}
+    engines: {node: '>= 20.19.0'}
 
   '@oxc-project/types@0.148.0':
     resolution: {integrity: sha512-Nm4s/jB+4FpFsPhWGEC4h7rzksesmtnMXomo6rCMcg/b8zLQuOziRgkCS1fxDCXOlJB/6Q8oABOZ/OP6RIPj9A==}
@@ -3412,8 +3412,9 @@ packages:
     resolution: {integrity: sha512-AC/7JofJvZGrrneWNaEnJeOLUx+JlGt7tNa0wZiRPT4MY1wmfKjt2+6O2p2uz2+skll8OZZmJMNqeke7kKbNgQ==}
     hasBin: true
 
-  jpake-ts@1.0.1:
-    resolution: {integrity: sha512-9/56zN97TXDoekiIwFFhHgsU+8SX8Yf7EYGWsRhvbw3TKDYpTNZuTJM3pWPx27pDRRTDRpOC2/TBO+mbfbQLqg==}
+  jpake-ts@2.0.0:
+    resolution: {integrity: sha512-hm8fyXkUDLEeCDXDmWBHsaZ91aQsNycO7gGnI3jLrsk+3CC9rLYoVdo78sWBaTIVODz8dCgG5AydSOYo5YTCBA==}
+    engines: {node: '>=20.19.0'}
 
   js-tokens@10.0.0:
     resolution: {integrity: sha512-lM/UBzQmfJRo9ABXbPWemivdCW8V2G8FHaHdypQaIy523snUjog0W71ayWXTjiR+ixeMyVHN2XcpnTd/liPg/Q==}
@@ -6152,11 +6153,11 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
 
-  '@noble/curves@1.9.7':
+  '@noble/curves@2.4.0':
     dependencies:
-      '@noble/hashes': 1.8.0
+      '@noble/hashes': 2.4.0
 
-  '@noble/hashes@1.8.0': {}
+  '@noble/hashes@2.4.0': {}
 
   '@oxc-project/types@0.148.0': {}
 
@@ -8180,9 +8181,10 @@ snapshots:
 
   jiti@2.7.0: {}
 
-  jpake-ts@1.0.1:
+  jpake-ts@2.0.0:
     dependencies:
-      '@noble/curves': 1.9.7
+      '@noble/curves': 2.4.0
+      '@noble/hashes': 2.4.0
 
   js-tokens@10.0.0: {}
 

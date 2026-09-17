@@ -9,7 +9,9 @@ holds the detail. Tick a box only when that file's `Status:` line and the
 - [x] **01** — argon2id raised to m = 64 MiB / t = 3 / p = 4, parameters
       recorded per vault
 - [x] **02** — AES-256-GCM with AAD, plus a password-keyed `envelopeMac`
-- [x] **03** — `storageVersion` is read on load and a too-new vault is refused
+- [x] **03** — `storageVersion` is read on load and a too-new vault is refused.
+      Carries an amendment on the add-device pairing payload, the third
+      unversioned surface, versioned with the jpake-ts 2.0 upgrade.
 - [x] **04** — `changePassword` draws a fresh salt and a fresh symmetric key,
       and emits `PasswordChanged`. The RSA keypair is still not rotated, by
       design. Its extension half is **not** done — see below.

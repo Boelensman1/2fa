@@ -55,8 +55,10 @@ import {
   SyncError,
   SyncInWrongStateError,
   SyncNoServerConnectionError,
+  SyncPairingVersionError,
   FavaLibError,
 } from '../FavaLibError.mjs'
+import { PAIRING_VERSION } from '../version.mjs'
 import {
   EncryptedVaultStateString,
   VaultSyncStateWithServerUrl,
@@ -66,6 +68,41 @@ import type { FavaMeta } from '../interfaces/FavaMeta.mjs'
 import type { SyncCommandFromServer } from '../interfaces/protocol/ServerMessage.mjs'
 import type { SyncCommandFromClient } from '../interfaces/protocol/ClientMessage.mjs'
 import AddSyncDeviceCommand from '../Command/commands/AddSyncDeviceCommand.mjs'
+
+const currentPairingMajorVersion = Number.parseInt(
+  PAIRING_VERSION.split('.')[0],
+  10,
+)
+
+/**
+ * Checks that an initiator's pairing payload came from a build this one can
+ * actually complete a JPAKE exchange with.
+ *
+ * The major versions must match exactly, in both directions -- see
+ * PAIRING_VERSION for why there is no "older is fine" case here. A payload with
+ * no version at all predates the field and so counts as major 1; one whose
+ * version does not parse is refused rather than guessed at.
+ * @param pairingVersion - The version claimed by the initiator's payload.
+ * @throws {SyncPairingVersionError} If the two devices cannot pair.
+ */
+const assertPairingVersionIsSupported = (pairingVersion?: string) => {
+  const major = Number.parseInt((pairingVersion ?? '1.0').split('.')[0], 10)
+  if (major === currentPairingMajorVersion) {
+    return
+  }
+  const described = pairingVersion
+    ? `uses pairing version ${pairingVersion}`
+    : 'predates pairing versions'
+  const behind =
+    Number.isNaN(major) || major < currentPairingMajorVersion
+      ? 'the other device'
+      : 'this device'
+  throw new SyncPairingVersionError(
+    `Cannot pair: the pairing code ${described}, and this device speaks ` +
+      `pairing version ${PAIRING_VERSION}. The key exchange is not compatible ` +
+      `across these versions -- update ${behind} and try again.`,
+  )
+}
 
 const IN_TESTING = process.env.NODE_ENV === 'test'
 const IN_DEV = process.env.NODE_ENV === 'development'
@@ -553,6 +590,7 @@ class SyncManager {
     await continuePromise
 
     const returnData: InitiateAddDeviceFlowResult = {
+      pairingVersion: PAIRING_VERSION,
       addDevicePassword: uint8ArrayToBase64(addDevicePassword),
       initiatorDeviceId: this.deviceId,
       timestamp,
@@ -584,6 +622,7 @@ class SyncManager {
    * @param initiatorDataType The type of the initiatorData, determines how it should be decoded
    * @throws {SyncNoServerConnectionError} If there is no server connection.
    * @throws {SyncAddDeviceFlowConflictError} If an add device flow is already active.
+   * @throws {SyncPairingVersionError} If the initiator speaks a different JPAKE wire version.
    * @throws {SyncError} If the initiator data is invalid.
    */
   async respondToAddDeviceFlow(
@@ -597,13 +636,23 @@ class SyncManager {
       throw new SyncAddDeviceFlowConflictError()
     }
 
-    const { addDevicePassword, initiatorDeviceId, timestamp, pass1Result } =
-      await decodeInitiatorData(
-        initiatorData,
-        initiatorDataType,
-        await this.libraryLoader.getJsQrLib(),
-        this.libraryLoader.getQrGeneratorLib(),
-      )
+    const {
+      pairingVersion,
+      addDevicePassword,
+      initiatorDeviceId,
+      timestamp,
+      pass1Result,
+    } = await decodeInitiatorData(
+      initiatorData,
+      initiatorDataType,
+      await this.libraryLoader.getJsQrLib(),
+      this.libraryLoader.getQrGeneratorLib(),
+    )
+
+    // Before anything else: an exchange with a peer on another JPAKE wire
+    // version cannot succeed, and says so more clearly here than as a proof
+    // failure three messages later.
+    assertPairingVersionIsSupported(pairingVersion)
 
     if (
       !addDevicePassword ||
@@ -684,7 +733,7 @@ class SyncManager {
       pass3Result,
     })
 
-    const sharedKey = this.activeAddDeviceFlow.jpak.deriveSharedKey()
+    const { key: sharedKey } = this.activeAddDeviceFlow.jpak.deriveSharedKey()
     const syncKey = await this.cryptoLib.createSyncKey(
       sharedKey,
       responderDeviceId as string as Salt,
@@ -716,7 +765,7 @@ class SyncManager {
 
     this.activeAddDeviceFlow.jpak.receivePass3Results(pass3Result)
 
-    const sharedKey = this.activeAddDeviceFlow.jpak.deriveSharedKey()
+    const { key: sharedKey } = this.activeAddDeviceFlow.jpak.deriveSharedKey()
     const syncKey = await this.cryptoLib.createSyncKey(
       sharedKey,
       this.activeAddDeviceFlow.responderDeviceId as string as Salt,

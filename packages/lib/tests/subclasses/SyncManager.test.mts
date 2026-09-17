@@ -30,7 +30,12 @@ import {
   PlatformProviders,
   type EntryId,
 } from '../../src/main.mjs'
-import { base64ToUint8Array, uint8ArrayToBase64 } from 'uint8array-extras'
+import {
+  base64ToString,
+  base64ToUint8Array,
+  stringToBase64,
+  uint8ArrayToBase64,
+} from 'uint8array-extras'
 import { nodeProviders } from '../../src/platformProviders/node/index.mjs'
 import { buildCommandAad } from '../../src/utils/canonical.mjs'
 import type { SyncCommand } from '../../src/interfaces/CommandTypes.mjs'
@@ -48,7 +53,9 @@ import { Client as WsClient } from 'mock-socket'
 import {
   SyncAddDeviceFlowConflictError,
   SyncNoServerConnectionError,
+  SyncPairingVersionError,
 } from '../../src/FavaLibError.mjs'
+import { PAIRING_VERSION } from '../../src/version.mjs'
 import type {
   DeviceFriendlyName,
   DeviceId,
@@ -223,6 +230,93 @@ describe('SyncManager', () => {
     await expect(
       senderFavaLib.sync?.initiateAddDeviceFlow({ qr: false, text: true }),
     ).rejects.toThrow(SyncAddDeviceFlowConflictError)
+  })
+
+  describe('pairing version', () => {
+    /**
+     * Runs an initiator far enough to hand out its pairing payload.
+     * @returns The payload as the connection-string text an initiator shows.
+     */
+    const getInitiatorText = async () => {
+      const initiateResultPromise = senderFavaLib.sync!.initiateAddDeviceFlow({
+        qr: false,
+        text: true,
+      })
+      await server.nextMessage
+      send(senderWsInstance, 'confirmAddSyncDeviceInitialiseData')
+      return (await initiateResultPromise).text
+    }
+
+    /**
+     * Rewrites the pairingVersion of a payload, or drops it entirely.
+     * @param text - The connection-string text to rewrite.
+     * @param pairingVersion - The version to stamp, or undefined to drop it.
+     * @returns The rewritten connection-string text.
+     */
+    const restamp = (text: string, pairingVersion: string | undefined) => {
+      const payload = JSON.parse(base64ToString(text)) as Record<
+        string,
+        unknown
+      >
+      if (pairingVersion === undefined) {
+        delete payload.pairingVersion
+      } else {
+        payload.pairingVersion = pairingVersion
+      }
+      return stringToBase64(JSON.stringify(payload), { urlSafe: true })
+    }
+
+    it('should stamp the pairing version onto the initiator payload', async () => {
+      const payload = JSON.parse(
+        base64ToString(await getInitiatorText()),
+      ) as Record<string, unknown>
+
+      expect(payload.pairingVersion).toBe(PAIRING_VERSION)
+    })
+
+    it('should refuse a payload from a peer that predates the pairing version', async () => {
+      const text = restamp(await getInitiatorText(), undefined)
+
+      // An absent field means a build on jpake-ts 1.x, whose proofs this one
+      // rejects -- so the other device is the one that has to be updated.
+      await expect(
+        receiverFavaLib.sync!.respondToAddDeviceFlow(text, 'text'),
+      ).rejects.toThrow(SyncPairingVersionError)
+      await expect(
+        receiverFavaLib.sync!.respondToAddDeviceFlow(text, 'text'),
+      ).rejects.toThrow(/update the other device/)
+      expect(receiverFavaLib.sync!.inAddDeviceFlow).toBe(false)
+    })
+
+    it('should refuse a payload from a newer peer', async () => {
+      const text = restamp(await getInitiatorText(), '3.0')
+
+      await expect(
+        receiverFavaLib.sync!.respondToAddDeviceFlow(text, 'text'),
+      ).rejects.toThrow(/update this device/)
+      expect(receiverFavaLib.sync!.inAddDeviceFlow).toBe(false)
+    })
+
+    it('should refuse a payload whose pairing version does not parse', async () => {
+      const text = restamp(await getInitiatorText(), 'not-a-version')
+
+      await expect(
+        receiverFavaLib.sync!.respondToAddDeviceFlow(text, 'text'),
+      ).rejects.toThrow(SyncPairingVersionError)
+      expect(receiverFavaLib.sync!.inAddDeviceFlow).toBe(false)
+    })
+
+    it('should accept a payload that differs only in the minor version', async () => {
+      const text = restamp(
+        await getInitiatorText(),
+        `${PAIRING_VERSION.split('.')[0]}.99`,
+      )
+
+      await expect(
+        receiverFavaLib.sync!.respondToAddDeviceFlow(text, 'text'),
+      ).resolves.toBeUndefined()
+      expect(receiverFavaLib.sync!.inAddDeviceFlow).toBe(true)
+    })
   })
 
   it('should complete the full flow', async () => {

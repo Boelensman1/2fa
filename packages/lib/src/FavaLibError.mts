@@ -91,6 +91,12 @@ export class SyncNoServerConnectionError extends SyncError {
 }
 
 /**
+ * Error thrown when the other device in an add-device pairing speaks a JPAKE
+ * wire version this build cannot complete an exchange with.
+ */
+export class SyncPairingVersionError extends SyncError {}
+
+/**
  * Error thrown when an invalid command is being executed.
  */
 export class InvalidCommandError extends FavaLibError {}

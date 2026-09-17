@@ -119,3 +119,55 @@ fixture.
 file rather than an `InitializationError`. That belonged to
 [05](05-load-path-validation.md), which owns the envelope validation, and was
 untouched here. `05` landed 2026-09-17 and wraps both parses.
+
+### Amendment: the pairing payload was the third unversioned surface
+
+This file versioned two surfaces and stopped there: the stored envelope
+(`STORAGE_VERSION`) and the sync command (`COMMAND_VERSION`). The add-device
+pairing payload — the JSON behind the QR code or connection string, produced by
+`SyncManager.initiateAddDeviceFlow` and consumed by `respondToAddDeviceFlow` —
+carried no version at all, and nothing in this review noticed. It is not a
+finding anyone filed; it surfaced when `jpake-ts` went to 2.0.
+
+It matters because that payload is the one wire in the system handed across
+**versions** by construction: the whole point of pairing is that a device that
+has never met this build reads it. And the JPAKE format underneath it is not
+backward compatible — jpake-ts 2 binds each Schnorr proof to its generator and
+hashes the session key over a transcript, so a 1.x peer's pass 1 is rejected and
+a matching key would not be reached anyway. Without a version field, that showed
+up three messages later as `SyncError('Error processing initiator pass 1')`,
+which reads as a corrupt QR code rather than an out-of-date device.
+
+Resolved alongside the jpake-ts 2.0 upgrade:
+
+- `PAIRING_VERSION` in `src/version.mts`, currently `'2.0'`, whose major tracks
+  the JPAKE wire format. `InitiateAddDeviceFlowResult` now carries it as
+  `pairingVersion` and `initiateAddDeviceFlow` stamps it.
+- `assertPairingVersionIsSupported` in `SyncManager.mts` runs before any other
+  validation of initiator data and throws `SyncPairingVersionError`, named so a
+  UI can say which of the two devices is the one to update. A payload with no
+  `pairingVersion` counts as major 1 — a build on jpake-ts 1.x.
+- The gate differs from `commandVersionIsSupported` in both directions: an
+  **exact** major match, and a throw rather than a dropped message. There is no
+  "older is fine" case for a key exchange that cannot complete, and no queue to
+  redeliver from — the user is standing in front of both devices.
+
+Verified by mutation: disabling the gate reddens three tests in the new
+`SyncManager.test.mts > pairing version` block, and dropping the field from the
+emitted payload reddens twelve — every test that pairs two devices.
+
+The PWA showed none of this. `ConnectToExistingVault` submitted with
+`void respondWithName(...)`, so every pairing failure — this one, an unreadable
+QR code, a missing server connection — resolved to an unhandled rejection and
+the screen simply did nothing. It now reports `err.message`, which is why the
+library writes these messages for the person holding the two devices rather
+than for a log. Covered by `app-browser/e2e/pairing-errors.spec.ts`; reverting
+the component fails those three specs twice over, once on the missing message
+and once on the shared fixture's uncaught-error check.
+
+**Known asymmetry, not fixed:** the payload only travels initiator → responder,
+so only the responder can check. A _new_ initiator meeting an _old_ responder
+still gets the old three-messages-later failure, on the old device, in code this
+build cannot change. Closing that would mean versioning the `JPAKEPass2` relay
+too, which is a sync-protocol change and belongs with
+[12](12-sync-findings-index.md).

@@ -14,13 +14,15 @@ catalog:
   vitest: ^4.1.7
   ws: ^8.20.1
 
-# wtfconfig and wtf-devconfigs are first-party packages, published and consumed
-# straight away. pnpm 11 quarantines releases younger than a day, which the
-# container's global pnpm rc already waives for them -- `nix build` cannot see
-# that file, so the waiver has to live here too or the deps fetch fails.
+# wtfconfig, wtf-devconfigs and jpake-ts are first-party packages, published and
+# consumed straight away. pnpm 11 quarantines releases younger than a day, which
+# the container's global pnpm rc already waives for the first two -- `nix build`
+# cannot see that file, and it does not name jpake-ts at all, so the waiver has
+# to live here or the deps fetch fails.
 minimumReleaseAgeExclude:
   - wtfconfig
   - wtf-devconfigs
+  - jpake-ts
 
 # pnpm 11 verifies node_modules before `pnpm exec`, and when it decides the
 # directory has to be recreated it asks first -- which fails outright with

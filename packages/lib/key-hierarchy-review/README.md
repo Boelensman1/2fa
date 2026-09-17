@@ -170,7 +170,9 @@ Storage sinks are `vault.json` + `vault.json.backup` for the CLI, and the
 `localStorage` key `lockedRepresentation` for the PWA. So the at-rest format has
 **no peer-compatibility constraint** — there is no "peer on an older favalib"
 problem, only a same-device downgrade problem, which is what
-[03](03-storage-versioning.md) fixes.
+[03](03-storage-versioning.md) fixes. The two formats that _do_ carry that
+constraint are the sync command and the add-device pairing payload; see the
+amendment on [03](03-storage-versioning.md) for the latter.
 
 ## What this review could not verify
 

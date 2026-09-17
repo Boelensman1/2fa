@@ -83,7 +83,7 @@ const SyncServerForm: Component<SyncServerFormProps> = (props) => {
         type="text"
         value={serverUrl()}
         onInput={(e) => setServerUrl(e.currentTarget.value)}
-        placeholder="wss://sync.example.com or /api/sync"
+        placeholder="wss://sync.example.com or /sync"
         class="w-full p-2 border border-gray-300 rounded mb-3"
       />
       <input

@@ -16,7 +16,7 @@ export const buildFor = String(import.meta.env.BROWSER ?? 'chrome')
  * supply that, and a url without one configures nothing. So both are asked for
  * together and stored in the vault.
  *
- * Absolute, where `../app-browser` can default to the path `/api/sync` and
+ * Absolute, where `../app-browser` can default to the path `/sync` and
  * resolve it against `location`. The page that resolves it there is served by
  * the same vite server that proxies the socket through; an extension has no
  * such origin -- the popup runs at `-extension:` and the background at no

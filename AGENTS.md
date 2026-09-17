@@ -131,7 +131,7 @@ They run with `fileParallelism: false` because they share that one database.
 
 ## Browser sync in the container
 
-`packages/app-browser/src/parameters.ts` defaults the sync server to `/api/sync`,
+`packages/app-browser/src/parameters.ts` defaults the sync server to `/sync`,
 a path on whatever origin serves the app, and `vite.config.mts` proxies that path
 through to `ws://localhost:8080`. The WebSocket therefore travels over the preview
 port (3266) — the only one proxied out of the container — so sync works from a

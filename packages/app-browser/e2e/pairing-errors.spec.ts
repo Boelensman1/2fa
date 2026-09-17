@@ -14,7 +14,7 @@ const vaultPassword = 'e2e!Pairing7#Errors$vault'
 // its secret before it will take a pairing payload. Typed rather than left to
 // VITE_DEVSERVERSECRET's prefill, so the test does not depend on how the dev
 // server was started.
-const syncServerUrl = '/api/sync'
+const syncServerUrl = '/sync'
 const syncServerSecret = 'dev-only-sync-secret-not-for-real-use'
 
 /**
@@ -42,7 +42,7 @@ const openConnectScreen = async (page: Page) => {
   // A new vault has no sync server, so this screen offers the form instead of
   // the pairing input. Filling it in is what creates the socket at all.
   await page
-    .getByPlaceholder('wss://sync.example.com or /api/sync')
+    .getByPlaceholder('wss://sync.example.com or /sync')
     .fill(syncServerUrl)
   await page.getByPlaceholder('Server secret').fill(syncServerSecret)
   await page.getByRole('button', { name: 'Connect', exact: true }).click()

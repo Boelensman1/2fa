@@ -78,7 +78,7 @@ TypeScript is `strict` with `moduleResolution: 'bundler'` and
 imports are relative and extensionless. Tailwind v4 is configured CSS-first in
 `src/index.css`; there is no `tailwind.config.js` and there should not be one.
 
-`vite.config.mts` proxies `/api/sync` to `SYNC_SERVER_TARGET` (default
+`vite.config.mts` proxies `/sync` to `SYNC_SERVER_TARGET` (default
 `ws://localhost:8080`) — `preview.proxy` falls back to `server.proxy`, so this
 holds for `make preview` as well as `make dev`. To exercise sync locally, start
 the server with `make -C ../server dev`.
@@ -88,7 +88,7 @@ sync switched off; `SyncServerForm` asks for the server address and the secret
 the server is configured with, and `FavaLib.setSyncServerUrl` stores both in the
 vault. The secret cannot be compiled in, because this app is served publicly and
 `import.meta.env` ends up in the bundle. `VITE_DEVSYNCSERVERURL` (default
-`/api/sync`, a path being resolved against the page's origin) and
+`/sync`, a path being resolved against the page's origin) and
 `VITE_DEVSERVERSECRET` only **prefill that form** — the `DEV` is the warning, and
 milly.nix sets the second for the container dev server.
 

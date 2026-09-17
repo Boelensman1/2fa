@@ -9,7 +9,7 @@ import type { DeviceType } from 'favalib'
  * as-is.
  *
  * Applied to the value on its way OUT of the sync server form rather than to
- * the prefill, so that someone who types `/api/sync` themselves gets the same
+ * the prefill, so that someone who types `/sync` themselves gets the same
  * treatment as someone who accepts the default -- favalib needs an absolute
  * url, and a relative one reaches it as a connection that simply never opens.
  * @param value - A path, or an absolute ws:// or wss:// url.
@@ -31,7 +31,7 @@ export const toSyncServerUrl = (value: string) =>
  * values only save some typing in the container.
  */
 export const syncServerUrlPrefill =
-  import.meta.env.VITE_DEVSYNCSERVERURL ?? '/api/sync'
+  import.meta.env.VITE_DEVSYNCSERVERURL ?? '/sync'
 
 /**
  * The dev prefill for the server secret. Empty unless someone set the var.

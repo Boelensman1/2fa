@@ -76,6 +76,8 @@ let
   nativeEnv = ''
     export PKG_CONFIG_PATH="${pkgConfigPath}''${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
     export LD_LIBRARY_PATH="${libraryPath}''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+    export PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=${lib.getExe pkgs.chromium}
+    export PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
   '';
 in
 {
@@ -93,6 +95,7 @@ in
       stdenv.cc # node-gyp needs a C/C++ toolchain; the base image has none
       postgresql_17 # psql/createdb for setup.command
       zip # packages/app-extension: the firefox source-upload zip target
+      chromium # browser E2E tests use this instead of Playwright's download
     ];
 
     node.enable = true;
@@ -168,6 +171,8 @@ in
   environment.variables = {
     PKG_CONFIG_PATH = pkgConfigPath;
     LD_LIBRARY_PATH = libraryPath;
+    PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH = lib.getExe pkgs.chromium;
+    PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1";
   };
 
   milly.metadata."preview.port" = "3266";

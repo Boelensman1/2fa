@@ -11,6 +11,9 @@ lint: $(PACKAGES:%=lint-%)
 test:
 	CI=1 $(MAKE) $(PACKAGES:%=test-%)
 
+test-e2e: node_modules
+	$(MAKE) -C packages/app-browser test-e2e
+
 clean: $(PACKAGES:%=clean-%)
 	rm -rf ./node_modules
 	rm -rf ./packages/*/node_modules
@@ -32,4 +35,4 @@ clean-%:
 	make -C ./packages/$* clean
 
 
-.PHONY: build lint test clean clean-% install install-% build-% version-% lint-% test-%
+.PHONY: build lint test test-e2e clean clean-% install install-% build-% version-% lint-% test-%

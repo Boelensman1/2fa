@@ -29,7 +29,7 @@
             inherit (finalAttrs) pname version src;
             pnpm = pkgs.pnpm_11;
             fetcherVersion = 4;
-            hash = "sha256-bwg8dz1sfh8O+zQVIAXllRk6iLz39Df0w0QF1ORulDc=";
+            hash = "sha256-MY4DBZsAj2KU5Vis302hsd25xCKNf9h08vX/O5hG2hg=";
           };
 
           # The installPhase allowlist below resolves each dependency at
@@ -184,6 +184,7 @@
             pixman
             python3
           ] ++ pkgs.lib.optionals pkgs.stdenv.isLinux [
+            chromium
             libuuid
             libsecret
             glib
@@ -195,6 +196,10 @@
           # canvas/keytar load these natively at runtime, so they must be on
           # the loader path inside `nix develop` (e.g. for `make test`).
           env = pkgs.lib.optionalAttrs pkgs.stdenv.isLinux {
+            # Use the Nix-built browser: Playwright's downloaded Linux binaries
+            # expect a conventional distribution's loader and shared libraries.
+            PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH = pkgs.lib.getExe pkgs.chromium;
+            PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1";
             LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [
               pkgs.libuuid
               pkgs.libsecret

@@ -4,6 +4,8 @@ dist
 *.tsbuildinfo
 generated
 coverage
+packages/app-browser/playwright-report/
+packages/app-browser/test-results/
 vault.json
 settings.json
 docs

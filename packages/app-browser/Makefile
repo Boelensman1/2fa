@@ -22,10 +22,13 @@ lint: $(INSTALL_DEPS)
 preview: build $(INSTALL_DEPS)
 	pnpm exec vite preview
 
-test:
-	@echo no tests defined
+test: $(INSTALL_DEPS)
+	pnpm exec vitest run
+
+test-e2e: $(INSTALL_DEPS)
+	pnpm exec playwright test $(E2E_ARGS)
 
 clean:
 	rm -rf build *.tsbuildinfo
 
-.PHONY: dev lint preview clean test
+.PHONY: dev lint preview clean test test-e2e

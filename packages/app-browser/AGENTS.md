@@ -10,10 +10,16 @@ This package is **pure UI**. All vault, crypto, TOTP and sync logic lives in
 ## Commands
 
 `make lint` (`prettier --check` + `tsc --noEmit` + `eslint`) is the feedback loop
-for checking your work — not `make build`. `make test` prints "no tests defined";
-the suites live in `../lib` and `../server`. Every target here recurses into
-`../lib`, which is why lint is not instant and why a change in `../lib/src` is
-picked up automatically.
+for checking your work — not `make build`. `make test` runs the browser wiring
+regressions in `tests/` with Vitest, real crypto and isolated browser globals.
+The core library and server suites live in `../lib` and `../server`.
+The separate `vitest.config.mts` runs in Node without the Vite UI/PWA plugins.
+Every target here recurses into `../lib`, which is why lint is not instant and
+why a change in `../lib/src` is picked up automatically.
+
+`make test-e2e` runs the Playwright suite in `e2e/` against the running browser
+service. See [e2e/README.md](e2e/README.md) for browser setup, configuration and
+how to add tests. E2E tests are separate from the Node-based `make test` suite.
 
 ## Layout
 

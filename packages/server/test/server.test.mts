@@ -87,8 +87,8 @@ describe('Server message handling', () => {
   })
 
   describe('the connection gate', () => {
-    // key-hierarchy-review/16-server-authentication.md. The secret is proved,
-    // not sent: what crosses the wire is an HMAC over a nonce the server drew.
+    // The secret is proved, not sent: what crosses the wire is an HMAC over a
+    // nonce the server drew.
     it('accepts a proof made with the configured secret', () => {
       const fresh = makeWs()
       const nonce = core.connectionAuth.issueChallenge(fresh)

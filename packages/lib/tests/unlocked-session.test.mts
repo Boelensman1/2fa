@@ -126,7 +126,7 @@ const countingProviders = (): {
   }
 }
 
-describe('unlocked session (07-session-key-api.md)', () => {
+describe('unlocked session', () => {
   describe('round trip, on the frozen v2 fixture', () => {
     let session: UnlockedSessionString
 
@@ -185,9 +185,9 @@ describe('unlocked session (07-session-key-api.md)', () => {
     })
 
     it('imports under a different provider than it was exported from', async () => {
-      // The at-rest AAD folds in a hash of the exact stored bytes
-      // (02-ciphertext-authenticity.md), so any encoding difference between
-      // the two providers would show up here. Cheap to close.
+      // The at-rest AAD folds in a hash of the exact stored bytes, so any
+      // encoding difference between the two providers would show up here. Cheap
+      // to close.
       const lib = await utils(browserProviders).loadFavaLibFromUnlockedSession(
         fixtureV2,
         session,
@@ -276,7 +276,7 @@ describe('unlocked session (07-session-key-api.md)', () => {
     })
   })
 
-  describe('staleness (04-key-rotation.md)', () => {
+  describe('staleness', () => {
     /**
      * Builds a vault whose saved representation is observable.
      * @returns The instance, its password and a reader for the last save.

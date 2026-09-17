@@ -16,10 +16,9 @@ interface SyncServerFormProps {
  * Asks for the sync server and its shared secret, which are one setting.
  *
  * The secret is not in the bundle and must not be: this app is served publicly,
- * so a compiled-in secret would be a secret everyone holds. The user supplies
- * it, it is stored in their vault, and it is never sent anywhere -- what crosses
- * the wire is an HMAC over a nonce the server draws. See
- * key-hierarchy-review/16-server-authentication.md.
+ * so a compiled-in secret would be one everyone holds. The user supplies it, it
+ * is stored in their vault, and it never travels -- what crosses the wire is an
+ * HMAC over a nonce the server draws.
  * @param props - The component props.
  * @param props.onDone - Called once a server has been set successfully.
  * @returns The sync server form.

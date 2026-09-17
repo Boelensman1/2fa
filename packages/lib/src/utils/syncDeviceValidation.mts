@@ -160,16 +160,13 @@ const validateEnrolment = (enrolment: unknown): string | null => {
  * are 32 raw bytes, so this checks the length and the base64 rather than
  * bounding a PEM the way it had to when the keys were RSA.
  *
- * It is still **not** the check that makes device enrolment safe, and it was
- * never meant to be. A well formed record carrying an attacker's public keys
- * passes every test here. What decides whether such a record gets this far, and
- * what happens to it once it does, lives in `SyncManager.addSyncDevice` and in
- * the signature check above it: the sender has to be a peer already in the
- * list, the keys are pinned on first receipt, a removed device cannot be
- * reintroduced, and a peer-introduced device is announced rather than added
- * quietly. See key-hierarchy-review/14-sync-device-injection.md for the whole
- * ladder, and for why a peer enrolling a device is in-model rather than
- * refused.
+ * It is still **not** the check that makes device enrolment safe, and never
+ * was: a well formed record carrying an attacker's public keys passes every
+ * test here. What decides whether one gets this far lives in
+ * `SyncManager.addSyncDevice` and the signature check above it -- the sender
+ * must already be a peer, keys are pinned on first receipt, a removed device
+ * cannot be reintroduced, and a peer-introduced device is announced rather than
+ * added quietly.
  * @param raw - The device to check, which may be anything at all.
  * @returns Null when the device is usable, otherwise the reason it is not.
  */
@@ -208,9 +205,8 @@ export const validateSyncDevice = (raw: unknown): string | null => {
 /**
  * Checks a vault's removal tombstones.
  *
- * Refused rather than reset when malformed, the same call
- * `05-load-path-validation.md` made for the replay record and for the same
- * reason: silently starting over is the repair whose cost is invisible. A vault
+ * Refused rather than reset when malformed, like the replay record and for the
+ * same reason: starting over is the repair whose cost is invisible. A vault
  * that has forgotten what it removed works perfectly and quietly accepts a
  * device the user revoked.
  * @param raw - The value to check, which may be anything at all.

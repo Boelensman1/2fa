@@ -40,8 +40,7 @@ read path, and refuses it cleanly if there is not.
 **This vault is no longer readable, and that is now its job.** Storage version 1
 was dropped rather than migrated: reading it at all left a v1 blob able to be
 dropped over a current vault, open, and be silently rewritten — a downgrade
-window needing no matching salt and no matching kdf block. See
-`../../key-hierarchy-review/18-anti-rollback.md`.
+window needing no matching salt and no matching kdf block.
 
 So `fixtures.test.mts` no longer opens this file. It asserts that both load
 paths refuse it — with the correct password, so the refusal is the version gate

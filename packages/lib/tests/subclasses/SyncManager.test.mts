@@ -416,9 +416,8 @@ describe('SyncManager', () => {
       interval: 5,
     })
     // The nonce field every client message used to carry is gone: the client
-    // generated one, the server never read it, and no client verified one
-    // either. A field that looks like a security control and is read by nobody
-    // is worse than no field -- key-hierarchy-review/15-sync-replay-protection.md.
+    // generated one and nobody read it. A field that looks like a security
+    // control and is read by nobody is worse than no field.
     expect(
       messageDatas.some((d) => 'nonce' in (d as Record<string, unknown>)),
     ).toBe(false)
@@ -450,10 +449,9 @@ describe('SyncManager', () => {
     expect(senderSyncDevices).toHaveLength(1)
     expect(receiverSyncDevices).toHaveLength(1)
     // Both ends record the other as 'pairing', and both are acknowledged
-    // without anyone being asked: the user was standing in front of the two
-    // devices holding the out-of-band secret, which is the whole point of the
-    // distinction. Only a peer INTRODUCING a third device needs surfacing --
-    // key-hierarchy-review/14-sync-device-injection.md.
+    // without anyone being asked: the user was standing in front of both
+    // devices holding the out-of-band secret. Only a peer INTRODUCING a third
+    // device needs surfacing.
     expect(senderSyncDevices[0]).toEqual({
       deviceId: 'receiverDeviceId' as DeviceId,
       deviceFriendlyName: 'receiverFriendlyName' as DeviceFriendlyName,
@@ -931,11 +929,9 @@ describe('SyncManager', () => {
   })
 
   describe('command authentication', () => {
-    // key-hierarchy-review/13-sync-command-authentication.md. Sealing a command
-    // to a device's public key proves nothing about who sealed it -- sealing is
-    // a public operation -- so before these checks anyone holding a public key
-    // could mint commands for that device. Every case below is a command that
-    // decrypts perfectly and is refused anyway.
+    // Sealing is a public operation, so before these checks anyone holding a
+    // device's public key could mint commands for it. Every case below decrypts
+    // perfectly and is refused anyway.
     let warnings: string[]
 
     beforeEach(async () => {
@@ -1066,10 +1062,9 @@ describe('SyncManager', () => {
   })
 
   describe('replay protection', () => {
-    // key-hierarchy-review/15-sync-replay-protection.md. The server re-sends
-    // everything it has not been told was executed, so the same id arriving
-    // twice is routine; what was missing is that the record of what had been
-    // applied lived only in memory.
+    // The server re-sends everything it has not been told was executed, so the
+    // same id arriving twice is routine; what was missing is that the record of
+    // what had been applied lived only in memory.
     beforeEach(async () => {
       await registerSenderAsPeer()
     })
@@ -1350,9 +1345,9 @@ describe('SyncManager', () => {
   }, 10000) // long running test, the re-connect itself takes 5 seconds
 
   describe('the sync server connection gate', () => {
-    // key-hierarchy-review/16-server-authentication.md. An open socket is no
-    // longer a usable one: the server speaks first, and nothing this device has
-    // to say happens until its proof of the shared secret is accepted.
+    // An open socket is no longer a usable one: the server speaks first, and
+    // nothing this device has to say happens until its proof of the shared
+    // secret is accepted.
     const gateSyncState = (commandSendQueue: SyncCommandFromClient[] = []) => ({
       serverUrl,
       serverSecret: testServerSecret,
@@ -1491,12 +1486,11 @@ describe('SyncManager', () => {
   describe('sync device validation', () => {
     // The single chokepoint every route a peer device arrives by has to pass:
     // importVaultState, AddSyncDeviceCommand, and the constructor's own
-    // registration. See key-hierarchy-review/05-load-path-validation.md.
+    // registration.
     //
     // These are the shape gate ONLY. A well formed record carrying an
-    // attacker's public keys passes every one of them; what a signed command
-    // and the gates below it do about that is
-    // 14-sync-device-injection.md.
+    // attacker's public keys passes every one; the signature check and the
+    // gates below it decide whether one gets this far.
     const goodDevice = () => ({
       deviceId: 'shape-check-peer' as DeviceId,
       publicKey,

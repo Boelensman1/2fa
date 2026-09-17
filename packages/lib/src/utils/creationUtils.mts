@@ -74,8 +74,8 @@ const MIGRATE_BY_EXPORTING =
  * Parses JSON, reporting a failure as an InitializationError.
  *
  * A truncated or half-written file is the ordinary way this fails, and the bare
- * SyntaxError that JSON.parse throws is neither a FavaLibError nor a message any
- * consumer can show a user. See key-hierarchy-review/05-load-path-validation.md.
+ * SyntaxError JSON.parse throws is neither a FavaLibError nor a message any
+ * consumer can show a user.
  * @param json - The string to parse.
  * @param what - What is being parsed, used in the error message.
  * @returns The parsed value, as an unknown.
@@ -105,12 +105,10 @@ const SALT_BYTES = 16
  *
  * Note what a Salt is here: the base64 STRING of the random bytes, and that
  * string is what argon2id receives -- 24 UTF-8 bytes, not the 16 raw ones.
- * See the key-hierarchy-review README, detail 4.
  *
  * Shared with PersistentStorageManager.changePassword so the two cannot drift:
- * a salt length is a security parameter, and this review has already been
- * bitten once by a constant differing between paths (the 12-vs-16-byte nonce,
- * finding 09).
+ * a salt length is a security parameter, and a constant differing between paths
+ * has bitten this code before (the 12-vs-16-byte nonce).
  * Deliberately not a CryptoLib method -- that interface is public API and a
  * consumer may supply their own provider, so a new required member is a break
  * for them, and there is nothing platform-specific to implement above the
@@ -209,8 +207,7 @@ const createNewFavaLibVault = async (
   const platformProviders = libraryLoader.getPlatformProviders()
   // Before createKeys, not after: createKeys runs argon2 at the v2 cost, and
   // rejecting a weak password afterwards spends all of that for nothing. Curve
-  // keygen is no longer the expensive half -- it used to be an RSA-4096
-  // keygen, see key-hierarchy-review/10-rsa-layer.md -- but argon2 still is.
+  // keygen is cheap now, but argon2 still is not.
   await validatePasswordStrength(libraryLoader, passwordExtraDict, password)
 
   const {
@@ -312,10 +309,9 @@ interface UnlockedVaultKeys {
  * which version they have, not that their vault is corrupt.
  *
  * There is exactly one readable version. Anything older is refused rather than
- * migrated: reading the old format at all reopened a downgrade window wider
- * than plain rollback, because a v1 blob needed no matching salt and no
- * matching kdf block to be accepted over a current vault
- * (key-hierarchy-review/18-anti-rollback.md).
+ * migrated: a v1 blob needed no matching salt or kdf block to be accepted over
+ * a current vault, so reading the old format at all was a downgrade window
+ * wider than plain rollback.
  * @param parsed - The parsed stored vault, of unknown shape.
  * @returns The validated storage version.
  * @throws {StorageVersionError} If the version is not an integer, is out of
@@ -424,11 +420,10 @@ const requireCompleteLockedRepresentation = (
  * The MAC is verified BEFORE anything is decrypted, parsed or used, because
  * this is what authenticates the vault to the holder of the PASSWORD. The
  * AES-GCM tag below proves only that whoever wrote the blob held the data
- * encryption key, and that key arrives wrapped to this device's OWN public
- * key: anyone who has seen that public key can choose their own key, wrap it,
- * re-encrypt an arbitrary vault state, and build a matching AAD out of the
- * cleartext they are writing. See
- * key-hierarchy-review/02-ciphertext-authenticity.md.
+ * encryption key, and that key used to arrive wrapped to this device's OWN
+ * public key: anyone who had seen it could choose their own key, wrap it,
+ * re-encrypt an arbitrary vault state, and build a matching AAD from the
+ * cleartext they were writing.
  *
  * On the password path it runs AFTER decryptKeys, because a wrong password
  * also produces a wrong MAC key, so checking first would replace the existing
@@ -493,14 +488,12 @@ const decryptVaultState = async (
  * assigned into SyncManager's constructor without even passing through
  * addSyncDevice.
  *
- * This REFUSES rather than dropping, which is the one place this diverges
- * from the tier policy in entryValidation.mts:69-74. Dropping a remote
- * command is lossless because the server redelivers it; dropping an entry
- * here is not, because nothing redelivers a vault -- the entry would be gone
- * from memory and erased from storage by the next ordinary save. A silently
- * vanished TOTP seed is worse than a loud refusal, so the message names what
- * is wrong and says the vault is still intact.
- * See key-hierarchy-review/05-load-path-validation.md.
+ * This REFUSES rather than dropping, the one place it diverges from the tier
+ * policy in entryValidation.mts:69-74. A dropped remote command is redelivered
+ * by the server; a dropped entry is not, and would be erased from storage by
+ * the next ordinary save. A silently vanished TOTP seed is worse than a loud
+ * refusal, so the message names what is wrong and says the vault is still
+ * intact.
  *
  * Shared by both load paths on purpose: an unlocked session ingests exactly
  * the same untrusted vault state a password unlock does, so it must be held to
@@ -525,13 +518,11 @@ const parseVaultState = (vaultStateString: string): VaultState => {
     )
   }
 
-  // Absent is fine and means "this device has applied nothing yet", which is
-  // true of every vault written before the record existed. Present but the
-  // wrong shape is REFUSED rather than reset, unlike the entries below it and
-  // unlike a dropped remote command: silently starting replay protection over
-  // is the one repair whose cost is invisible, because the vault would work
-  // perfectly afterwards and simply accept commands it had already applied.
-  // See key-hierarchy-review/15-sync-replay-protection.md.
+  // Absent is fine and means "this device has applied nothing yet", true of
+  // every vault written before the record existed. Present but malformed is
+  // REFUSED rather than reset: silently starting replay protection over is the
+  // one repair whose cost is invisible, since the vault works perfectly
+  // afterwards and simply accepts commands it had already applied.
   const processedCommands = vaultState.sync.processedCommands
   if (
     processedCommands !== undefined &&
@@ -786,9 +777,9 @@ const parseUnlockedSession = (
  * without a password.
  *
  * This is the reason the session api exists: an mv3 service worker is evicted
- * after ~30s idle, and replaying a password unlock on every boot means either
+ * after ~30s idle, so replaying a password unlock on every boot means either
  * keeping the master password around or paying argon2id at the v2 cost every
- * half minute. See key-hierarchy-review/07-session-key-api.md.
+ * half minute.
  *
  * It runs NO key derivation -- no argon2id, no PBES2 unwrap of the private
  * key. The session already holds what those produce; everything else is read
@@ -805,12 +796,11 @@ const parseUnlockedSession = (
  * That is a binding to a key GENERATION, not freshness. A save moves none of
  * the fields the MAC covers a key for, so one session opens every envelope
  * that generation goes on to write -- and, by the same token, a stale session
- * paired with the stale vault it was exported beside still opens. Rollback is
- * key-hierarchy-review/18-anti-rollback.md and is not addressed here.
+ * paired with the stale vault it was exported beside still opens. Rollback is a
+ * separate problem, not addressed here.
  *
  * The vault state it decrypts is validated exactly as the password path
- * validates it (05-load-path-validation.md): same entry and sync-device
- * checks, same refusal.
+ * validates it: same entry and sync-device checks, same refusal.
  *
  * ## For the caller
  *

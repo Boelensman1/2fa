@@ -98,10 +98,9 @@ class NodeCryptoLib implements CryptoLib {
     const salt = randomBytes(16).toString('base64') as Salt
 
     // create passwordHash -- ONCE. This used to run argon2 a second time via a
-    // decryptKeys round trip that existed only to recover the plaintext
-    // private key, which the keygen can hand us directly. See
-    // key-hierarchy-review/10-rsa-layer.md; at m=64 MiB/t=3/p=4 that round
-    // trip would cost ~260 ms per vault creation for nothing.
+    // decryptKeys round trip that existed only to recover the plaintext private
+    // key, which the keygen can hand us directly. At m=64 MiB/t=3/p=4 that
+    // round trip would cost ~260 ms per vault creation for nothing.
     const passwordHash = await generatePasswordHash(
       salt,
       password,
@@ -431,9 +430,8 @@ class NodeCryptoLib implements CryptoLib {
     if (parts.length !== 3 || parts[0] !== V2_ENVELOPE_PREFIX) {
       // A storage version 1 envelope -- base64(iv):base64(ct), AES-256-CBC --
       // reaching here is a bug or an attack. Nothing in the library reads that
-      // format any more (key-hierarchy-review/18-anti-rollback.md), and the
-      // shape is refused rather than attempted, which is what keeps the CBC
-      // padding oracle off the sync path.
+      // format any more, and the shape is refused rather than attempted, which
+      // is what keeps the CBC padding oracle off the sync path.
       throw new CryptoError('Could not decrypt data')
     }
     const [, nonceString, encryptedData] = parts
@@ -461,7 +459,7 @@ class NodeCryptoLib implements CryptoLib {
     } catch {
       // Deliberately one message for every cause -- bad tag, bad nonce, bad
       // aad, malformed base64, wrong key. A decrypt that distinguishes them is
-      // the oracle 02-ciphertext-authenticity.md is about.
+      // an oracle.
       throw new CryptoError('Could not decrypt data')
     }
   }

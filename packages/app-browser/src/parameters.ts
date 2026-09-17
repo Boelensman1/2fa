@@ -38,10 +38,9 @@ export const syncServerUrlPrefill =
  *
  * DEVELOPMENT ONLY, and the `DEV` in the name is the whole warning: anything
  * reachable from `import.meta.env` is compiled into the bundle, so setting this
- * in a build that gets served to the public publishes the secret to everyone who
- * loads the app -- which is precisely the thing having a secret was for. It is
- * set by milly2-container/milly.nix for the container dev server and nowhere
- * else. See key-hierarchy-review/16-server-authentication.md.
+ * in a publicly served build publishes the secret to everyone who loads the
+ * app. It is set by milly2-container/milly.nix for the container dev server and
+ * nowhere else.
  */
 export const syncServerSecretPrefill =
   import.meta.env.VITE_DEVSERVERSECRET ?? ''

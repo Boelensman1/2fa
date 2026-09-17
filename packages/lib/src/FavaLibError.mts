@@ -103,9 +103,8 @@ export class SyncPairingVersionError extends SyncError {}
  * Its own type because it is the one sync refusal that is evidence rather than
  * noise. Every other reason a device is refused describes a peer on a different
  * build or a malformed record; this one describes something trying to take over
- * an identity the user has already seen and possibly already compared a
- * fingerprint for. Keys are pinned on first receipt and never replaced -- see
- * key-hierarchy-review/14-sync-device-injection.md.
+ * an identity the user may already have compared a fingerprint for. Keys are
+ * pinned on first receipt and never replaced.
  */
 export class SyncDeviceKeyConflictError extends SyncError {}
 
@@ -138,7 +137,6 @@ export class StorageVersionError extends InitializationError {}
  *
  * There is no migration, by design: a vault predating the current format is
  * refused, and the way across is to open it with the older build, export the
- * entries and import them here. See key-hierarchy-review/18-anti-rollback.md
- * for why reading the old format at all was the wider problem.
+ * entries and import them here.
  */
 export class UnsupportedStorageVersionError extends InitializationError {}

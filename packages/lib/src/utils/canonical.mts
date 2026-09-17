@@ -25,12 +25,9 @@
  * field contains, and removes the need for a per-field alphabet argument that a
  * later field addition could quietly invalidate.
  *
- * The sender is authenticated now -- `buildCommandSignatureMessage` below is
- * the message a peer signs, and it is built with the same encoder, for the same
- * reason and then some: an AAD only has to be unambiguous to the one key that
- * can open the ciphertext, while a signed message has to be unambiguous to
- * every device that holds the signer's public key. See
- * key-hierarchy-review/13-sync-command-authentication.md.
+ * `buildCommandSignatureMessage` below uses the same encoder, and needs it
+ * more: an AAD only has to be unambiguous to the one key that can open the
+ * ciphertext, a signature to every device holding the signer's public key.
  */
 
 const textEncoder = new TextEncoder()
@@ -84,15 +81,13 @@ export interface KdfParameters {
  * `encryptedVaultState` lifted from a pre-change backup authenticated under the
  * new password.
  *
- * `changePassword` now rotates the salt and the symmetric key too
- * (key-hierarchy-review/04-key-rotation.md), so that splice is closed twice
- * over. The field stays: it is what keeps a blob assembled from two generations
- * from authenticating at the ciphertext layer, whatever moved between them.
+ * `changePassword` now rotates the salt and the symmetric key too, closing that
+ * splice twice over. The field stays: it stops a blob assembled from two
+ * generations authenticating, whatever moved between them.
  *
  * It does NOT close rollback under an unchanged password, where the sealed keys
- * are unchanged too (that is key-hierarchy-review/18-anti-rollback.md), and it
- * does not touch envelope forgery, since a forger writes the AAD themselves --
- * that is what the envelope MAC is for.
+ * are unchanged too, nor envelope forgery, since a forger writes the AAD
+ * themselves -- that is the envelope MAC's job.
  * @param storageVersion - The storage version of the envelope.
  * @param salt - The vault salt.
  * @param kdf - The argon2id parameters the vault was written with.
@@ -161,8 +156,7 @@ export const buildCommandAad = (commandId: string, deviceId: string): string =>
 /**
  * Builds the message a sending device signs over a sync command.
  *
- * Four fields, and each one is load-bearing
- * (key-hierarchy-review/13-sync-command-authentication.md):
+ * Four fields, and each one is load-bearing:
  *
  * - `payload` is the exact JSON string that gets encrypted, signed verbatim
  *   rather than re-serialised from a parsed object. Signing a re-serialisation
@@ -200,10 +194,9 @@ export const buildCommandSignatureMessage = (
  * Builds the message a sending device signs over a full vault state.
  *
  * The initial vault of an add-device flow and a resilver are the two messages
- * that carry the whole vault, and they were as unauthenticated as commands
- * were: sealing to a public key proves nothing about who sealed. Signing them
- * is not part of finding 13's letter, which is about commands, but it is the
- * same defect on the same path and the primitive was already here.
+ * that carry the whole vault, and were as unauthenticated as commands were:
+ * sealing to a public key proves nothing about who sealed. Same defect, same
+ * path, same fix.
  * @param fromDeviceId - The device sending the vault state.
  * @param forDeviceId - The device it is addressed to.
  * @param encryptedVaultData - The sealed vault state, signed as it travels.
@@ -297,8 +290,7 @@ export interface EnvelopeMacFields {
  * arrive via an RSA-OAEP wrap under the device's own public key, so anyone
  * holding that public key could choose their own key, wrap it, encrypt an
  * arbitrary vault state under it and build a matching AAD from the cleartext
- * fields they were writing. See
- * key-hierarchy-review/02-ciphertext-authenticity.md.
+ * fields they were writing.
  *
  * The self-wrap is gone -- both at-rest seals are under keys derived from the
  * password hash -- so forging a readable vault needs the password now. The MAC
@@ -329,13 +321,11 @@ export const buildEnvelopeMacMessage = (fields: EnvelopeMacFields): string =>
  * Builds the message a client HMACs to prove it holds the sync server's shared
  * secret.
  *
- * One field, and the omissions are the design. There is no `deviceId` here on
- * purpose: the secret is held by every device of a deployment, so an HMAC under
- * it proves membership of that deployment and nothing about which device
- * computed it. Binding a device id would make the proof LOOK like device
- * authentication while remaining a statement anyone holding the secret can make
- * about any id, which is the misreading
- * key-hierarchy-review/16-server-authentication.md exists to prevent.
+ * One field, and the omissions are the design. There is no `deviceId`: every
+ * device of a deployment holds the secret, so an HMAC under it proves
+ * membership and nothing about who computed it. Binding an id would make the
+ * proof LOOK like device authentication while staying a statement anyone with
+ * the secret can make about any id.
  *
  * Freshness is the nonce's whole job: the server draws it per socket and
  * accepts it once, so a captured proof is worth nothing on the next connection.

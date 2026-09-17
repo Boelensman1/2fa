@@ -23,10 +23,9 @@ export const ConfigObjectSchema = z.object({
      * nothing when someone forgets to configure it is worse than no gate, since
      * it is indistinguishable from a working one.
      *
-     * Make one with `openssl rand -base64 32`. It is not device
-     * authentication: every device of a deployment holds the same value, so it
-     * says who may open a socket and nothing about who is on the other end. See
-     * key-hierarchy-review/16-server-authentication.md.
+     * Make one with `openssl rand -base64 32`. It is not device authentication:
+     * every device of a deployment holds the same value, so it says who may
+     * open a socket and nothing about who is on the other end.
      */
     sharedSecret: z.string().min(SERVER_SECRET_MIN_LENGTH),
   }),

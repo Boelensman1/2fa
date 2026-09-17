@@ -39,12 +39,11 @@ class VaultDeleteCommand extends BaseCommand {
 
     await fs.rm(this.settings.vaultLocation)
 
-    // The backup and any stale temp file hold the same secrets as the vault
-    // itself, and loadVault writes a backup on every save without ever
-    // removing one. Leaving them behind after an explicit delete means the
-    // vault is not actually deleted -- and copying the backup back over
-    // vault.json silently reverts the vault, which an AEAD cannot detect
-    // (key-hierarchy-review/18-anti-rollback.md).
+    // The backup and any stale temp file hold the same secrets as the vault,
+    // and loadVault writes a backup on every save without ever removing one.
+    // Leaving them after an explicit delete means the vault is not actually
+    // deleted -- and copying the backup back over vault.json silently reverts
+    // it, which an AEAD cannot detect.
     for (const leftover of [
       `${this.settings.vaultLocation}.backup`,
       `${this.settings.vaultLocation}.tmp`,

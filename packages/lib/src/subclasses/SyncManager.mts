@@ -191,8 +191,7 @@ class SyncManager {
    *
    * Reset on every `initServerConnection`, so a reconnect proves itself again
    * rather than inheriting the last socket's standing. Nothing but `authProof`
-   * is sent while this is not `authenticated`
-   * (key-hierarchy-review/16-server-authentication.md).
+   * is sent while this is not `authenticated`.
    */
   private authState:
     'awaiting-challenge' | 'awaiting-accept' | 'authenticated' =
@@ -214,10 +213,9 @@ class SyncManager {
   /**
    * Remote commands this device has applied, as persisted in the vault.
    *
-   * The in-memory set CommandManager keeps is still there and still gates
-   * `execute`, but it empties on every restart, and the server re-sends
-   * everything it has not been told was executed. This is the half that
-   * survives (key-hierarchy-review/15-sync-replay-protection.md).
+   * The in-memory set CommandManager keeps still gates `execute`, but it
+   * empties on every restart, and the server re-sends everything it has not
+   * been told was executed. This is the half that survives.
    */
   private processedCommands: ProcessedCommand[]
 
@@ -285,8 +283,7 @@ class SyncManager {
    * actually seal to and verify against, and is short enough to read aloud.
    *
    * `acknowledged` is false only for a device a peer introduced and that no
-   * consumer has said it surfaced yet -- it gates nothing. See
-   * key-hierarchy-review/14-sync-device-injection.md.
+   * consumer has said it surfaced yet -- it gates nothing.
    * @returns The sync devices, without their public keys.
    */
   public getSyncDevices(): PublicSyncDevice[] {
@@ -423,12 +420,11 @@ class SyncManager {
   /**
    * @returns Whether there is a usable connection to the sync server.
    *
-   * Open is not enough any more. The server refuses every message from a socket
-   * that has not proved the shared secret, so a caller that started a pairing
-   * flow in the window between `open` and `authAccepted` would have its
-   * connection closed under it rather than get an error it could act on. This
-   * is what every caller gates on, and it means BOTH
-   * (key-hierarchy-review/16-server-authentication.md).
+   * Open is not enough any more: the server refuses every message from a socket
+   * that has not proved the shared secret, so a pairing flow started between
+   * `open` and `authAccepted` would have its connection closed under it rather
+   * than get an error it could act on. Every caller gates on this, and it means
+   * BOTH.
    */
   get webSocketConnected(): boolean {
     return this.socketOpen && this.authState === 'authenticated'
@@ -471,12 +467,10 @@ class SyncManager {
         syncManager.handleServerMessage(parsedMessage)
       } catch (error) {
         // A SyncError from handleServerMessage is a REFUSAL, not a parse
-        // failure, and it is reported as itself. The two used to be flattened
-        // together, which meant the loudest alarm in the sync path -- "got
-        // vault data while no resilver was requested, probably replay attack!"
-        // -- reached the user as "Failed to parse message", indistinguishable
-        // from a truncated frame. See
-        // key-hierarchy-review/15-sync-replay-protection.md.
+        // failure, and is reported as itself. Flattening the two used to reach
+        // the user as "Failed to parse message" even for the loudest alarm in
+        // the sync path -- "got vault data while no resilver was requested,
+        // probably replay attack!".
         if (error instanceof SyncError) {
           syncManager.log('error', error.message)
           // eslint-disable-next-line no-restricted-globals
@@ -496,12 +490,11 @@ class SyncManager {
 
     this.authState = 'awaiting-challenge'
     ws.addEventListener('open', () => {
-      // An open socket is no longer a usable one. The server speaks first, with
-      // a nonce this device has to answer before it may say anything at all, so
+      // An open socket is no longer a usable one: the server speaks first with
+      // a nonce this device must answer before it may say anything, so
       // everything that used to happen here -- announcing the deviceId,
       // reporting CONNECTED, draining the offline queue -- now happens in the
-      // `authAccepted` case below. See
-      // key-hierarchy-review/16-server-authentication.md.
+      // `authAccepted` case below.
       this.log('info', 'Socket open, awaiting sync server challenge.')
     })
     ws.addEventListener('close', this.handleWebSocketClose.bind(this))
@@ -694,11 +687,9 @@ class SyncManager {
               fromDeviceId,
             ),
           )
-          // Neither of these is awaited by anything, so without a catch a
-          // refused import is an unhandled rejection rather than something the
-          // consumer can surface. importVaultState only started throwing on
-          // malformed contents with
-          // key-hierarchy-review/05-load-path-validation.md.
+          // Neither is awaited by anything, so without a catch a refused import
+          // is an unhandled rejection rather than something the consumer can
+          // surface.
           .catch((err: unknown) =>
             this.reportFailedVaultImport('resilvered vault', err),
           )
@@ -1308,9 +1299,9 @@ class SyncManager {
         }
 
         // The exact bytes that get signed and then sealed. The command id is
-        // INSIDE now -- it used to be stripped here and taken from the server's
-        // envelope on the other side, which made the dedup key something the
-        // server chose (key-hierarchy-review/15-sync-replay-protection.md).
+        // INSIDE now -- stripping it here and taking it from the server's
+        // envelope on the other side made the dedup key something the server
+        // chose.
         const payload = JSON.stringify({
           ...commandJson,
           padding: generateNonCryptographicRandomString(), // make it harder to guess the length
@@ -1618,14 +1609,11 @@ class SyncManager {
    * every throw here into the same warning, because telling a prober whether a
    * device id is known is already telling them something.
    *
-   * The signature is the whole point (see
-   * key-hierarchy-review/13-sync-command-authentication.md). Sealing a command
-   * to this device's public key proves nothing about who sealed it: sealing is
-   * a public operation, so before this check anyone holding a device's public
-   * key could mint commands for it. Now a command is only acted on if a device
-   * CURRENTLY in this vault's peer list signed it, for this recipient, under
-   * this command id -- which is also what finally makes `removeSyncDevice` a
-   * revocation rather than bookkeeping.
+   * The signature is the whole point. Sealing is a public operation, so before
+   * this check anyone holding a device's public key could mint commands for it.
+   * Now a command is acted on only if a device CURRENTLY in this vault's peer
+   * list signed it, for this recipient, under this command id -- which is also
+   * what makes `removeSyncDevice` a revocation rather than bookkeeping.
    * @param commandId - The id the server delivered the command under.
    * @param envelope - The decrypted envelope, which may be anything at all.
    * @returns The command and the peer identity used for verification.
@@ -1893,10 +1881,9 @@ class SyncManager {
    * 4. **Cap.** As before.
    *
    * What it deliberately does NOT do is refuse a device merely because a peer
-   * rather than the user introduced it. A peer holds every seed in the vault
-   * already, so peer trust is flat by design; what this does instead is record
-   * WHO introduced it and announce it, so that trust arriving by delegation is
-   * at least visible. See key-hierarchy-review/14-sync-device-injection.md.
+   * rather than the user introduced it. A peer holds every seed already, so
+   * peer trust is flat by design; instead this records WHO introduced it and
+   * announces it, so delegated trust is at least visible.
    * @param device - The device to add. Only its four wire fields are read; any
    * `enrolment` or `acknowledgedAt` on it is ignored, since those are this
    * device's opinion and a peer does not get to write them.

@@ -185,10 +185,10 @@ class FavaLib extends TypedEventTarget<FavaLibEventMapEvents> {
     }
 
     if (syncState?.serverUrl && !syncState.serverSecret) {
-      // A url with no secret cannot get past the sync server's connection gate
-      // (key-hierarchy-review/16-server-authentication.md), so there is nothing
-      // a SyncManager could do here but fail the handshake on a loop. Say what
-      // is missing and carry on unsynced; setSyncServerUrl takes both.
+      // A url with no secret cannot get past the sync server's connection gate,
+      // so there is nothing a SyncManager could do here but fail the handshake
+      // on a loop. Say what is missing and carry on unsynced; setSyncServerUrl
+      // takes both.
       this.log(
         'warning',
         'Sync is configured with a server url but no server secret, so it is ' +

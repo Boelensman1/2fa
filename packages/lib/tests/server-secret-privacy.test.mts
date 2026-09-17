@@ -16,12 +16,11 @@ import { createFavaLibForTests, testServerSecret } from './testUtils.mjs'
 /**
  * The sync server's shared secret is STORED, and never sent.
  *
- * `getEncryptedVaultState` builds both the at-rest vault state and the two
- * peer-bound ones (the initial vault of a pairing flow, and a resilver) from a
- * single object literal, so "the secret is not in the one sent to a peer" is a
- * single `forDeviceId` branch -- and exactly the sort of thing a later edit to
- * that literal silently undoes. See
- * key-hierarchy-review/16-server-authentication.md.
+ * `getEncryptedVaultState` builds the at-rest vault state and the two
+ * peer-bound ones (a pairing flow's initial vault, and a resilver) from a
+ * single object literal, so "the secret is not in the one sent to a peer" rests
+ * on one `forDeviceId` branch -- exactly the sort of thing a later edit to that
+ * literal silently undoes.
  */
 
 const ownDeviceId = 'secret-privacy-device' as DeviceId
@@ -116,9 +115,8 @@ describe('the sync server secret never leaves the device', () => {
 
   it('still sends the server url, which is a deliberate difference', async () => {
     // `serverUrl` crosses and is IGNORED on arrival -- importVaultState reads
-    // only `sync.devices`, which is what makes finding 12's "serverUrl cannot be
-    // redirected by a forged vault state" true. The secret is held to a stricter
-    // rule than that: it does not travel at all.
+    // only `sync.devices`, so a forged vault state cannot redirect it. The
+    // secret is held to a stricter rule: it does not travel at all.
     const forPeer = await open(
       await storage.getEncryptedVaultState(symmetricKey, peerDeviceId, aad()),
     )

@@ -204,14 +204,12 @@ export async function connectDevices({
 
   // Wait for connection to complete.
   //
-  // The budget is deliberately far larger than the work: what this waits on is
-  // both sides finishing createSyncKey, an argon2id derivation that measured
-  // ~300ms here on its own (see the table in
-  // key-hierarchy-review/01-kdf-parameters.md), and the suite runs files in
-  // parallel so the two derivations contend with every other file's. At 200ms
-  // this flaked. A waitUntil returns the moment its condition holds, so a
-  // generous ceiling costs a passing run nothing; it only bounds how long a
-  // genuinely stuck pairing takes to report.
+  // The budget is deliberately far larger than the work: this waits on both
+  // sides finishing createSyncKey, ~300ms of argon2 each, contending with every
+  // other file the suite runs in parallel. At 200ms it flaked. waitUntil
+  // returns the moment its condition holds, so a generous ceiling costs a
+  // passing run nothing and only bounds how long a stuck pairing takes to
+  // report.
   await vi.waitUntil(
     () =>
       !receiverFavaLib.sync?.inAddDeviceFlow &&

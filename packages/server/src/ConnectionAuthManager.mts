@@ -35,12 +35,9 @@ export const UNAUTHORIZED_CLOSE_REASON = 'Unauthorized'
  * Tracks how far each socket has got through the connection gate.
  *
  * The gate is a static secret shared by every device of a deployment, proved
- * with an HMAC over a nonce this class draws, so that the secret itself never
- * crosses the wire. It answers "may this socket talk to us at all", and
- * deliberately nothing more: the `deviceId` a socket claims afterwards is as
- * unverified as it ever was, which is why
- * key-hierarchy-review/16-server-authentication.md is narrowed by this and not
- * closed.
+ * with an HMAC over a nonce this class draws, so the secret never crosses the
+ * wire. It answers "may this socket talk to us at all" and deliberately nothing
+ * more: the `deviceId` a socket claims afterwards is as unverified as ever.
  *
  * Freshness lives here rather than in `verifyConnectProof`, which is handed a
  * nonce and cannot know whether it is still live. A nonce is drawn per socket

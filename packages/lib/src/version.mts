@@ -24,12 +24,11 @@ export const LIB_VERSION = '0.0.22'
  * the highest one it is able to read. A stored vault claiming a higher number
  * was written by a newer library and is refused rather than misread.
  *
- * Version 2 (key-hierarchy-review/01, /02 and /13): argon2id at
- * m=64 MiB/t=3/p=4, AES-256-GCM with additional authenticated data in place of
- * AES-256-CBC, an `envelopeMac` keyed from the password hash, and -- in place
- * of the whole RSA layer -- X25519 for key agreement and Ed25519 for
- * signatures, with both secret keys sealed under a key derived from the
- * password hash rather than wrapped to the device's own public key.
+ * Version 2: argon2id at m=64 MiB/t=3/p=4, AES-256-GCM with AAD in place of
+ * AES-256-CBC, an `envelopeMac` keyed from the password hash, and -- replacing
+ * the RSA layer -- X25519 for key agreement and Ed25519 for signatures, both
+ * secret keys sealed under a key derived from the password hash rather than
+ * wrapped to the device's own public key.
  *
  * Note that version 2 was REDEFINED rather than superseded when the curves
  * landed. The rule, worth stating once because it applies to all three of these
@@ -39,11 +38,10 @@ export const LIB_VERSION = '0.0.22'
  * with no readers.
  *
  * There is no read path for version 1. It was deleted rather than migrated: a
- * v1 blob dropped over a v2 vault used to open and be silently upgraded, which
- * is a downgrade window wider than plain rollback because it needs no matching
- * salt and no matching kdf block (key-hierarchy-review/18-anti-rollback.md).
- * A version 1 vault is refused, and the way across is to export the entries
- * under the older build and import them here.
+ * v1 blob dropped over a v2 vault used to open and be silently upgraded -- a
+ * downgrade window wider than plain rollback, needing no matching salt or kdf
+ * block. A v1 vault is refused; the way across is to export the entries under
+ * the older build and import them here.
  */
 export const STORAGE_VERSION = 2
 
@@ -66,13 +64,10 @@ export const STORAGE_VERSION = 2
  * build should guess at, and both cost exactly one password prompt.
  *
  * Version 2 carries the device's two curve secret keys where version 1 carried
- * an RSA private key and its public key
- * (key-hierarchy-review/13-sync-command-authentication.md). Note this is the
- * one version constant that was BUMPED rather than redefined in place, and the
- * paragraph above is the reason: a session blob is memory-backed, never
- * migrated, and refusing one costs a single password prompt -- which is exactly
- * the right outcome for a live session holding key material this build can no
- * longer use.
+ * an RSA private key and its public key. This is the one version constant that
+ * was BUMPED rather than redefined in place, for the reason the paragraph above
+ * gives: refusing a session holding key material this build cannot use costs
+ * one password prompt.
  */
 export const SESSION_VERSION = 2
 
@@ -88,11 +83,10 @@ export const SESSION_VERSION = 2
  *
  * Version 2 also means SIGNED. A command now travels as a
  * SignedCommandEnvelope and is refused unless a device currently in this
- * vault's peer list signed it, for this recipient, under this command id
- * (key-hierarchy-review/13-sync-command-authentication.md). There is no
- * unsigned fallback and no grace period, which needs no version bump of its own
- * for the reason STORAGE_VERSION gives: no 2.0 command has ever been sent
- * outside this repository.
+ * vault's peer list signed it, for this recipient, under this command id. There
+ * is no unsigned fallback and no grace period, and no version bump for it, for
+ * the reason STORAGE_VERSION gives: no 2.0 command has ever left this
+ * repository.
  */
 export const COMMAND_VERSION = '2.0'
 
@@ -131,9 +125,8 @@ export const PAIRING_VERSION = '2.0'
  * V2_KDF_PARAMETERS instead.
  *
  * These are hash-wasm's README example, copied verbatim, which is also where
- * storage version 1 got them (key-hierarchy-review/01-kdf-parameters.md).
- * That is history rather than a reason -- the v1 read path is gone, these are
- * not. `memorySize` is in KiB, so this is 512 KiB.
+ * storage version 1 got them -- history rather than a reason, since the v1 read
+ * path is gone and these are not. `memorySize` is in KiB, so this is 512 KiB.
  */
 export const SYNC_KDF_PARAMETERS: KdfParameters = {
   algorithm: 'argon2id',
@@ -148,9 +141,8 @@ export const SYNC_KDF_PARAMETERS: KdfParameters = {
  * vault.
  *
  * m = 64 MiB, t = 3, p = 4 -- Bitwarden's documented default, measured at
- * ~259 ms in key-hierarchy-review/01-kdf-parameters.md, roughly 192x the
- * attacker cost of the parameters storage version 1 used. `memorySize` is in
- * KiB.
+ * ~259 ms, roughly 192x the attacker cost of the parameters storage version 1
+ * used. `memorySize` is in KiB.
  */
 export const V2_KDF_PARAMETERS: KdfParameters = {
   algorithm: 'argon2id',

@@ -23,12 +23,10 @@ import type { UnlockedSessionString } from '../src/interfaces/Vault.mjs'
 // @ts-expect-error node crypto and webcrypto don't have the exact same types
 globalThis.window = { crypto: crypto.webcrypto }
 
-// See tests/fixtures/README.md. This vault is frozen: it was written by
-// favalib 0.0.21 at commit e88f50b and must never be regenerated. It is no
-// longer readable -- storage version 1 was dropped rather than migrated -- so
-// what it pins now is the REFUSAL, which is the anti-rollback property of
-// key-hierarchy-review/18: a v1 blob dropped over a current vault must not
-// open, and must not be rewritten in the attempt.
+// See tests/fixtures/README.md. This vault is frozen: written by favalib 0.0.21
+// at commit e88f50b, never to be regenerated. Storage version 1 is no longer
+// readable, so what it pins now is the REFUSAL: a v1 blob dropped over a
+// current vault must not open, and must not be rewritten in the attempt.
 const FIXTURE_PASSWORD = 'fixture!Vault7#Frozen$v1' as Password
 
 const FIXED_TIMESTAMP = 1_700_000_000_000
@@ -101,8 +99,8 @@ describe('stored format fixtures', () => {
         }),
       ).rejects.toThrow(UnsupportedStorageVersionError)
 
-      // Nothing was written: the downgrade window key-hierarchy-review/18
-      // describes was a v1 blob opening AND being rewritten in place.
+      // Nothing was written: the downgrade window was a v1 blob opening AND
+      // being rewritten in place.
       expect(written).toEqual([])
     })
 

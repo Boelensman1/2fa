@@ -14,7 +14,7 @@ import type JsonifiedUint8Array from './JsonifiedUint8Array.mjs'
  *
  * Note what is absent. There is no `deviceId` here, because the proof cannot
  * speak about one -- the secret behind it belongs to the deployment, not to a
- * device. See key-hierarchy-review/16-server-authentication.md.
+ * device.
  */
 export interface AuthProofClientMessage {
   type: 'authProof'
@@ -95,8 +95,7 @@ export interface VaultClientMessage {
      *
      * Without it a resilvered vault is only sealed, and sealing is a public
      * operation: the `fromDeviceId` the server stamps on the way through would
-     * be the only statement about who sent it. See
-     * key-hierarchy-review/13-sync-command-authentication.md.
+     * be the only statement about who sent it.
      */
     signature: Signature
   }

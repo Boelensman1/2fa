@@ -14,12 +14,11 @@ import { browserProviders } from '../../src/platformProviders/browser/index.mjs'
 // @ts-expect-error node crypto and webcrypto don't have the exact same types
 globalThis.window = { crypto: crypto.webcrypto }
 
-// The envelope MAC is what authenticates a stored vault to the holder of the
-// PASSWORD rather than merely to the holder of the data encryption key -- see
-// key-hierarchy-review/02-ciphertext-authenticity.md. Its key derivation is
-// implemented twice, once per provider, over two different primitives
-// (node:crypto hkdf and WebCrypto deriveBits), so it needs pinning against an
-// absolute value AND across providers, exactly like createSyncKey.
+// The envelope MAC authenticates a stored vault to the holder of the PASSWORD,
+// not merely of the data encryption key. Its key derivation is implemented once
+// per provider over two different primitives (node:crypto hkdf and WebCrypto
+// deriveBits), so it needs pinning against an absolute value AND across
+// providers, exactly like createSyncKey.
 
 const nodeCrypto = new nodeProviders.CryptoLib()
 const browserCrypto = new browserProviders.CryptoLib()

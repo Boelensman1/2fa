@@ -5,7 +5,7 @@ import { test, expect } from './fixtures'
 // The frozen historical vault. Storage version 1 was dropped rather than
 // migrated, so what this file checks is the refusal: the app must say what is
 // wrong, must not offer to reset, and must leave the blob exactly as it found
-// it. See lib/key-hierarchy-review/18-anti-rollback.md.
+// it.
 const v1Fixture = readFileSync(
   resolve(__dirname, '../../lib/tests/fixtures/vault-v1.json'),
   'utf8',
@@ -68,8 +68,7 @@ test('reports a truncated vault as a recoverable error, not a JSON crash', async
   // The message shown here sits directly above a Reset button that clears
   // localStorage, so "Unexpected end of JSON input" -- what a bare SyntaxError
   // out of JSON.parse used to produce -- is the worst possible text to put in
-  // front of someone whose vault is merely truncated. See
-  // lib/key-hierarchy-review/05-load-path-validation.md.
+  // front of someone whose vault is merely truncated.
   await page.evaluate((fixture) => {
     localStorage.setItem('lockedRepresentation', fixture.slice(0, 120))
   }, v1Fixture)

@@ -78,8 +78,7 @@ describe('PersistentStorageManager', () => {
 
     // A spy, not a stub: vitest's spyOn calls through, so everything below is
     // asserted against the real ciphertext. This used to be mocked to the
-    // identity function, which left the stored encoding asserted nowhere --
-    // see key-hierarchy-review/06-crypto-test-coverage.md.
+    // identity function, which left the stored encoding asserted nowhere.
     const encryptSymmetricSpy = vi.spyOn(internalCryptoLib, 'encryptSymmetric')
 
     // @ts-expect-error: Using private property for testing
@@ -469,8 +468,7 @@ describe('PersistentStorageManager', () => {
   it('exports an unlocked session that tracks the live key generation', async () => {
     // Pins that exportUnlockedSession reads the manager's mutable state rather
     // than a copy taken at construction: the two rotated secrets must move and
-    // the two retained ones must not. See
-    // key-hierarchy-review/07-session-key-api.md.
+    // the two retained ones must not.
     const vault = await createRotatableVault()
 
     const before = JSON.parse(
@@ -484,7 +482,7 @@ describe('PersistentStorageManager', () => {
     expect(after.symmetricKey).not.toBe(before.symmetricKey)
     expect(after.macKey).not.toBe(before.macKey)
     // Deliberately NOT rotated -- peers hold the public halves of both of
-    // these (04-key-rotation.md).
+    // these.
     expect(after.privateKey).toBe(before.privateKey)
     expect(after.signingSecretKey).toBe(before.signingSecretKey)
   }, 45000) // long running test

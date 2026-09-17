@@ -24,8 +24,7 @@ export interface SyncDevice {
    * This is the credential the whole sync path's authenticity rests on, and it
    * is why removing a device from this list is now a revocation rather than
    * bookkeeping -- a peer that is not in it can no longer say anything this
-   * device will act on. See
-   * key-hierarchy-review/13-sync-command-authentication.md.
+   * device will act on.
    */
   signingPublicKey: SigningPublicKey
   deviceInfo?: DeviceInfo
@@ -46,9 +45,7 @@ export interface SyncDevice {
    * When a consumer told us it had shown this device to the user.
    *
    * Informational, and deliberately gates nothing: a peer is a peer whether or
-   * not anyone has looked at it. See
-   * key-hierarchy-review/14-sync-device-injection.md for why enrolment is
-   * surfaced rather than blocked. Local, like `enrolment`.
+   * not anyone has looked at it. Local, like `enrolment`.
    */
   acknowledgedAt?: number
 }

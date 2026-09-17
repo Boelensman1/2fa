@@ -36,7 +36,7 @@ class StorageOperationsManager {
    * The returned string is PLAINTEXT KEY MATERIAL and belongs only in
    * memory-backed, process-lifetime storage. Read
    * PersistentStorageManager.exportUnlockedSession's doc comment before using
-   * it, and key-hierarchy-review/07-session-key-api.md before changing it.
+   * or changing it.
    * @returns The session as a json string, for
    * loadFavaLibFromUnlockedSession.
    */

@@ -164,7 +164,7 @@ describe('stored envelope integrity', () => {
     })
   })
 
-  describe('the forgery that made the MAC necessary (02-ciphertext-authenticity.md)', () => {
+  describe('the forgery that made the MAC necessary', () => {
     // THIS TEST WAS THE FINDING, and what it asserts has changed.
     //
     // The data encryption key used to arrive RSA-OAEP wrapped under this
@@ -236,12 +236,10 @@ describe('stored envelope integrity', () => {
 
   describe('AAD binding', () => {
     it('binds the vault state to the encrypted private key, independently of the salt', async () => {
-      // The salt and the symmetric key are held FIXED here on purpose, so that
-      // the only thing moving between the two AADs is the wrapped private key.
-      // A real password change rotates all three
-      // (key-hierarchy-review/04-key-rotation.md) and would make the AADs
-      // differ for three reasons at once, which would assert nothing about
-      // this field in particular.
+      // The salt and the symmetric key are held FIXED here on purpose, so the
+      // only thing moving between the two AADs is the wrapped private key. A
+      // real password change rotates all three, which would assert nothing
+      // about this field in particular.
       //
       // What the binding buys is that a vault state cannot be carried across a
       // re-wrap of the private key under any circumstances -- including the
@@ -341,11 +339,9 @@ describe('stored envelope integrity', () => {
     })
 
     it('refuses a v1 envelope, so the padding oracle is off the sync path', async () => {
-      // Nothing in the library reads the storage version 1 CBC envelope any
-      // more -- that read path was deleted rather than migrated
-      // (key-hierarchy-review/18-anti-rollback.md). This asserts the shape
-      // stays refused: if decryptSymmetric ever starts accepting it again, the
-      // oracle described in 02-ciphertext-authenticity.md is back on the wire.
+      // Nothing reads the storage version 1 CBC envelope any more. This asserts
+      // the shape stays refused: if decryptSymmetric ever starts accepting it
+      // again, the CBC padding oracle is back on the wire.
       const key = await cryptoLib.createSymmetricKey()
       const v1Shaped =
         'bm9uY2Vub25jZW5vbmNlbm8=:c29tZWNpcGhlcnRleHQ=' as EncryptedVaultStateString

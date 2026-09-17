@@ -127,9 +127,9 @@ const addEntry = (id: string, timestamp = Date.now()): SyncCommand => ({
  * A command whose effect is easy to observe, used throughout as a marker for
  * "this one was applied, and in this order".
  *
- * A peer renames ITSELF: since finding 14 a remote ChangeDeviceInfo is refused
- * unless the verified sender is the device being renamed, so the sender passed
- * here and the one passed to `encryptCommand` have to agree.
+ * A peer renames ITSELF: a remote ChangeDeviceInfo is refused unless the
+ * verified sender is the device being renamed, so the sender passed here and
+ * the one passed to `encryptCommand` have to agree.
  * @param id - The name to set, also used as the command id.
  * @param timestamp - The sender's timestamp.
  * @param peer - The device doing the renaming, which is also its subject.
@@ -259,7 +259,7 @@ describe('sync command delivery', () => {
       .find((device) => device.deviceId === carol.device.deviceId)!
     // Alice said Carol exists. That is trust arriving by delegation, and a
     // delegated peer is still a full peer -- so what the library does is say
-    // so, not refuse it. key-hierarchy-review/14-sync-device-injection.md.
+    // so, not refuse it.
     expect(enrolled.enrolment).toEqual({
       via: 'peer',
       by: alice.device.deviceId,

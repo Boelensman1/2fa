@@ -71,8 +71,7 @@ class PersistentStorageManager {
    * @param favaMeta - Meta info containing at least a unique identifier for this device.
    * @param secretKeys - This device's X25519 and Ed25519 secret keys, which
    * exportUnlockedSession carries and nothing else here rotates: peers hold the
-   * public halves, so replacing them is a re-pair
-   * (key-hierarchy-review/04-key-rotation.md). Deliberately NOT part of
+   * public halves, so replacing them is a re-pair. Deliberately NOT part of
    * VaultKeyMaterial, which is the unit snapshotKeyMaterial and
    * replaceKeyMaterial move -- putting them there would imply a password change
    * rotates them.
@@ -240,11 +239,9 @@ class PersistentStorageManager {
    * Exports the derived key material of this unlocked vault, so that a
    * consumer can rehydrate it later without the password.
    *
-   * See key-hierarchy-review/07-session-key-api.md. An MV3 service worker is
-   * evicted after ~30s idle, and the only alternative to this is keeping the
-   * master password -- which is the input for every OTHER device too, and
-   * which users reuse. Leaking this device's derived keys is strictly less bad
-   * than leaking that.
+   * An MV3 service worker is evicted after ~30s idle, and the only alternative
+   * is keeping the master password -- the input for every OTHER device too, and
+   * one users reuse. Leaking this device's derived keys is strictly less bad.
    *
    * ## This is plaintext key material
    *
@@ -273,9 +270,9 @@ class PersistentStorageManager {
    * that change wrote, because the envelope MAC is keyed from the password
    * hash.
    *
-   * That refusal is NOT freshness. A stale session paired with the stale
-   * LockedRepresentation it was exported beside still opens: both were valid
-   * together. See key-hierarchy-review/18-anti-rollback.md.
+   * That refusal is NOT freshness: a stale session still opens the stale
+   * LockedRepresentation it was exported beside, since both were valid
+   * together.
    *
    * Synchronous on purpose. Nothing is derived, wrapped or awaited here, and
    * an async signature would imply otherwise -- which is the one thing about
@@ -430,8 +427,7 @@ class PersistentStorageManager {
    * coordinating and the storage format does not move.
    *
    * The RSA keypair is deliberately NOT rotated -- peers hold this device's
-   * public key and the only channel for a new one is unauthenticated. See
-   * key-hierarchy-review/04-key-rotation.md.
+   * public key and the only channel for a new one is unauthenticated.
    *
    * On a failed save the previous generation is put back, so a caller that
    * sees this reject can tell the user their password is unchanged and be

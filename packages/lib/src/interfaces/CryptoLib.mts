@@ -108,11 +108,9 @@ interface CryptoLib {
    *
    * A device gets two keypairs -- X25519 for key agreement, Ed25519 for
    * signatures -- and one symmetric key for its own vault state. All three are
-   * sealed under keys derived from the password hash: there is no key wrapped
-   * to the device's own public key any more. That self-wrap was what let anyone
-   * holding the public key choose their own symmetric key and re-encrypt the
-   * whole vault, which is the forgery `envelopeMac` had to be added to catch
-   * (key-hierarchy-review/02-ciphertext-authenticity.md).
+   * sealed under keys derived from the password hash, with nothing wrapped to
+   * the device's own public key any more: that self-wrap let anyone holding the
+   * public key choose their own symmetric key and re-encrypt the whole vault.
    * @param password - The password to derive the wrapping keys from
    * @returns A promise resolving to the key material, both sealed forms, the
    * salt, the envelope MAC key and the kdf parameters used

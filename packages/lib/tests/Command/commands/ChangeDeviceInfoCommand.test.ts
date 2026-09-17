@@ -199,8 +199,7 @@ describe('ChangeDeviceInfoCommand', () => {
   // this command locally" -- so any peer could rename any device to anything of
   // any length. The friendly name is what a user reads when deciding whether a
   // device belongs, so a peer able to write someone else's name can dress its
-  // own device as the user's phone. See
-  // key-hierarchy-review/14-sync-device-injection.md.
+  // own device as the user's phone.
   const remoteRename = (
     deviceId: DeviceId,
     fromDeviceId: DeviceId | undefined,

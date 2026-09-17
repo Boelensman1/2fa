@@ -170,7 +170,7 @@ const openClient = async (): Promise<TestClient> => {
  *
  * The proof is what the server asks for before it will act on anything: the
  * secret itself never crosses the wire, only an HMAC over the nonce the server
- * opens with. See key-hierarchy-review/16-server-authentication.md.
+ * opens with.
  * @param deviceId - The device to announce once the server lets us in.
  * @param secret - The secret to prove, so a test can get it wrong on purpose.
  * @returns The connected, authenticated client.
@@ -401,8 +401,8 @@ describe('the connection gate', () => {
   it(
     'refuses a connect that skips the handshake, and hands over nothing',
     async () => {
-      // The hijack finding 16 is about: claiming a deviceId used to evict
-      // whoever held it and ship them that device's queued commands.
+      // The hijack the connection gate is about: claiming a deviceId used to
+      // evict whoever held it and ship them that device's queued commands.
       const deviceId = 'gated-device' as DeviceId
       await UnExecutedSyncCommand.query().insert({
         commandId: randomUUID(),

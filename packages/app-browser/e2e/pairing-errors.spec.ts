@@ -10,11 +10,10 @@ const pairingVersion = '2.0'
 const vaultPassword = 'e2e!Pairing7#Errors$vault'
 
 // What milly2-container/milly.nix configures the container's sync server with.
-// A vault is created with sync switched off now, so this screen asks for the
-// server and its secret before it will take a pairing payload at all -- see
-// lib/key-hierarchy-review/16-server-authentication.md. Typed rather than left
-// to VITE_DEVSERVERSECRET's prefill, so the test does not depend on how the dev
-// server happens to have been started.
+// A vault starts with sync switched off, so this screen asks for the server and
+// its secret before it will take a pairing payload. Typed rather than left to
+// VITE_DEVSERVERSECRET's prefill, so the test does not depend on how the dev
+// server was started.
 const syncServerUrl = '/api/sync'
 const syncServerSecret = 'dev-only-sync-secret-not-for-real-use'
 

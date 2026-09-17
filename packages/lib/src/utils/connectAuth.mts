@@ -31,12 +31,9 @@ import { buildConnectAuthMessage } from './canonical.mjs'
  *
  * ## What it is NOT
  *
- * It is not device authentication, and nothing here should be read as if it
- * were. Every device holds the same secret, so a valid proof says "someone who
- * may use this deployment" and stops there; the `deviceId` a socket claims
- * immediately afterwards is as unverified as it ever was. See
- * key-hierarchy-review/16-server-authentication.md, which this NARROWS and does
- * not close.
+ * It is not device authentication. Every device holds the same secret, so a
+ * valid proof says "someone who may use this deployment" and stops there; the
+ * `deviceId` a socket claims afterwards is as unverified as it ever was.
  */
 
 /**

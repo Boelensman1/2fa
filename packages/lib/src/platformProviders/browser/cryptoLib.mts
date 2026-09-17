@@ -485,9 +485,8 @@ class BrowserCryptoLib implements CryptoLib {
     if (parts.length !== 3 || parts[0] !== V2_ENVELOPE_PREFIX) {
       // A storage version 1 envelope -- base64(iv):base64(ct), AES-256-CBC --
       // reaching here is a bug or an attack. Nothing in the library reads that
-      // format any more (key-hierarchy-review/18-anti-rollback.md), and the
-      // shape is refused rather than attempted, which is what keeps the CBC
-      // padding oracle off the sync path.
+      // format any more, and the shape is refused rather than attempted, which
+      // is what keeps the CBC padding oracle off the sync path.
       throw new CryptoError('Could not decrypt data')
     }
     const [, nonceString, encryptedData] = parts
@@ -514,7 +513,7 @@ class BrowserCryptoLib implements CryptoLib {
     } catch {
       // Deliberately one message for every cause -- bad tag, bad nonce, bad
       // aad, malformed base64, wrong key. A decrypt that distinguishes them is
-      // the oracle 02-ciphertext-authenticity.md is about.
+      // an oracle.
       throw new CryptoError('Could not decrypt data')
     }
   }

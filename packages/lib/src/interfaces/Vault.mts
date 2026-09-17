@@ -34,11 +34,9 @@ export interface LockedRepresentation {
    * The key the vault state is encrypted under, sealed with AES-256-GCM under
    * a second key derived from the password hash.
    *
-   * NOT wrapped to this device's own public key any more. That self-wrap is
-   * what let anyone holding the public key choose their own symmetric key and
-   * re-encrypt the whole vault state -- the forgery that made `envelopeMac`
-   * necessary in the first place
-   * (key-hierarchy-review/02-ciphertext-authenticity.md).
+   * NOT wrapped to this device's own public key any more. That self-wrap let
+   * anyone holding the public key choose their own symmetric key and re-encrypt
+   * the whole vault state -- the forgery `envelopeMac` was added for.
    */
   encryptedSymmetricKey: EncryptedSymmetricKey
   salt: Salt
@@ -60,12 +58,10 @@ export interface LockedRepresentation {
    * key, so anyone holding that public key could pick their own key, wrap it,
    * and re-encrypt the whole vault state with a matching AAD.
    *
-   * That self-wrap is gone -- the symmetric key is now sealed under a key
-   * derived from the password hash, so a forger needs the password to produce a
-   * readable vault at all. The MAC stays regardless: it covers the cleartext
-   * fields no ciphertext authenticates, and dropping it would be a second
-   * argument for no gain. See
-   * key-hierarchy-review/02-ciphertext-authenticity.md.
+   * That self-wrap is gone -- the symmetric key is sealed under a key derived
+   * from the password hash, so forging a readable vault needs the password. The
+   * MAC stays regardless: it covers the cleartext fields no ciphertext
+   * authenticates.
    */
   envelopeMac: string
 }
@@ -76,7 +72,7 @@ export type LockedRepresentationString = Tagged<
 
 /**
  * The derived key material of an unlocked vault, in a form a consumer can hold
- * across a process restart -- see key-hierarchy-review/07-session-key-api.md.
+ * across a process restart.
  *
  * Only the four secrets that a password unlock DERIVES. Everything a vault
  * stores about itself -- the salt, the kdf block, the sealed keys, the
@@ -121,7 +117,7 @@ export interface ProcessedCommand {
  *
  * `floors` is the price of bounding `commands`: pruning an id raises its
  * sender's floor to that id's timestamp, so forgetting an id never makes it
- * acceptable again. See key-hierarchy-review/15-sync-replay-protection.md.
+ * acceptable again.
  */
 export interface ProcessedCommandRecord {
   commands: ProcessedCommand[]
@@ -142,7 +138,7 @@ export interface VaultSyncState {
    *
    * It blocks *introduction*, never pairing. A JPAKE flow clears the tombstone
    * and re-enrols, because that is the user standing in front of both devices
-   * saying so. See key-hierarchy-review/14-sync-device-injection.md.
+   * saying so.
    *
    * Absent in vaults written before tombstones existed, which is why it is
    * optional: a vault that has removed nothing has nothing to record.

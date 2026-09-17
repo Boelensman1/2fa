@@ -273,11 +273,10 @@ describe('creationUtils', () => {
     reloadedFavaLib.sync?.closeServerConnection()
   })
 
-  // The load path validates what it decrypts (05-load-path-validation.md).
-  // Reaching it means producing a blob that is cryptographically perfect and
-  // semantically wrong, so every case here re-encrypts under the real
-  // symmetric key AND re-issues the envelope MAC -- exactly what a legitimate
-  // writer running an older, laxer favalib would have produced.
+  // Reaching the load path's validation means a blob that is cryptographically
+  // perfect and semantically wrong, so every case here re-encrypts under the
+  // real symmetric key AND re-issues the envelope MAC -- exactly what a
+  // legitimate writer on an older, laxer favalib would have produced.
   describe('vault state validation', () => {
     const cryptoLib = new nodeProviders.CryptoLib()
 
@@ -365,10 +364,10 @@ describe('creationUtils', () => {
     })
 
     it('refuses a vault carrying an unusable entry, and names it', async () => {
-      // REFUSING, not dropping, is the one place this diverges from the tier
-      // policy in entryValidation.mts:69-74. A dropped remote command is
-      // redelivered by the server; a dropped entry here is gone from memory and
-      // erased by the next ordinary save. See 05-load-path-validation.md.
+      // REFUSING, not dropping, the one place this diverges from the tier
+      // policy in entryValidation.mts:69-74: a dropped remote command is
+      // redelivered by the server, a dropped entry is erased by the next
+      // ordinary save.
       const representation = await reseal((state) => {
         state.vault = [
           goodEntry,
@@ -568,9 +567,8 @@ describe('creationUtils', () => {
 
   describe('envelope validation', () => {
     it('reports a truncated file as an InitializationError, not a SyntaxError', async () => {
-      // 03-storage-versioning.md left this open explicitly: a half-written
-      // vault.json used to surface as a bare SyntaxError, which is neither a
-      // FavaLibError nor anything a consumer can show a user.
+      // A half-written vault.json used to surface as a bare SyntaxError, which
+      // is neither a FavaLibError nor anything a consumer can show a user.
       await expect(
         creationUtils.loadFavaLibFromLockedRepesentation(
           lockedRepresentation.slice(0, 40) as LockedRepresentationString,

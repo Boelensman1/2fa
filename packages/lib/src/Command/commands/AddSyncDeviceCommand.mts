@@ -56,10 +56,8 @@ class AddSyncDeviceCommand extends Command<AddSyncDeviceData> {
     }
     // `fromRemote` is the whole discriminator, and it is exact. This device
     // only ever creates one of these at the end of a pairing flow it took part
-    // in (`SyncManager.sendFullVaultDataAndSetDeviceInfo`), so a locally
-    // created command IS a pairing. A remote one is a peer saying a device
-    // exists -- trust arriving by delegation, which is the case
-    // key-hierarchy-review/14-sync-device-injection.md is about.
+    // in (`SyncManager.sendFullVaultDataAndSetDeviceInfo`), so a local command
+    // IS a pairing; a remote one is a peer saying a device exists.
     await syncManager.addSyncDevice(
       this.data,
       this.fromRemote ? 'peer' : 'pairing',
@@ -81,15 +79,13 @@ class AddSyncDeviceCommand extends Command<AddSyncDeviceData> {
    * entry. It does **not** by itself make device enrolment safe: a well formed
    * record carrying an attacker's public keys passes every check here.
    *
-   * The checks that matter are elsewhere and deliberately so. This command has
-   * to arrive signed by a device already in the peer list
+   * The checks that matter are elsewhere and deliberately so. This command must
+   * arrive signed by a device already in the peer list
    * (`SyncManager.verifyCommandEnvelope`), so enrolment is closed to anyone
    * merely holding a public key; and `SyncManager.addSyncDevice` pins keys on
    * first receipt, refuses a device this vault removed, and announces a
-   * peer-introduced device rather than letting it arrive silently. A trusted
-   * peer enrolling a device is in-model -- see
-   * key-hierarchy-review/14-sync-device-injection.md for why, and for what the
-   * library does instead of blocking it.
+   * peer-introduced device rather than letting it arrive silently. Peer trust
+   * is flat, so a peer enrolling a device is surfaced rather than blocked.
    * @returns Null when the data is usable, otherwise the reason it is not.
    */
   invalidReason(): string | null {

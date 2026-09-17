@@ -85,13 +85,12 @@ PostgreSQL runs locally with trust auth over loopback: user `fava`, database
 `packages/server` reads its settings from `packages/server/config/` via
 wtfconfig, whose schema (`packages/server/src/types/ConfigObject.mts`) requires
 the full `database.connection` block **and `sync.sharedSecret`**, the static
-secret a client must prove before the server will act on anything it sends
-(`packages/lib/key-hierarchy-review/16-server-authentication.md`). Both are
-required, and `knexfile.ts` imports that config at module load, so a missing key
-means no server, no migrations and no test run — not a server with the gate
-switched off. The repo ships no config — the whole directory is gitignored apart
-from a `default.yaml` that has never existed — so milly's `setup.command`
-writes:
+secret a client must prove before the server will act on anything it sends.
+Both are required, and `knexfile.ts` imports that config at module load, so a
+missing key means no server, no migrations and no test run — not a server with
+the gate switched off. The repo ships no config — the whole directory is
+gitignored apart from a `default.yaml` that has never existed — so milly's
+`setup.command` writes:
 
 - `packages/server/config/local.yaml` — the dev connection and the dev
   `sync.sharedSecret`, loaded last in every environment.

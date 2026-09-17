@@ -7,10 +7,10 @@ import { generatePasswordHash } from '../../src/platformProviders/browser/crypto
 import { nodeProviders } from '../../src/platformProviders/node/index.mjs'
 import { browserProviders } from '../../src/platformProviders/browser/index.mjs'
 
-// Test vectors for the argon2id layer of the key hierarchy. See
-// key-hierarchy-review/06-crypto-test-coverage.md: without these, changing a
-// KDF parameter breaks every existing vault with a fully green suite, because
-// every other crypto test only asserts that we agree with ourselves.
+// Test vectors for the argon2id layer of the key hierarchy. Without these,
+// changing a KDF parameter breaks every existing vault with a fully green
+// suite, because every other crypto test only asserts that we agree with
+// ourselves.
 //
 // Both expected values below were produced by hash-wasm AND independently
 // reproduced with the reference P-H-C implementation (libargon2), which agreed
@@ -47,8 +47,8 @@ const SYNC_PARAMETERS = {
 } as const
 
 /**
- * The password parameters, likewise spelled out. m = 64 MiB, t = 3, p = 4 --
- * key-hierarchy-review/01-kdf-parameters.md. memorySize is in KiB.
+ * The password parameters, likewise spelled out. m = 64 MiB, t = 3, p = 4.
+ * memorySize is in KiB.
  */
 const V2_PARAMETERS = {
   parallelism: 4,
@@ -79,11 +79,10 @@ const EXPECTED_SYNC_KEY = 'gqxjkuuaiZSdrIoaNUJ3QiDoNPsqkg8mVBglfvkBm2s='
 
 describe('argon2id test vectors', () => {
   describe('password hash (generatePasswordHash)', () => {
-    // The permanent anchor for the cheap parameters. Nothing derives a
-    // PASSWORD with them any more -- 01-kdf-parameters.md moved vaults to the
-    // stronger set and the old read path is gone -- but createSyncKey still
-    // derives with exactly these numbers, and this vector is what catches a
-    // hash-wasm upgrade that changes behaviour under fixed inputs.
+    // The permanent anchor for the cheap parameters. No PASSWORD is derived
+    // with them any more, but createSyncKey still uses exactly these numbers,
+    // and this vector catches a hash-wasm upgrade that changes behaviour under
+    // fixed inputs.
     test('the sync parameters produce the known hash', async () => {
       const hash = await argon2id({
         password: FIXTURE_PASSWORD,

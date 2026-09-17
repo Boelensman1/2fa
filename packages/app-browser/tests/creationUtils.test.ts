@@ -56,8 +56,7 @@ describe('browser vault loading', () => {
   it('refuses a v1 vault and does not rewrite it', async () => {
     // The correct password, so the refusal is the version gate and not a
     // failed unlock. Nothing may be written: a v1 blob dropped over a current
-    // vault opening AND being rewritten in place is the downgrade window
-    // key-hierarchy-review/18-anti-rollback.md is about.
+    // vault opening AND being rewritten in place is the downgrade window.
     await expect(loadStoredVault(v1Password)).rejects.toThrow(
       UnsupportedStorageVersionError,
     )

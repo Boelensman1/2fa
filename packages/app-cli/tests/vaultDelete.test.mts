@@ -56,11 +56,10 @@ describe('vault delete', () => {
       .catch(() => false)
 
   it('removes the backup and the temp file along with the vault', async () => {
-    // loadVault writes a backup on every save and never removes one, so a
-    // vault whose backup survives an explicit delete is not actually deleted.
-    // Copying that backup back over vault.json also silently reverts the vault,
-    // which no authenticator over a single file can detect -- see
-    // favalib's key-hierarchy-review/18-anti-rollback.md.
+    // loadVault writes a backup on every save and never removes one, so a vault
+    // whose backup survives an explicit delete is not actually deleted -- and
+    // copying it back over vault.json silently reverts the vault, which no
+    // authenticator over a single file can detect.
     await fs.writeFile(vaultLocation, '{"storageVersion":2}')
     await fs.writeFile(`${vaultLocation}.backup`, '{"storageVersion":2}')
     await fs.writeFile(`${vaultLocation}.tmp`, '{"storageVersion":2}')

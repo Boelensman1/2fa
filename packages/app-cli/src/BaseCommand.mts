@@ -39,6 +39,12 @@ abstract class BaseCommand extends Command {
 
   requiresSyncConnection = false
 
+  // when false, execute() skips init() altogether: nothing reads the settings
+  // file, nothing writes one, and no vault is touched. For a command that only
+  // reports on the binary itself that is the point -- it is asked for when the
+  // settings or the vault are the thing that is broken.
+  requiresSettings = true
+
   // when true the command writes to the vault, so it connects regardless of
   // the sync interval and waits for the server to take its commands
   mutatesVault = false
@@ -72,6 +78,11 @@ abstract class BaseCommand extends Command {
       throw new Error(
         `Unknown format: ${this.format}. Valid formats: ${this.validFormats().join(', ')}`,
       )
+    }
+
+    if (!this.requiresSettings) {
+      this.writeResult(await this.exec())
+      return 0
     }
 
     const { lockedRepresentationString, settings } = await init()
@@ -114,23 +125,29 @@ abstract class BaseCommand extends Command {
       this.favaLib.sync.closeServerConnection()
     }
 
-    if (this.machineOutput) {
-      // output is already formatted, don't add the result & errors bit
-      if (this.preFormattedOutput) {
-        if (this.rawOutput) {
-          // raw passthrough: write the formatter's string exactly as-is
-          this.context.stdout.write(result)
-        } else {
-          this.context.stdout.write(JSON.stringify(result, null, 2) + '\n')
-        }
-      } else {
-        this.context.stdout.write(
-          JSON.stringify({ result, errors: this.errors }, null, 2) + '\n',
-        )
-      }
-    }
+    this.writeResult(result)
 
     return 0
+  }
+
+  private writeResult(result: Jsonifiable) {
+    if (!this.machineOutput) {
+      return
+    }
+
+    // output is already formatted, don't add the result & errors bit
+    if (this.preFormattedOutput) {
+      if (this.rawOutput) {
+        // raw passthrough: write the formatter's string exactly as-is
+        this.context.stdout.write(result)
+      } else {
+        this.context.stdout.write(JSON.stringify(result, null, 2) + '\n')
+      }
+    } else {
+      this.context.stdout.write(
+        JSON.stringify({ result, errors: this.errors }, null, 2) + '\n',
+      )
+    }
   }
 
   /**

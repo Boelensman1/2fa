@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-import { readFileSync } from 'node:fs'
 import { Cli, Builtins } from 'clipanion'
 
 import VaultCreateCommand from './commands/vault/create.mjs'
@@ -19,6 +18,8 @@ import SyncRemoveDeviceCommand from './commands/sync/removeDevice.mjs'
 import SyncSetFriendlyNameCommand from './commands/sync/setFriendlyName.mjs'
 import ExportTextCommand from './commands/export/text.mjs'
 import SyncGetInfoCommand from './commands/sync/getInfo.mjs'
+import VersionCommand from './commands/version.mjs'
+import binaryVersion from './utils/binaryVersion.mjs'
 
 // check node version
 const nodeRuntimeMajorVersion = parseInt(process.version.split('.')[0])
@@ -26,18 +27,12 @@ if (nodeRuntimeMajorVersion < 20) {
   throw new Error('Node.js version must be 20 or higher')
 }
 
-// Read from package.json rather than a literal, which drifts silently on a
-// version bump. Resolves to the package root from both src/ (tsx) and build/.
-const { version } = JSON.parse(
-  readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
-) as { version: string }
-
 const [, , ...args] = process.argv
 
 const cli = new Cli({
   binaryLabel: 'FavaCli',
   binaryName: `favacli`,
-  binaryVersion: version,
+  binaryVersion,
 })
 
 cli.register(VaultCreateCommand)
@@ -57,7 +52,11 @@ cli.register(SyncRemoveDeviceCommand)
 cli.register(ExportTextCommand)
 cli.register(SyncSetFriendlyNameCommand)
 cli.register(SyncGetInfoCommand)
+cli.register(VersionCommand)
 
 cli.register(Builtins.HelpCommand)
+// `favacli --version` and `-v`, alongside the `version` command above, which
+// says more. binaryVersion feeds both.
+cli.register(Builtins.VersionCommand)
 
 void cli.runExit(args)

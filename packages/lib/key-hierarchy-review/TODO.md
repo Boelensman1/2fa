@@ -45,10 +45,19 @@ holds the detail. Tick a box only when that file's `Status:` line and the
       store the exported session blob instead of `vaultPassword`, and clear it
       on `lock()` and on `FavaLibEvent.PasswordChanged`. There is no such code
       in this tree.
-- [ ] **18** — anti-rollback. Half done: the v1 read path is deleted, so the
-      downgrade-then-migrate window is closed. What remains is a monotonic
-      counter outside the blob, against a same-version snapshot replayed over a
-      current vault. P1.
+
+## Closed — won't fix
+
+- [x] **18** — anti-rollback. Half done and half declined. The v1 read path is
+      deleted, so the downgrade-then-migrate window is closed. The remaining
+      half — a monotonic counter outside the blob, against a same-version
+      snapshot replayed over a current vault — is **won't fix**, risk accepted
+      2026-09-17: rolling a vault back needs write access to its storage, and an
+      attacker with that already has the blob and, on the CLI, the `keytar`
+      password beside it. A counter in two media would give every honest user a
+      new way to be locked out of a vault that is still intact. Revisit only if
+      the vault gains a medium that is already monotonic and already
+      load-bearing — see [16](16-server-authentication.md).
 
 ## Open — sync layer
 

@@ -29,7 +29,7 @@ match.
 | [05](05-load-path-validation.md)    | Load path skips the entry validators          | weak                     | P1       | done                |
 | [06](06-crypto-test-coverage.md)    | Nothing pins the KDF or the stored format     | weak                     | P1       | done                |
 | [07](07-session-key-api.md)         | Extension stores the raw master password      | untidy                   | P2       | done                |
-| [18](18-anti-rollback.md)           | Rollback to an earlier vault is undetectable  | weak                     | P1       | open                |
+| [18](18-anti-rollback.md)           | Rollback to an earlier vault is undetectable  | weak                     | —        | closed — won't fix  |
 | [08](08-whole-vault-blob.md)        | Whole-vault blob vs per-item                  | **sound**                | —        | closed — no action  |
 | [09](09-iv-handling.md)             | IV handling                                   | **sound**                | —        | closed — no action  |
 | [10](10-rsa-layer.md)               | Why the RSA layer exists                      | **sound but incidental** | —        | closed — superseded |
@@ -71,14 +71,18 @@ authenticated data, RSA-OAEP with MGF1-SHA-256, and an `envelopeMac` keyed from
 the password hash. A v1 vault is read through a named legacy path and
 transparently re-wrapped on unlock.
 
-Two things came **out** of that work rather than into it, and both are open:
+Two things came **out** of that work rather than into it:
 
 - **`18`** — rollback. `02` claimed the AAD binding stopped the
   `vault.json.backup` swap; it does not, and neither does the MAC, because both
   are functions of an envelope that was valid when it was written. `18` also
   owned the wider downgrade-then-migrate window that stayed open while the v1
-  read path existed — closed 2026-09-17 by deleting that read path, leaving
-  `18` open for the rollback half alone.
+  read path existed — closed 2026-09-17 by deleting that read path. The rollback
+  half is **won't fix**, accepted the same day: it needs write access to the
+  vault file, and an attacker holding that on the CLI also holds the blob and
+  the `keytar` password beside it, so the vault is lost by shorter routes. A
+  monotonic counter in two media would cost every honest user a new way to be
+  locked out. The reasoning is in the file.
 - **`10`'s amendment** — the at-rest RSA self-wrap has two costs this review did
   not weigh: it is what made the vault ciphertext forgeable by anyone holding
   the device's public key (the reason `02` needed a password-keyed MAC at all),
@@ -138,7 +142,9 @@ what made the migration not worth keeping. It was deleted instead; a v1 vault is
 refused, and the entries cross as an export. Paired devices still have to pair
 again, so nothing was lost that the migration preserved.)
 
-Remaining, in order: `18`, now down to its rollback half. Whoever raises the KDF
+Remaining in the key hierarchy: nothing — `18` was the last open item and its
+rollback half is accepted rather than fixed. The sync-layer findings
+([12](12-sync-findings-index.md)) are untouched by that. Whoever raises the KDF
 parameters again must move the policy assertion in `kdf-vectors.test.ts` to a v3
 vector and leave **both** existing anchors beside it — a vault records the
 parameters it was written with and must still open under them. (Amended

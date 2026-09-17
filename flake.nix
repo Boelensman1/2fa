@@ -29,7 +29,7 @@
             inherit (finalAttrs) pname version src;
             pnpm = pkgs.pnpm_11;
             fetcherVersion = 4;
-            hash = "sha256-pyR3cs6f/kbWma3E0JTiRJ8PtNwl18QR8wk0C3f5ut4=";
+            hash = "sha256-ayLZp6Uw8ah6yo46uu6nsSoRW42t6+K36HnoluF4k8o=";
           };
 
           # The installPhase allowlist below resolves each dependency at

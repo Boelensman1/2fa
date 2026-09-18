@@ -203,9 +203,6 @@ importers:
       '@playwright/test':
         specifier: ^1.63.0
         version: 1.63.0
-      '@zxcvbn-ts/core':
-        specifier: 'catalog:'
-        version: 3.0.4
       autoprefixer:
         specifier: ^10.5.5
         version: 10.5.5(postcss@8.5.28)

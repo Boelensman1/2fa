@@ -1,4 +1,4 @@
-import type { ZxcvbnResult } from '@zxcvbn-ts/core'
+import type { PasswordStrength } from '../interfaces/PasswordStrength.mjs'
 import { uint8ArrayToBase64 } from 'uint8array-extras'
 
 import type { PlatformProviders } from '../interfaces/PlatformProviders.mjs'
@@ -136,7 +136,7 @@ export const getPasswordStrength = async (
   libraryLoader: LibraryLoader,
   passwordExtraDict: PasswordExtraDict,
   password: Password,
-): Promise<ZxcvbnResult> => {
+): Promise<PasswordStrength> => {
   const zxcvbn = await libraryLoader.getZxcvbn()
   return zxcvbn(password, [
     'twofactor',

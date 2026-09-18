@@ -8,15 +8,16 @@ import {
   getFavaLibVaultCreationUtils,
   Password,
 } from 'favalib'
-import type { DeviceFriendlyName, ServerSecret } from 'favalib'
+import type {
+  DeviceFriendlyName,
+  PasswordStrength,
+  ServerSecret,
+} from 'favalib'
 import NodePlatformProvider from 'favalib/platformProviders/node'
 
 import BaseCommand from '../BaseCommand.mjs'
 import createVaultSaveFunction from '../utils/vaultSaveFunction.mjs'
 import { readServerSecret } from '../utils/syncConfig.mjs'
-
-type VaultCreationUtils = ReturnType<typeof getFavaLibVaultCreationUtils>
-type GetPasswordStrength = VaultCreationUtils['getPasswordStrength']
 
 // A guided flow asks again rather than throwing, but not forever: a
 // non-interactive stdin would otherwise spin here instead of failing.
@@ -91,7 +92,7 @@ class SetupCommand extends BaseCommand {
    * @returns The accepted password.
    */
   private async promptForPassword(
-    getPasswordStrength: GetPasswordStrength,
+    getPasswordStrength: (password: Password) => Promise<PasswordStrength>,
   ): Promise<Password> {
     for (let attempt = 1; attempt <= MAX_PASSWORD_ATTEMPTS; attempt++) {
       const password = (await passwordInput({

@@ -1,5 +1,5 @@
 import { Component, For } from 'solid-js'
-import type { ZxcvbnResult } from '@zxcvbn-ts/core'
+import type { PasswordStrength } from 'favalib'
 import { Password } from 'favalib'
 
 const passwordGuessesToPercentage = (guessesLog10: number) => {
@@ -19,7 +19,7 @@ const getPasswordStrengthColor = (score: number) => {
 
 interface PasswordStrengthMeterProps {
   password: Password
-  passwordStrength: ZxcvbnResult | null
+  passwordStrength: PasswordStrength | null
 }
 
 const PasswordStrengthMeter: Component<PasswordStrengthMeterProps> = (

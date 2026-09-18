@@ -25,6 +25,7 @@ import {
   validateUrlMatcher,
 } from './utils/matcherValidation.mjs'
 import { suggestMatchersForUrl } from './utils/urlMatching.mjs'
+import type { PasswordStrength } from './interfaces/PasswordStrength.mjs'
 import type CryptoLib from './interfaces/CryptoLib.mjs'
 import type {
   Encrypted,
@@ -127,6 +128,7 @@ export {
 
 export type {
   Entry,
+  PasswordStrength,
   EntryId,
   NewEntry,
   EntryMeta,

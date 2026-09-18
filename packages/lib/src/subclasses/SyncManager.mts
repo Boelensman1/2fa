@@ -44,6 +44,8 @@ import {
 } from '../utils/syncDeviceValidation.mjs'
 import type { ServerSecret } from '../interfaces/BrandedTypes.mjs'
 import { deviceFingerprint } from '../utils/deviceFingerprint.mjs'
+import { deviceLabel } from '../utils/deviceLabel.mjs'
+import { containsUnsafeText } from '../utils/safeText.mjs'
 import type {
   DevicePublicKeys,
   DeviceSecretKeys,
@@ -211,6 +213,36 @@ const describeFetchFailure = (err: unknown): string => {
   return detail
     ? `${detail} (the host may be unreachable, or a browser may have blocked the probe)`
     : 'no reason given (the host may be unreachable, or a browser may have blocked the probe)'
+}
+
+/** What `addSyncDevice` needs to know beyond the record itself. */
+export interface AddSyncDeviceOptions {
+  /**
+   * How this device came to be here. Required rather than defaulted, for the
+   * reason `getEncryptedVaultState` requires its `aad`: a default would make
+   * the wrong one the easy one to reach for.
+   */
+  via: SyncDeviceEnrolmentRoute
+  /** The verified peer that introduced it, when `via` is 'peer'. */
+  by?: DeviceId
+  /** Whether to save after adding (false when adding several). */
+  saveAfter?: boolean
+  /**
+   * Whether a peer introduction is news.
+   *
+   * Defaults to true, unlike `via`, because silence is the dangerous value
+   * here: a route added later that forgets to say anything gets the noisy
+   * behaviour rather than the quiet one.
+   *
+   * `importVaultState` passes false for the INITIAL pairing import only. Every
+   * device in that list is the baseline of a vault the user deliberately chose
+   * to join, so warning about each one is asking them to vet a decision they
+   * had just finished making -- and N notices they cannot act on is how the one
+   * that matters goes unread. Provenance is untouched: the record is still
+   * `via: 'peer'`, still stamped with the initiator as `by`, so `getSyncDevices`
+   * and any later audit see exactly what they saw before.
+   */
+  announce?: boolean
 }
 
 /**
@@ -404,9 +436,7 @@ class SyncManager {
         signingPublicKey: this.publicKeys.signingPublicKey,
         deviceInfo: this.deviceInfo,
       },
-      'self',
-      undefined,
-      false,
+      { via: 'self', saveAfter: false },
     )
 
     // if not yet connected after 2 tries, emit ready event so we can continue
@@ -1329,6 +1359,14 @@ class SyncManager {
    * other device in the list is a peer introduction either way -- the sender
    * vouching for devices this vault has never met is delegation, not pairing,
    * however the sender itself arrived.
+   *
+   * It also silences the announcement for the rest of the list, which is a
+   * separate question from what the record says. A resilver announcing a device
+   * is a peer adding one to a vault that already existed; the initial import
+   * announcing one is a vault being described for the first time, which is not
+   * an event -- the user chose to join it, list and all. The records are
+   * identical either way, `via: 'peer'` and `by: <sender>`, so a later audit
+   * still sees delegation.
    */
   private async importVaultState(
     encryptedVaultState: EncryptedVaultStateString,
@@ -1407,14 +1445,17 @@ class SyncManager {
       // revoked, must not cost us the entries in the same vault state -- and
       // both refusals have already been logged by the time they reach here.
       try {
-        await this.addSyncDevice(
-          device,
-          isPairing && device.deviceId === expectedDeviceId
-            ? 'pairing'
-            : 'peer',
-          expectedDeviceId,
-          false,
-        )
+        await this.addSyncDevice(device, {
+          via:
+            isPairing && device.deviceId === expectedDeviceId
+              ? 'pairing'
+              : 'peer',
+          by: expectedDeviceId,
+          saveAfter: false,
+          // One expression for the whole list: the sender's own record is
+          // 'pairing' and was never announced anyway.
+          announce: !isPairing,
+        })
       } catch (err: unknown) {
         if (
           !(err instanceof SyncDeviceRemovedError) &&
@@ -2026,6 +2067,40 @@ class SyncManager {
   }
 
   /**
+   * Reports a device that describes itself with text that must not be printed.
+   *
+   * Every field here is chosen by the device being described and is only
+   * length-checked, so this is the one place that can say a peer sent an
+   * escape sequence, a carriage return or a bidirectional override -- the
+   * three things that rewrite or reorder what a user is reading, including the
+   * fingerprint they are being asked to compare it against. `deviceLabel`
+   * removes them from anything shown, which is exactly why the removal has to
+   * be said out loud somewhere: otherwise the tidied-up version is all anyone
+   * ever sees.
+   *
+   * Named by fingerprint rather than by anything it claims, for the obvious
+   * reason.
+   * @param device - The device, already past `validateSyncDevice`.
+   */
+  private reportUnsafeDeviceText(device: SyncDevice) {
+    const unsafe = [
+      device.deviceId,
+      device.deviceInfo?.deviceType,
+      device.deviceInfo?.deviceFriendlyName,
+    ].some((value) => value !== undefined && containsUnsafeText(value))
+    if (!unsafe) {
+      return
+    }
+    this.log(
+      'error',
+      `Sync device ${deviceFingerprint(device)} describes itself using ` +
+        `characters that cannot safely be printed, and they have been ` +
+        `removed from anything this vault shows. A device id, type and name ` +
+        `are chosen by that device, so this is something it did.`,
+    )
+  }
+
+  /**
    * Adds a device to this vault's peer list.
    *
    * The single chokepoint for every route a peer device can arrive by:
@@ -2054,25 +2129,19 @@ class SyncManager {
    * What it deliberately does NOT do is refuse a device merely because a peer
    * rather than the user introduced it. A peer holds every seed already, so
    * peer trust is flat by design; instead this records WHO introduced it and
-   * announces it, so delegated trust is at least visible.
+   * announces it, so delegated trust is at least visible -- except for the one
+   * list a user cannot sensibly be asked about device by device, the vault they
+   * just paired into. See `announce`.
    * @param device - The device to add. Only its four wire fields are read; any
    * `enrolment` or `acknowledgedAt` on it is ignored, since those are this
    * device's opinion and a peer does not get to write them.
-   * @param via - How this device came to be here. Required rather than
-   * defaulted, for the reason `getEncryptedVaultState` requires its `aad`: a
-   * default would make the wrong one the easy one to reach for.
-   * @param by - The verified peer that introduced it, when `via` is 'peer'.
-   * @param saveAfter - Whether to save after adding (false when adding several).
+   * @param options - How the device arrived and what to do about it.
    * @throws {SyncError} If the record is unusable or the vault is full.
    * @throws {SyncDeviceRemovedError} If a peer is reintroducing a removed device.
    * @throws {SyncDeviceKeyConflictError} If it contradicts keys already held.
    */
-  async addSyncDevice(
-    device: SyncDevice,
-    via: SyncDeviceEnrolmentRoute,
-    by?: DeviceId,
-    saveAfter = true,
-  ) {
+  async addSyncDevice(device: SyncDevice, options: AddSyncDeviceOptions) {
+    const { via, by, saveAfter = true, announce = true } = options
     const reason = validateSyncDevice(device)
     if (reason) {
       throw new SyncError(`Refusing to add sync device: ${reason}`)
@@ -2130,6 +2199,13 @@ class SyncManager {
       )
     }
 
+    // Below the idempotent early return above, and deliberately: a device list
+    // replays in full on every resilver, so reporting here rather than at the
+    // top of the method is the difference between saying this once and saying
+    // it every few seconds for as long as that peer stays connected. The two
+    // refusals above are already logged loudly on their own.
+    this.reportUnsafeDeviceText(device)
+
     if (this.syncDevices.length >= MAX_SYNC_DEVICES) {
       throw new SyncError(
         `Refusing to add sync device ${device.deviceId}: this vault already ` +
@@ -2138,6 +2214,10 @@ class SyncManager {
     }
 
     const at = Date.now()
+    // One condition for both halves of "this needs surfacing": the
+    // acknowledgement flag exists to tell a consumer what it has not shown yet,
+    // so it has to agree exactly with whether anything was announced.
+    const announceToUser = via === 'peer' && announce
     // Built field by field rather than spread, so that a record arriving from a
     // peer cannot carry its own provenance or pre-acknowledge itself.
     const enrolled: SyncDevice = {
@@ -2148,8 +2228,10 @@ class SyncManager {
       enrolment: { via, by: via === 'peer' ? by : undefined, at },
       // Anything but a peer introduction is an act the user performed in
       // person at both ends; asking them to confirm it afterwards would be
-      // noise, and noise is what stops the one that matters being read.
-      acknowledgedAt: via === 'peer' ? undefined : at,
+      // noise, and noise is what stops the one that matters being read. So is
+      // the initial pairing import: the user chose to join that vault, list and
+      // all, so its contents are the baseline rather than news.
+      acknowledgedAt: announceToUser ? undefined : at,
     }
     // Cleared here rather than up with the tombstone check, so that a pairing
     // refused further down -- by the cap, or by a key conflict -- does not
@@ -2171,17 +2253,25 @@ class SyncManager {
     // shows up in a list only once something unrelated changes an entry.
     this.dispatchLibEvent(FavaLibEvent.Changed)
 
-    if (via === 'peer') {
+    if (announceToUser) {
       const fingerprint = deviceFingerprint(enrolled)
+      // `by` is a verified deviceId, but its NAME has to be looked up: a peer's
+      // own description of itself is the only place one exists. Falling back to
+      // the bare id keeps this honest if the introducer is somehow not listed.
+      const introducer = this.syncDevices.find((d) => d.deviceId === by)
+      const byLabel = by
+        ? deviceLabel(introducer ?? { deviceId: by })
+        : 'A peer'
       // 'warning', not 'error': Events.mts reserves 'error' for a REFUSAL the
       // user should be told about, and nothing was refused here -- under flat
       // peer trust this is an ordinary thing that happened. It is logged at all
       // so that a consumer with no SyncDeviceAdded listener still surfaces it.
       this.log(
         'warning',
-        `${by ?? 'A peer'} added sync device ${device.deviceId} ` +
-          `(${fingerprint}) to this vault. If you did not expect that, remove ` +
-          `it.`,
+        `${byLabel} added sync device ${deviceLabel(enrolled)} to this vault, ` +
+          `fingerprint ${fingerprint}. Device names are chosen by the device ` +
+          `itself and are not checked by anything, so compare the fingerprint ` +
+          `rather than the name. If you did not expect that, remove it.`,
       )
       this.dispatchLibEvent(FavaLibEvent.SyncDeviceAdded, {
         deviceId: enrolled.deviceId,
@@ -2241,6 +2331,10 @@ class SyncManager {
     if (!device) {
       return false
     }
+    // A rename is the second way a device gets to describe itself, so it needs
+    // the same report as enrolment -- checked against the new description, on
+    // the record whose keys the fingerprint comes from.
+    this.reportUnsafeDeviceText({ ...device, deviceInfo })
     device.deviceInfo = deviceInfo
     this.dispatchLibEvent(FavaLibEvent.Changed)
     return true

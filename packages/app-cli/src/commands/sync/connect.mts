@@ -1,6 +1,6 @@
 import { input } from '@inquirer/prompts'
 import BaseCommand from '../../BaseCommand.mjs'
-import { FavaLibEvent } from 'favalib'
+import { deviceLabel, FavaLibEvent } from 'favalib'
 import type { DeviceFriendlyName } from 'favalib'
 
 class ConnectCommand extends BaseCommand {
@@ -53,6 +53,20 @@ class ConnectCommand extends BaseCommand {
     await this.favaLib.sync.respondToAddDeviceFlow(connectionString, 'text')
 
     await connectFinished
+
+    // The device list that arrived with the vault is not announced device by
+    // device -- the user chose to join this vault, so its contents are the
+    // baseline rather than news (see `addSyncDevice`'s `announce`). It is still
+    // worth seeing once, here, where it is a list to read rather than N
+    // warnings to dismiss. Fingerprints included: they are what a device is
+    // actually verified by, and what `sync remove-device` is aimed with.
+    const devices = this.favaLib.sync.getSyncDevices()
+    this.output(
+      `Paired. This vault has ${String(devices.length)} other device(s):\n` +
+        devices
+          .map((device) => `  ${deviceLabel(device)}  ${device.fingerprint}\n`)
+          .join(''),
+    )
 
     return { success: true }
   }

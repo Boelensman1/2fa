@@ -26,6 +26,11 @@ import {
 } from './utils/matcherValidation.mjs'
 import { suggestMatchersForUrl } from './utils/urlMatching.mjs'
 import type { PasswordStrength } from './interfaces/PasswordStrength.mjs'
+import {
+  deviceLabel,
+  deviceName,
+  type DeviceLabelSource,
+} from './utils/deviceLabel.mjs'
 import type CryptoLib from './interfaces/CryptoLib.mjs'
 import type {
   Encrypted,
@@ -119,6 +124,8 @@ export {
   validateUrlMatcher,
   parseMatcherSpec,
   suggestMatchersForUrl,
+  deviceLabel,
+  deviceName,
   MAX_MATCHERS_PER_ENTRY,
   MAX_MATCHER_VALUE_LENGTH,
   MAX_REGEX_SOURCE_LENGTH,
@@ -168,6 +175,7 @@ export type {
   DeviceFriendlyName,
   DeviceInfo,
   DeviceFingerprint,
+  DeviceLabelSource,
   PublicSyncDevice,
   ServerSecret,
   SyncDeviceEnrolment,

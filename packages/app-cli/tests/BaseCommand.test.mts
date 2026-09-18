@@ -81,7 +81,6 @@ describe('BaseCommand sync lifecycle', () => {
       'vault-data',
       settings,
       expect.any(Function),
-      false,
       { connectToSyncServer: true, syncServer: undefined },
     )
     expect(mocks.saveSettings).toHaveBeenCalledWith({
@@ -108,7 +107,6 @@ describe('BaseCommand sync lifecycle', () => {
       'vault-data',
       settings,
       expect.any(Function),
-      false,
       { connectToSyncServer: false, syncServer: undefined },
     )
     expect(mocks.saveSettings).not.toHaveBeenCalled()
@@ -135,7 +133,6 @@ describe('BaseCommand sync lifecycle', () => {
       'vault-data',
       settings,
       expect.any(Function),
-      false,
       {
         connectToSyncServer: false,
         syncServer: {
@@ -318,7 +315,6 @@ describe('BaseCommand sync lifecycle', () => {
       'vault-data',
       settings,
       expect.any(Function),
-      false,
       { connectToSyncServer: true, syncServer: undefined },
     )
   })
@@ -339,5 +335,128 @@ describe('BaseCommand sync lifecycle', () => {
       '--no-sync cannot be used with sync commands',
     )
     expect(mocks.loadVault).not.toHaveBeenCalled()
+  })
+})
+
+describe('BaseCommand favalib log reporting', () => {
+  const settings = { vaultLocation: '/tmp/vault.json', syncIntervalMinutes: 5 }
+
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    mocks.init.mockReset()
+    mocks.loadVault.mockReset()
+    mocks.saveSettings.mockReset()
+    vi.spyOn(Date, 'now').mockReturnValue(now)
+    mocks.init.mockResolvedValue({
+      lockedRepresentationString: 'vault-data',
+      settings,
+    })
+    mocks.loadVault.mockResolvedValue(makeFavaLib(true))
+  })
+
+  /**
+   * Runs a command and hands back the reporter it gave loadVault, plus what it
+   * wrote where.
+   * @param configure - Applied to the command before it executes.
+   * @returns The reporter, the captured streams and the command itself.
+   */
+  const reporterFor = async (
+    configure: (c: BaseCommand) => void = () => undefined,
+  ) => {
+    const command = makeCommand()
+    const stdout: string[] = []
+    const stderr: string[] = []
+    // minimal stub of clipanion's context: only the two streams are used
+    command.context = {
+      stdout: {
+        write: (chunk: string) => {
+          stdout.push(chunk)
+          return true
+        },
+      },
+      stderr: {
+        write: (chunk: string) => {
+          stderr.push(chunk)
+          return true
+        },
+      },
+    } as unknown as typeof command.context
+    configure(command)
+
+    await command.execute()
+
+    // The last call, not the first: a test may run more than one command, and
+    // each gets its own reporter bound to its own command instance.
+    const report = mocks.loadVault.mock.calls.at(-1)![2] as (
+      severity: string,
+      message: string,
+    ) => void
+    return { command, report, stdout, stderr }
+  }
+
+  it('writes a warning as one plain line, with no Error and no stack', async () => {
+    // The regression this exists for: warning and error were collapsed into
+    // `new Error(message)` and handed to console.error, so an ordinary sync
+    // notice arrived mid-prompt as `Error: ...` followed by the stack of the
+    // listener that had just constructed it -- which pointed at nothing that
+    // had failed.
+    const { command, report, stderr } = await reporterFor()
+
+    report('warning', 'alice added sync device "the phone" (cli, carol)')
+
+    expect(stderr).toEqual([
+      'alice added sync device "the phone" (cli, carol)\n',
+    ])
+    expect(stderr.join('')).not.toContain('Error')
+    expect(stderr.join('')).not.toContain('    at ')
+    expect(command.errors).toHaveLength(0)
+  })
+
+  it('prefixes an error, which favalib means differently', async () => {
+    // favalib reserves 'error' for a refusal the user should hear about even
+    // though the library carried on. Distinguishable from the ordinary noise of
+    // a sync connection, because that is the distinction Events.mts draws.
+    const { report, stderr } = await reporterFor()
+
+    report('error', 'Refusing to add sync device carol')
+
+    expect(stderr).toEqual(['Error: Refusing to add sync device carol\n'])
+  })
+
+  it('collects both into the errors array under --format', async () => {
+    const { command, report, stderr } = await reporterFor((c) => {
+      c.format = 'json'
+    })
+
+    report('warning', 'a notice')
+    report('error', 'a refusal')
+
+    expect(command.errors).toEqual([
+      { timestamp: now, message: 'a notice' },
+      { timestamp: now, message: 'Error: a refusal' },
+    ])
+    expect(stderr).toEqual([])
+  })
+
+  it('keeps info out of the way unless asked, and out of JSON always', async () => {
+    const quiet = await reporterFor()
+    quiet.report('info', 'Connected to server.')
+    expect(quiet.stdout.join('')).not.toContain('Connected to server.')
+
+    const verbose = await reporterFor((c) => {
+      c.verbose = true
+    })
+    verbose.report('info', 'Connected to server.')
+    expect(verbose.stdout.join('')).toContain('Connected to server.')
+
+    // A diagnostic line on stdout in machine mode is a JSON document no
+    // consumer can parse, which is why this goes through `output`.
+    const machine = await reporterFor((c) => {
+      c.format = 'json'
+      c.verbose = true
+    })
+    const before = machine.stdout.join('')
+    machine.report('info', 'Connected to server.')
+    expect(machine.stdout.join('')).toBe(before)
   })
 })

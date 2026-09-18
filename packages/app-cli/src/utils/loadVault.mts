@@ -14,11 +14,24 @@ import NodePlatformProvider from 'favalib/platformProviders/node'
 import { Settings } from './init.mjs'
 import createVaultSaveFunction from './vaultSaveFunction.mjs'
 
+/**
+ * How a command surfaces one favalib log event.
+ *
+ * The severity is passed through rather than decided here: what an `info` line
+ * or a `warning` is worth depends on `--verbose` and `--format`, and
+ * `BaseCommand` is what knows about those. Collapsing the three into one
+ * `Error` here is what used to print a stack trace under an ordinary sync
+ * notice.
+ */
+export type LibLogReporter = (
+  severity: 'info' | 'warning' | 'error',
+  message: string,
+) => void
+
 const loadVault = async (
   vaultData: LockedRepresentationString,
   settings: Settings,
-  addError: (err: Error) => void,
-  verbose = false,
+  report: LibLogReporter,
   options: LoadFavaLibOptions = {},
 ) => {
   const saveFunction = createVaultSaveFunction(settings.vaultLocation)
@@ -84,13 +97,7 @@ const loadVault = async (
     throw err
   }
   favaLib.addEventListener(FavaLibEvent.Log, (ev) => {
-    if (ev.detail.severity === 'warning' || ev.detail.severity === 'error') {
-      addError(new Error(ev.detail.message))
-      return
-    }
-    if (ev.detail.severity !== 'info' || verbose) {
-      console.log(ev.detail.message)
-    }
+    report(ev.detail.severity, ev.detail.message)
   })
 
   await favaLib.ready

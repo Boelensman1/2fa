@@ -58,11 +58,10 @@ class AddSyncDeviceCommand extends Command<AddSyncDeviceData> {
     // only ever creates one of these at the end of a pairing flow it took part
     // in (`SyncManager.sendFullVaultDataAndSetDeviceInfo`), so a local command
     // IS a pairing; a remote one is a peer saying a device exists.
-    await syncManager.addSyncDevice(
-      this.data,
-      this.fromRemote ? 'peer' : 'pairing',
-      this.fromDeviceId,
-    )
+    await syncManager.addSyncDevice(this.data, {
+      via: this.fromRemote ? 'peer' : 'pairing',
+      by: this.fromDeviceId,
+    })
   }
 
   /**

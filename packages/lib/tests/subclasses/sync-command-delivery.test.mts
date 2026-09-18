@@ -35,6 +35,10 @@ import {
 } from '../../src/utils/canonical.mjs'
 import { getFavaLibVaultCreationUtils } from '../../src/utils/creationUtils.mjs'
 import { deviceFingerprint } from '../../src/utils/deviceFingerprint.mjs'
+import {
+  containsUnsafeText,
+  MAX_LOG_MESSAGE_LENGTH,
+} from '../../src/utils/safeText.mjs'
 import { COMMAND_VERSION } from '../../src/version.mjs'
 import { password, testServerSecret, totpEntry } from '../testUtils.mjs'
 
@@ -276,13 +280,18 @@ describe('sync command delivery', () => {
     // 'warning', not 'error': 'error' is reserved for a refusal, and nothing
     // was refused. Logged at all so that a consumer with no SyncDeviceAdded
     // listener still surfaces it.
-    expect(
-      observed.logs.filter(
-        (log) =>
-          log.severity === 'warning' &&
-          log.message.includes('added sync device'),
-      ),
-    ).toHaveLength(1)
+    const notices = observed.logs.filter(
+      (log) =>
+        log.severity === 'warning' && log.message.includes('added sync device'),
+    )
+    expect(notices).toHaveLength(1)
+    // Both devices named, and the fingerprint alongside. Two bare uuids left
+    // the one question the notice exists to answer -- what IS that thing --
+    // unanswerable from the line itself.
+    expect(notices[0].message).toContain(carol.device.deviceId)
+    expect(notices[0].message).toContain(alice.device.deviceId)
+    expect(notices[0].message).toContain(enrolled.fingerprint)
+    expect(notices[0].message).toContain(deviceType)
 
     await lib.sync!.acknowledgeSyncDevice(carol.device.deviceId, false)
     expect(
@@ -291,6 +300,60 @@ describe('sync command delivery', () => {
         .find((device) => device.deviceId === carol.device.deviceId)!
         .acknowledged,
     ).toBe(true)
+  })
+
+  it('reports and strips text a peer cannot safely have printed', async () => {
+    // The notice is written straight to a terminal by favacli, and every field
+    // in it is chosen by the device being described -- validation bounds their
+    // LENGTH and nothing else. So a name holding a carriage return or an ANSI
+    // sequence could repaint the line its fingerprint was printed on, and a
+    // bidi override could reorder the fingerprint itself.
+    //
+    // Both halves matter: the message that reaches a consumer is clean, AND the
+    // fact that it had to be cleaned is reported. Silently tidying it would
+    // mean the only version anyone ever saw was the harmless one.
+    const hostile = {
+      ...carol.device,
+      deviceInfo: {
+        deviceType,
+        deviceFriendlyName:
+          'tidy\r\u001b[2Kevil\u202Eoverride' as DeviceFriendlyName,
+      },
+    }
+    await lib.sync!.receiveCommands([
+      await encryptCommand({
+        id: 'enroll-hostile',
+        timestamp: Date.now(),
+        type: 'AddSyncDevice',
+        data: hostile as unknown as AddSyncDeviceData,
+      }),
+    ])
+
+    const notice = observed.logs.find(
+      (log) =>
+        log.severity === 'warning' && log.message.includes('added sync device'),
+    )!
+    expect(containsUnsafeText(notice.message)).toBe(false)
+    expect(notice.message.length).toBeLessThanOrEqual(MAX_LOG_MESSAGE_LENGTH)
+
+    const reports = () =>
+      observed.logs.filter(
+        (log) =>
+          log.severity === 'error' &&
+          log.message.includes('cannot safely be printed'),
+      )
+    expect(reports()).toHaveLength(1)
+
+    // Said once, not once per resilver. A device list replays in full every
+    // time a peer reconnects, so a report at the top of addSyncDevice would
+    // repeat this every few seconds for as long as that peer stays connected
+    // -- which is how a real signal becomes something a user filters out.
+    await lib.sync!.addSyncDevice(hostile, {
+      via: 'peer',
+      by: alice.device.deviceId,
+      saveAfter: false,
+    })
+    expect(reports()).toHaveLength(1)
   })
 
   it('ignores the provenance a peer writes into the record it sends', async () => {
@@ -330,7 +393,10 @@ describe('sync command delivery', () => {
     lib.addEventListener(FavaLibEvent.SyncDeviceAdded, (event) => {
       added.push(event.detail.deviceId)
     })
-    await lib.sync!.addSyncDevice(carol.device, 'pairing', undefined, false)
+    await lib.sync!.addSyncDevice(carol.device, {
+      via: 'pairing',
+      saveAfter: false,
+    })
     expect(added).toEqual([])
     expect(
       lib
@@ -485,12 +551,10 @@ describe('sync command delivery', () => {
         // with the device again is exactly the story -- it comes back, under
         // fresh keys, and the command still in flight under the old ones must
         // not apply.
-        await lib.sync!.addSyncDevice(
-          makePeer(bob.device.deviceId).device,
-          'pairing',
-          undefined,
-          false,
-        )
+        await lib.sync!.addSyncDevice(makePeer(bob.device.deviceId).device, {
+          via: 'pairing',
+          saveAfter: false,
+        })
       }
       release.resolve()
       await receive

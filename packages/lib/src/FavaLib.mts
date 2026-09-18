@@ -48,6 +48,11 @@ import VaultOperationsManager from './subclasses/VaultOperationsManager.mjs'
 import CommandManager from './subclasses/CommandManager.mjs'
 import StorageOperationsManager from './subclasses/StorageOperationsManager.mjs'
 import { LIB_VERSION } from './version.mjs'
+import {
+  containsUnsafeText,
+  MAX_LOG_MESSAGE_LENGTH,
+  sanitiseForDisplay,
+} from './utils/safeText.mjs'
 import ChangeDeviceInfoCommand from './Command/commands/ChangeDeviceInfoCommand.mjs'
 import RemoveSyncDeviceCommand from './Command/commands/RemoveSyncDeviceCommand.mjs'
 
@@ -427,11 +432,42 @@ class FavaLib extends TypedEventTarget<FavaLibEventMapEvents> {
 
   /**
    * Log a message
+   *
+   * Sanitised here rather than at each of the fifty-odd call sites, because
+   * almost every one of them interpolates something a peer or the server chose
+   * -- a deviceId, a command id, a WebSocket close reason, the message of an
+   * error raised while parsing a remote frame -- and a consumer may write the
+   * result straight to a terminal, where an ANSI sequence repaints the line and
+   * a bidi override reorders the fingerprint it was printed to be compared
+   * against. One boundary is also the only version of this that stays true: the
+   * next log call added anywhere gets it without being told, and this is the
+   * only place a Log event is dispatched from.
    * @param severity - The severity of the message, either 'info' or 'warning'.
    * @param message - The message to log.
    */
   private log(severity: 'info' | 'warning' | 'error', message: string) {
-    this.dispatchLibEvent(FavaLibEvent.Log, { severity, message })
+    if (containsUnsafeText(message)) {
+      // Louder than the message it is about, and on purpose. Nothing this
+      // library composes contains an escape sequence or a bidi override, so
+      // finding one means a peer or the server put it there -- which is either
+      // an attempt to rewrite what the user is reading, or a bug somewhere
+      // upstream that is just as worth knowing about. Dispatched directly
+      // rather than through this method, so that a fixed sentence cannot
+      // recurse into the check that produced it.
+      this.dispatchLibEvent(FavaLibEvent.Log, {
+        severity: 'error',
+        message:
+          'The next message contained characters that cannot safely be ' +
+          'printed -- an escape sequence, a carriage return or a ' +
+          'bidirectional override -- and they have been removed. Text that ' +
+          'a peer or the sync server chose is the only way one gets in, so ' +
+          'treat what follows as describing something deliberate.',
+      })
+    }
+    this.dispatchLibEvent(FavaLibEvent.Log, {
+      severity,
+      message: sanitiseForDisplay(message, MAX_LOG_MESSAGE_LENGTH),
+    })
   }
 }
 export default FavaLib

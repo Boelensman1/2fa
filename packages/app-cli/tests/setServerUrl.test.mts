@@ -67,7 +67,6 @@ describe('sync setServerUrl', () => {
       'vault',
       settings,
       expect.any(Function),
-      undefined,
       { connectToSyncServer: false },
     )
     expect(mocks.setSyncServerUrl).toHaveBeenCalledWith(

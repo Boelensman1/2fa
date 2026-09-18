@@ -125,8 +125,7 @@ abstract class BaseCommand extends Command {
       this.favaLib = await loadVault(
         lockedRepresentationString,
         settings,
-        this.addError.bind(this),
-        this.verbose,
+        this.reportLibLog.bind(this),
         await this.vaultLoadOptions(connectToSyncServer),
       )
       syncRecorded = await this.recordSuccessfulSync(connectToSyncServer)
@@ -221,13 +220,61 @@ abstract class BaseCommand extends Command {
       return
     }
 
-    const message =
+    this.report(
       'Changes could not be sent to the sync server. They are stored in the ' +
-      'vault and will be sent the next time this device connects.'
+        'vault and will be sent the next time this device connects.',
+    )
+  }
+
+  /**
+   * Writes one line for the user, or records it for machine output.
+   *
+   * Deliberately not `console.error`, and deliberately not an `Error`: in
+   * machine mode the process has exactly one JSON document to produce and
+   * stderr chatter is not part of it, and in interactive mode a line is a line.
+   * Printing one as an `Error` object put a stack trace under an ordinary sync
+   * notice, pointing at the listener that constructed it rather than at
+   * anything that had failed.
+   * @param message - The line to write.
+   */
+  private report(message: string) {
     if (this.machineOutput) {
       this.errors.push({ timestamp: Date.now(), message })
     } else {
       this.context.stderr.write(`${message}\n`)
+    }
+  }
+
+  /**
+   * Surfaces one favalib log event, at the weight favalib gave it.
+   *
+   * The three severities mean different things -- see `Events.mts` -- and this
+   * command is the consumer that has to decide what each is worth here.
+   * @param severity - What favalib called it.
+   * @param message - The message.
+   */
+  private reportLibLog(
+    severity: 'info' | 'warning' | 'error',
+    message: string,
+  ) {
+    switch (severity) {
+      // favalib's word for a refusal the user should hear about even though the
+      // library carried on. Prefixed so it is not read as the ordinary noise of
+      // a sync connection -- which is what 'warning' is, and why that one gets
+      // no prefix.
+      case 'error':
+        this.report(`Error: ${message}`)
+        break
+      case 'warning':
+        this.report(message)
+        break
+      default:
+        // Diagnostics, so only on request. Through `output` rather than a bare
+        // write because `output` is already a no-op under --format, which is
+        // what keeps an info line out of the middle of the JSON document.
+        if (this.verbose) {
+          this.output(`${message}\n`)
+        }
     }
   }
 
@@ -239,17 +286,6 @@ abstract class BaseCommand extends Command {
     this.settings.lastSyncedAt = Date.now()
     await saveSettings(this.settings)
     return true
-  }
-
-  private addError(err: Error) {
-    if (this.machineOutput && !this.verbose) {
-      this.errors.push({ timestamp: Date.now(), message: err.message })
-    } else {
-      // The message, not the error: these are carried out of favalib's log
-      // events, so the stack points at the line that dispatched the event and
-      // reads as a crash in loadVault. --verbose asks for the whole thing.
-      console.error(this.verbose ? err : err.message)
-    }
   }
 }
 

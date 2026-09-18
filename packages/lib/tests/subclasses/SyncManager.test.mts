@@ -821,9 +821,7 @@ describe('SyncManager', () => {
         signingPublicKey,
         deviceInfo: { deviceType: 'sender' as DeviceType },
       },
-      'pairing',
-      undefined,
-      false,
+      { via: 'pairing', saveAfter: false },
     )
 
   /**
@@ -1515,7 +1513,7 @@ describe('SyncManager', () => {
             ...goodDevice(),
             ...overrides,
           } as unknown as SyncDevice,
-          'pairing',
+          { via: 'pairing' },
         ),
       ).rejects.toThrow(/Refusing to add sync device/)
 
@@ -1524,12 +1522,10 @@ describe('SyncManager', () => {
 
     it('adds a well-formed device', async () => {
       const before = receiverFavaLib.sync?.getSyncDevices().length ?? 0
-      await receiverFavaLib.sync?.addSyncDevice(
-        goodDevice(),
-        'pairing',
-        undefined,
-        false,
-      )
+      await receiverFavaLib.sync?.addSyncDevice(goodDevice(), {
+        via: 'pairing',
+        saveAfter: false,
+      })
       expect(receiverFavaLib.sync?.getSyncDevices()).toHaveLength(before + 1)
     })
 
@@ -1551,9 +1547,7 @@ describe('SyncManager', () => {
             ...goodDevice(),
             deviceId: `cap-peer-${i}` as DeviceId,
           },
-          'pairing',
-          undefined,
-          false,
+          { via: 'pairing', saveAfter: false },
         )
       }
       expect(sync.getSyncDevices()).toHaveLength(MAX_SYNC_DEVICES - 1)
@@ -1564,9 +1558,7 @@ describe('SyncManager', () => {
             ...goodDevice(),
             deviceId: 'one-too-many' as DeviceId,
           },
-          'pairing',
-          undefined,
-          false,
+          { via: 'pairing', saveAfter: false },
         ),
       ).rejects.toThrow(new RegExp(`maximum of ${MAX_SYNC_DEVICES} devices`))
     })
@@ -1628,12 +1620,16 @@ describe('SyncManager', () => {
         .some((device) => device.deviceId === deviceId)
 
     it('remembers a removal, and refuses to let a peer undo it', async () => {
-      await sync().addSyncDevice(peer(), 'pairing', undefined, false)
+      await sync().addSyncDevice(peer(), { via: 'pairing', saveAfter: false })
       await sync().removeSyncDevice(peer().deviceId, false)
       expect(has(peer().deviceId)).toBe(false)
 
       await expect(
-        sync().addSyncDevice(peer(), 'peer', 'alice' as DeviceId, false),
+        sync().addSyncDevice(peer(), {
+          via: 'peer',
+          by: 'alice' as DeviceId,
+          saveAfter: false,
+        }),
       ).rejects.toThrow(/was removed from this vault/)
       expect(has(peer().deviceId)).toBe(false)
     })
@@ -1643,9 +1639,9 @@ describe('SyncManager', () => {
       // 60-byte out-of-band secret and a user standing in front of both
       // devices, which is exactly the act being protected. Without this,
       // "I removed it by mistake" would be unrecoverable.
-      await sync().addSyncDevice(peer(), 'pairing', undefined, false)
+      await sync().addSyncDevice(peer(), { via: 'pairing', saveAfter: false })
       await sync().removeSyncDevice(peer().deviceId, false)
-      await sync().addSyncDevice(peer(), 'pairing', undefined, false)
+      await sync().addSyncDevice(peer(), { via: 'pairing', saveAfter: false })
       expect(has(peer().deviceId)).toBe(true)
 
       // And the tombstone is gone, not merely bypassed -- a device that is
@@ -1673,14 +1669,18 @@ describe('SyncManager', () => {
     it('is idempotent for a device it already holds', async () => {
       // Every resilver replays the whole device list, so this is the common
       // case rather than an edge one.
-      await sync().addSyncDevice(peer(), 'pairing', undefined, false)
+      await sync().addSyncDevice(peer(), { via: 'pairing', saveAfter: false })
       const before = sync().getSyncDevices().length
-      await sync().addSyncDevice(peer(), 'peer', 'alice' as DeviceId, false)
+      await sync().addSyncDevice(peer(), {
+        via: 'peer',
+        by: 'alice' as DeviceId,
+        saveAfter: false,
+      })
       expect(sync().getSyncDevices()).toHaveLength(before)
     })
 
     it('pins keys on first receipt and refuses a contradicting record', async () => {
-      await sync().addSyncDevice(peer(), 'pairing', undefined, false)
+      await sync().addSyncDevice(peer(), { via: 'pairing', saveAfter: false })
       const pinned = sync()
         .getSyncDevices()
         .find((device) => device.deviceId === peer().deviceId)!.fingerprint
@@ -1688,9 +1688,7 @@ describe('SyncManager', () => {
       await expect(
         sync().addSyncDevice(
           { ...peer(), publicKey: ('B'.repeat(43) + '=') as PublicKey },
-          'peer',
-          'alice' as DeviceId,
-          false,
+          { via: 'peer', by: 'alice' as DeviceId, saveAfter: false },
         ),
       ).rejects.toThrow(/contradicts the keys this vault already holds/)
 
@@ -1701,6 +1699,45 @@ describe('SyncManager', () => {
       ).toBe(pinned)
     })
 
+    it('records a delegated introduction without announcing it', async () => {
+      // What the initial pairing import needs: the user chose to join that
+      // vault, so its device list is the baseline rather than news, and N
+      // notices they cannot act on is how the one that matters goes unread.
+      // The record is unchanged -- still a peer introduction, still stamped
+      // with who made it -- so a later audit sees the delegation either way.
+      const added = vi.fn()
+      const warnings: string[] = []
+      receiverFavaLib.addEventListener(FavaLibEvent.SyncDeviceAdded, added)
+      receiverFavaLib.addEventListener(FavaLibEvent.Log, (event) => {
+        if (event.detail.severity === 'warning') {
+          warnings.push(event.detail.message)
+        }
+      })
+
+      await sync().addSyncDevice(peer(), {
+        via: 'peer',
+        by: 'alice' as DeviceId,
+        saveAfter: false,
+        announce: false,
+      })
+
+      expect(added).not.toHaveBeenCalled()
+      expect(warnings.join('\n')).not.toMatch(/added sync device/)
+
+      const enrolled = sync()
+        .getSyncDevices()
+        .find((device) => device.deviceId === peer().deviceId)!
+      expect(enrolled.enrolment).toEqual({
+        via: 'peer',
+        by: 'alice' as DeviceId,
+        at: expect.any(Number) as number,
+      })
+      // Acknowledged, because nothing was announced: the flag exists to tell a
+      // consumer what it has not shown yet, so leaving it false here would
+      // promise a notice that is never coming.
+      expect(enrolled.acknowledged).toBe(true)
+    })
+
     it('announces every change it makes to the device list', async () => {
       // A consumer listing devices re-reads getSyncDevices on Changed and on
       // nothing else, so without these the list only catches up when
@@ -1709,7 +1746,11 @@ describe('SyncManager', () => {
       const changed = vi.fn()
       receiverFavaLib.addEventListener(FavaLibEvent.Changed, changed)
 
-      await sync().addSyncDevice(peer(), 'peer', 'alice' as DeviceId, false)
+      await sync().addSyncDevice(peer(), {
+        via: 'peer',
+        by: 'alice' as DeviceId,
+        saveAfter: false,
+      })
       expect(changed).toHaveBeenCalledTimes(1)
 
       await sync().acknowledgeSyncDevice(peer().deviceId, false)
@@ -1726,14 +1767,18 @@ describe('SyncManager', () => {
     })
 
     it('stays quiet when nothing about the list changed', async () => {
-      await sync().addSyncDevice(peer(), 'pairing', undefined, false)
+      await sync().addSyncDevice(peer(), { via: 'pairing', saveAfter: false })
       const changed = vi.fn()
       receiverFavaLib.addEventListener(FavaLibEvent.Changed, changed)
 
       // Every resilver replays the whole device list, and a device enrolled
       // by pairing is acknowledged already, so both of these are the common
       // case rather than an edge one.
-      await sync().addSyncDevice(peer(), 'peer', 'alice' as DeviceId, false)
+      await sync().addSyncDevice(peer(), {
+        via: 'peer',
+        by: 'alice' as DeviceId,
+        saveAfter: false,
+      })
       await sync().acknowledgeSyncDevice(peer().deviceId, false)
       expect(
         sync().setDeviceInfo('never-here' as DeviceId, {
@@ -1758,7 +1803,7 @@ describe('SyncManager', () => {
 
       for (let i = 0; i <= MAX_REMOVED_DEVICES; i++) {
         const device = { ...peer(), deviceId: `gone-${i}` as DeviceId }
-        await sync().addSyncDevice(device, 'pairing', undefined, false)
+        await sync().addSyncDevice(device, { via: 'pairing', saveAfter: false })
         await sync().removeSyncDevice(device.deviceId, false)
       }
 
@@ -1894,6 +1939,27 @@ describe('SyncManager', () => {
       wsInstancesMap,
     })
 
+    // The third device is about to learn that the second one exists, and the
+    // second is about to be told the third does. Those look alike and are not:
+    // one is a vault being described to a device that just chose to join it,
+    // the other is a peer adding a device to a vault that already existed.
+    const joinerNotices: string[] = []
+    const joinerAnnouncements: string[] = []
+    const establishedNotices: string[] = []
+    otherReceiverFavaLib.addEventListener(FavaLibEvent.Log, (event) => {
+      if (event.detail.severity === 'warning') {
+        joinerNotices.push(event.detail.message)
+      }
+    })
+    otherReceiverFavaLib.addEventListener(FavaLibEvent.SyncDeviceAdded, (e) => {
+      joinerAnnouncements.push(e.detail.deviceId)
+    })
+    receiverFavaLib.addEventListener(FavaLibEvent.Log, (event) => {
+      if (event.detail.severity === 'warning') {
+        establishedNotices.push(event.detail.message)
+      }
+    })
+
     // connect the 3rd
     await connectDevices({
       senderFavaLib,
@@ -1905,6 +1971,35 @@ describe('SyncManager', () => {
     expect(senderFavaLib.sync?.getSyncDevices()).toHaveLength(2)
     expect(receiverFavaLib.sync?.getSyncDevices()).toHaveLength(2)
     expect(otherReceiverFavaLib.sync?.getSyncDevices()).toHaveLength(2)
+
+    // The joiner is told nothing device by device: it asked to join this vault,
+    // so the list that arrived with it is the baseline, and a notice per
+    // inherited device is a pile of warnings the user cannot act on.
+    expect(
+      joinerNotices.filter((m) => m.includes('added sync device')),
+    ).toEqual([])
+    expect(joinerAnnouncements).toEqual([])
+    // Provenance is untouched by that silence, which is the whole point: the
+    // device it inherited still reads as a delegation by the device it paired
+    // with, and is acknowledged because nothing is coming to announce it.
+    const inherited = otherReceiverFavaLib
+      .sync!.getSyncDevices()
+      .find((device) => device.deviceId === 'receiverDeviceId')!
+    expect(inherited.enrolment).toEqual({
+      via: 'peer',
+      by: 'senderDeviceId' as DeviceId,
+      at: expect.any(Number) as number,
+    })
+    expect(
+      otherReceiverFavaLib.sync!.getSyncDevices().every((d) => d.acknowledged),
+    ).toBe(true)
+
+    // And the device that was already in the vault DOES hear about it: a peer
+    // introducing a third device to an established vault is exactly the event
+    // the notice exists for.
+    expect(
+      establishedNotices.filter((m) => m.includes('added sync device')),
+    ).toHaveLength(1)
 
     const addedEntryId =
       await receiverFavaLib.vault.addEntry(anotherNewTotpEntry)

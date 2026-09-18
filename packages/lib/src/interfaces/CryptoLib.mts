@@ -32,7 +32,12 @@ export type PasswordHash = Tagged<string, 'PasswordHash'>
 export type Salt = Tagged<string, 'Salt'>
 
 /**
- * Represents a device's X25519 secret key (base64 encoded, 32 raw bytes).
+ * Represents a device's key agreement secret key: an X25519 secret key ++ an
+ * ML-KEM-768 SEED, concatenated in that order and base64 encoded (96 raw
+ * bytes).
+ *
+ * The seed rather than the 2400-byte expanded key, which is recomputed on use;
+ * `platformProviders/shared/asymmetric.mts` explains why.
  *
  * The key agreement half of the device's identity; the signing half is
  * SigningSecretKey. Neither is ever transmitted, and at rest the two are
@@ -40,7 +45,10 @@ export type Salt = Tagged<string, 'Salt'>
  */
 export type PrivateKey = Tagged<string, 'PrivateKey'>
 
-/** Represents a device's Ed25519 secret key (base64 encoded, 32 raw bytes) */
+/**
+ * Represents a device's signing secret key: an Ed25519 secret key ++ an
+ * ML-DSA-65 SEED, concatenated in that order and base64 encoded (64 raw bytes).
+ */
 export type SigningSecretKey = Tagged<string, 'SigningSecretKey'>
 
 /**
@@ -106,8 +114,9 @@ interface CryptoLib {
   /**
    * Creates the keys required for further operations.
    *
-   * A device gets two keypairs -- X25519 for key agreement, Ed25519 for
-   * signatures -- and one symmetric key for its own vault state. All three are
+   * A device gets two keypairs -- X25519 ++ ML-KEM-768 for key agreement,
+   * Ed25519 ++ ML-DSA-65 for signatures -- and one symmetric key for its own
+   * vault state. All three are
    * sealed under keys derived from the password hash, with nothing wrapped to
    * the device's own public key any more: that self-wrap let anyone holding the
    * public key choose their own symmetric key and re-encrypt the whole vault.
@@ -218,17 +227,19 @@ interface CryptoLib {
   /**
    * Seals a plain text message to a public key.
    *
-   * X25519 from a keypair created for this one message to the recipient's
-   * public key, HKDF-SHA256 over the shared secret, then AES-256-GCM. The
-   * format is `v2:<ephemeral public key>:<nonce>:<ciphertext||tag>`, all
-   * base64. Both public keys are bound into the HKDF info, which is why there
-   * is no separate aad parameter.
+   * Two key agreements, combined: X25519 from a keypair created for this one
+   * message to the recipient's public key, and an ML-KEM-768 encapsulation to
+   * it. HKDF-SHA256 over both shared secrets, then AES-256-GCM. The format is
+   * `v2:<ephemeral public key>:<kem ciphertext>:<nonce>:<ciphertext||tag>`, all
+   * base64. The ephemeral key, the KEM ciphertext and the recipient's public
+   * key are all bound into the HKDF info, which is why there is no separate aad
+   * parameter.
    *
    * Sealing says nothing about WHO sealed it -- anyone can seal to a public
    * key, exactly as anyone could RSA-OAEP to one. Authenticity comes from
    * `sign`, and the two are deliberately separate calls so that no caller can
    * mistake one for the other.
-   * @param publicKey - The recipient's X25519 public key
+   * @param publicKey - The recipient's composite key agreement public key
    * @param plainText - The text to seal
    * @returns A promise that resolves to the sealed text
    * @throws {CryptoError} If the public key is malformed
@@ -240,7 +251,7 @@ interface CryptoLib {
 
   /**
    * Opens a message sealed to this device's public key.
-   * @param privateKey - This device's X25519 secret key
+   * @param privateKey - This device's composite key agreement secret key
    * @param encryptedText - The sealed text
    * @returns A promise that resolves to the decrypted text
    * @throws {CryptoError} If the key is malformed or authentication fails, with
@@ -258,7 +269,7 @@ interface CryptoLib {
    * authenticity rests on: it is the only operation in the library that proves
    * possession of a secret which is never transmitted, and the only one whose
    * meaning ends the moment a device leaves the peer list.
-   * @param signingSecretKey - This device's Ed25519 secret key
+   * @param signingSecretKey - This device's composite signing secret key
    * @param message - The canonical message to sign, built in canonical.mts
    * @returns A promise that resolves to the base64 encoded signature
    * @throws {CryptoError} If the signing key is malformed
@@ -275,7 +286,7 @@ interface CryptoLib {
    * malformed key -- and never rejects. Its callers are deciding whether to
    * drop something that arrived from the network, where distinguishing the
    * causes is exactly the oracle the decrypt path refuses to be.
-   * @param signingPublicKey - The claimed sender's Ed25519 public key
+   * @param signingPublicKey - The claimed sender's composite signing public key
    * @param message - The canonical message the signature should cover
    * @param signature - The base64 encoded signature
    * @returns A promise that resolves to whether the signature is valid
@@ -321,19 +332,27 @@ interface CryptoLib {
   createSymmetricKey: () => Promise<SymmetricKey>
 
   /**
-   * Creates a sync key from a shared key (that was created from a JPAKE exchange)
+   * Creates a sync key from the combined output of the pairing key exchange.
+   *
+   * The input is what `combinePairingShares` (platformProviders/shared/
+   * asymmetric.mts) returns: HKDF-SHA256 over an ML-KEM-768 shared secret and a
+   * JPAKE shared key, bound to a transcript. Two exchanges rather than one,
+   * because JPAKE is a discrete-log problem -- a passive recorder with a
+   * quantum computer can lift every exponent out of pass 1, solve for the
+   * password out of pass 2, and recompute this key, which is what the entire
+   * initial vault is sealed under. Combining means both have to fall.
    *
    * Uses SYNC_KDF_PARAMETERS rather than the password parameters: its input is
-   * already a 256-bit ECC shared secret, so there is nothing to grind and the
-   * cost setting is immaterial.
+   * already two full-entropy shared secrets, so there is nothing to grind and
+   * the cost setting is immaterial.
    *
    * `responderDeviceId` fills argon2's salt slot and is deliberately NOT a
    * salt: it is public, server-visible, and identical across every pairing
    * with that device. That is sound only because of what the password is. A
-   * salt stops precomputation against low-entropy inputs, and `sharedKey` is a
-   * ~256-bit JPAKE secret, so there is nothing to precompute; that secret is
-   * also ephemeral per exchange, so each derived key is already unique and a
-   * random salt would add no uniqueness either. What a random salt WOULD add
+   * salt stops precomputation against low-entropy inputs, and `combinedKey` is
+   * built from two full-entropy shared secrets, so there is nothing to
+   * precompute; both are also ephemeral per exchange, so each derived key is
+   * already unique and a random salt would add no uniqueness either. What a random salt WOULD add
    * is a wire field routed through the untrusted sync server before the
    * channel is authenticated, where tampering desynchronises the two sides
    * into a confusing key mismatch. The device id is known to both sides with
@@ -343,13 +362,14 @@ interface CryptoLib {
    * Do not copy this shape to a derivation whose password is low-entropy -- a
    * user password above all. That one needs a real per-vault random salt, and
    * the type here is DeviceId rather than Salt so the compiler says so.
-   * @param sharedKey - The shared key to derive from
+   * @param combinedKey - The combined pairing key material, from
+   *   combinePairingShares
    * @param responderDeviceId - The responder's device id, used as argon2's
    *   salt input for domain separation only; see above
    * @returns A promise that resolves to the derived key
    */
   createSyncKey: (
-    sharedKey: Uint8Array,
+    combinedKey: Uint8Array,
     responderDeviceId: DeviceId,
   ) => Promise<SyncKey>
 }

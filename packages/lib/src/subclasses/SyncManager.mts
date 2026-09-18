@@ -77,6 +77,14 @@ import {
 } from '../FavaLibError.mjs'
 import { PAIRING_VERSION } from '../version.mjs'
 import {
+  combinePairingShares,
+  createPairingKemKeyPair,
+  pairingKemDecapsulate,
+  pairingKemEncapsulate,
+  pairingKemPublicKeyDigest,
+  verifyPairingKemPublicKey,
+} from '../platformProviders/shared/asymmetric.mjs'
+import {
   EncryptedVaultStateString,
   ProcessedCommand,
   VaultSyncState,
@@ -812,17 +820,24 @@ class SyncManager {
           data.pass3Result,
         ) as unknown as Pass3Result
 
-        void this.finishAddDeviceFlowKeyExchangeResponder(pass3Result)
+        void this.finishAddDeviceFlowKeyExchangeResponder(
+          pass3Result,
+          data.kemPublicKey,
+        )
         break
       }
       case 'publicKeyAndDeviceInfo': {
         const { data } = message
-        const { responderEncryptedPublicKeys, responderEncryptedDeviceInfo } =
-          data
+        const {
+          responderEncryptedPublicKeys,
+          responderEncryptedDeviceInfo,
+          kemCipherText,
+        } = data
 
         void this.sendFullVaultDataAndSetDeviceInfo(
           responderEncryptedPublicKeys,
           responderEncryptedDeviceInfo,
+          kemCipherText,
         )
         break
       }
@@ -987,6 +1002,10 @@ class SyncManager {
     const jpak = new JPakeThreePass(this.deviceId)
     const pass1Result = jpak.pass1()
 
+    // The post-quantum half of the exchange. Only its digest goes out of band;
+    // the key follows through the server with pass 3.
+    const kemKeyPair = createPairingKemKeyPair()
+
     const continuePromise = new Promise((resolve, reject) => {
       // Set a timeout for if we get no response from the server
       const timeout = setTimeout(() => {
@@ -1004,6 +1023,7 @@ class SyncManager {
         state: 'initiator:initiated',
         jpak,
         addDevicePassword,
+        kemKeyPair,
         initiatorDeviceId: this.deviceId,
         timestamp,
         resolveContinuePromise: resolve,
@@ -1031,6 +1051,10 @@ class SyncManager {
         ZKPx1: uint8ArrayToHex(pass1Result.ZKPx1),
         ZKPx2: uint8ArrayToHex(pass1Result.ZKPx2),
       },
+      kemPublicKeyDigest: pairingKemPublicKeyDigest(
+        this.deviceId,
+        kemKeyPair.publicKey,
+      ),
     }
 
     let returnQr = null
@@ -1073,6 +1097,7 @@ class SyncManager {
       initiatorDeviceId,
       timestamp,
       pass1Result,
+      kemPublicKeyDigest,
     } = await decodeInitiatorData(
       initiatorData,
       initiatorDataType,
@@ -1089,7 +1114,8 @@ class SyncManager {
       !addDevicePassword ||
       !initiatorDeviceId ||
       !timestamp ||
-      !pass1Result
+      !pass1Result ||
+      !kemPublicKeyDigest
     ) {
       throw new SyncError('Missing required fields in initiator data')
     }
@@ -1122,6 +1148,7 @@ class SyncManager {
       state: 'responder:initated',
       jpak,
       addDevicePassword: decodedPassword,
+      kemPublicKeyDigest,
       responderDeviceId: this.deviceId,
       initiatorDeviceId: initiatorDeviceId,
       timestamp: Date.now(),
@@ -1160,23 +1187,38 @@ class SyncManager {
       initiatorDeviceId: this.activeAddDeviceFlow.initiatorDeviceId,
       // @ts-expect-error we get a type mismatch because we input Uint8Array instead of JsonifiedUint8Array, but it will get jsonified later
       pass3Result,
+      kemPublicKey: this.activeAddDeviceFlow.kemKeyPair.publicKey,
     })
 
-    const { key: sharedKey } = this.activeAddDeviceFlow.jpak.deriveSharedKey()
-    const syncKey = await this.cryptoLib.createSyncKey(
-      sharedKey,
-      responderDeviceId,
-    )
+    // No sync key yet: half of it is the shared secret the responder will
+    // encapsulate to the key just sent, and that arrives with the handshake
+    // payload. Keep the J-PAKE half until then.
+    const { key: jpakeSharedKey } =
+      this.activeAddDeviceFlow.jpak.deriveSharedKey()
     this.activeAddDeviceFlow = {
       ...this.activeAddDeviceFlow,
-      state: 'initiator:syncKeyCreated',
+      state: 'initiator:keyExchangeComplete',
       responderDeviceId: responderDeviceId,
-      syncKey,
+      jpakeSharedKey,
     }
   }
 
+  /**
+   * Completes the responder's half of the key exchange.
+   *
+   * The digest check comes first and nothing is sent before it passes. The
+   * server relaying `kemPublicKey` is not trusted -- substituting its own key
+   * here is exactly the attack the out-of-band digest exists to stop -- and
+   * everything this device sends next is encrypted under a key derived from it.
+   * @param pass3Result - The initiator's JPAKE pass 3.
+   * @param kemPublicKey - The initiator's base64 ML-KEM public key, as relayed.
+   * @throws {SyncNoServerConnectionError} If there is no server connection.
+   * @throws {SyncInWrongStateError} If no responder flow is waiting for this.
+   * @throws {SyncError} If the relayed key is not the one the digest vouches for.
+   */
   private async finishAddDeviceFlowKeyExchangeResponder(
     pass3Result: Pass3Result,
+    kemPublicKey: string,
   ) {
     if (!this.ws || !this.webSocketConnected) {
       throw new SyncNoServerConnectionError()
@@ -1192,11 +1234,34 @@ class SyncManager {
       throw new SyncError('Public key not set')
     }
 
+    if (
+      !kemPublicKey ||
+      !verifyPairingKemPublicKey(
+        this.activeAddDeviceFlow.kemPublicKeyDigest,
+        this.activeAddDeviceFlow.initiatorDeviceId,
+        kemPublicKey,
+      )
+    ) {
+      this.cancelAddSyncDevice()
+      throw new SyncError(
+        'The pairing key does not match the code that was scanned. Someone may ' +
+          'be interfering with the connection; start the pairing again.',
+      )
+    }
+
     this.activeAddDeviceFlow.jpak.receivePass3Results(pass3Result)
 
-    const { key: sharedKey } = this.activeAddDeviceFlow.jpak.deriveSharedKey()
+    const { kemCipherText, sharedSecret } =
+      pairingKemEncapsulate(kemPublicKey)
+    const { key: jpakeSharedKey } =
+      this.activeAddDeviceFlow.jpak.deriveSharedKey()
     const syncKey = await this.cryptoLib.createSyncKey(
-      sharedKey,
+      combinePairingShares(
+        sharedSecret,
+        jpakeSharedKey,
+        this.activeAddDeviceFlow.responderDeviceId,
+        kemCipherText,
+      ),
       this.activeAddDeviceFlow.responderDeviceId,
     )
     this.activeAddDeviceFlow = {
@@ -1223,25 +1288,41 @@ class SyncManager {
       handshakeAad,
     )
 
-    // send our public keys
+    // send our public keys, and the ciphertext that lets the initiator reach
+    // the key they are encrypted under
     this.sendToServer('publicKeyAndDeviceInfo', {
       responderEncryptedPublicKeys,
       responderEncryptedDeviceInfo,
+      kemCipherText,
       initiatorDeviceId: this.activeAddDeviceFlow.initiatorDeviceId,
     })
   }
 
+  /**
+   * Completes the initiator's half of the key exchange and hands over the vault.
+   *
+   * This is where the initiator finally has a sync key: the responder's ML-KEM
+   * ciphertext arrives with the handshake payload, so decapsulating it is the
+   * first thing to do and everything else depends on it. A ciphertext that does
+   * not belong to this flow's keypair yields an unrelated shared secret rather
+   * than an error -- that is ML-KEM's implicit rejection -- so a substituted one
+   * surfaces a few lines down, where the handshake payload fails to decrypt.
+   * @param responderEncryptedPublicKeys - The responder's sealed public keys.
+   * @param responderEncryptedDeviceInfo - The responder's sealed device info.
+   * @param kemCipherText - The responder's base64 ML-KEM ciphertext.
+   */
   private async sendFullVaultDataAndSetDeviceInfo(
     responderEncryptedPublicKeys: EncryptedPublicKeys,
     responderEncryptedDeviceInfo: Encrypted<string>,
+    kemCipherText: string,
   ) {
     if (!this.ws || !this.webSocketConnected) {
       throw new SyncNoServerConnectionError()
     }
 
-    if (this.activeAddDeviceFlow?.state !== 'initiator:syncKeyCreated') {
+    if (this.activeAddDeviceFlow?.state !== 'initiator:keyExchangeComplete') {
       throw new SyncInWrongStateError(
-        `Expected initiator:syncKeyCreated, got ${this.activeAddDeviceFlow?.state}`,
+        `Expected initiator:keyExchangeComplete, got ${this.activeAddDeviceFlow?.state}`,
       )
     }
 
@@ -1249,7 +1330,18 @@ class SyncManager {
       throw new SyncError('Public key not set')
     }
 
-    const syncKey = this.activeAddDeviceFlow.syncKey
+    const syncKey = await this.cryptoLib.createSyncKey(
+      combinePairingShares(
+        pairingKemDecapsulate(
+          kemCipherText,
+          this.activeAddDeviceFlow.kemKeyPair.secretKey,
+        ),
+        this.activeAddDeviceFlow.jpakeSharedKey,
+        this.activeAddDeviceFlow.responderDeviceId,
+        kemCipherText,
+      ),
+      this.activeAddDeviceFlow.responderDeviceId,
+    )
     const handshakeAad = buildHandshakeAad(
       this.activeAddDeviceFlow.initiatorDeviceId,
       this.activeAddDeviceFlow.responderDeviceId,

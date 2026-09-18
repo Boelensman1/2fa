@@ -64,6 +64,7 @@ import {
   testServerSecret,
 } from '../testUtils.mjs'
 import { createConnectProof } from '../../src/utils/connectAuth.mjs'
+import { createEncryptionKeyPair } from '../../src/platformProviders/shared/asymmetric.mjs'
 import { ConnectionStatus } from '../../src/subclasses/SyncManager.mjs'
 import { Client as WsClient } from 'mock-socket'
 import {
@@ -466,11 +467,11 @@ describe('SyncManager', () => {
       },
       acknowledged: true,
     })
-    // Six groups of four uppercase hex: 96 bits, short enough to read aloud
-    // off one screen and check against another, which is the only thing a
-    // fingerprint is for.
+    // Eight groups of four uppercase hex: 128 bits, still short enough to read
+    // aloud off one screen and check against another, which is the only thing
+    // a fingerprint is for.
     for (const device of [senderSyncDevices[0], receiverSyncDevices[0]]) {
-      expect(device.fingerprint).toMatch(/^[0-9A-F]{4}(-[0-9A-F]{4}){5}$/)
+      expect(device.fingerprint).toMatch(/^[0-9A-F]{4}(-[0-9A-F]{4}){7}$/)
     }
     expect(senderSyncDevices[0].fingerprint).not.toBe(
       receiverSyncDevices[0].fingerprint,
@@ -1550,7 +1551,13 @@ describe('SyncManager', () => {
 
       await expect(
         sync().addSyncDevice(
-          { ...peer(), publicKey: ('B'.repeat(43) + '=') as PublicKey },
+          {
+            ...peer(),
+            // A well-formed key of the right length that is simply not the one
+            // already pinned -- a shorter string would be refused as malformed
+            // before the pinning check could be reached.
+            publicKey: createEncryptionKeyPair().publicKey,
+          },
           { via: 'peer', by: 'alice' as DeviceId, saveAfter: false },
         ),
       ).rejects.toThrow(/contradicts the keys this vault already holds/)

@@ -26,16 +26,26 @@ export const LIB_VERSION = '0.0.23'
  *
  * Version 2: argon2id at m=64 MiB/t=3/p=4, AES-256-GCM with AAD in place of
  * AES-256-CBC, an `envelopeMac` keyed from the password hash, and -- replacing
- * the RSA layer -- X25519 for key agreement and Ed25519 for signatures, both
- * secret keys sealed under a key derived from the password hash rather than
- * wrapped to the device's own public key.
+ * the RSA layer -- hybrid asymmetric keys, both secret keys sealed under a key
+ * derived from the password hash rather than wrapped to the device's own public
+ * key. A key agreement key is X25519 ++ ML-KEM-768 and a signing key is
+ * Ed25519 ++ ML-DSA-65, concatenated and base64 encoded, with the post-quantum
+ * secret stored as its seed;
+ * `platformProviders/shared/asymmetric.mts` is where that format and the reason
+ * for it are written down.
  *
- * Note that version 2 was REDEFINED rather than superseded when the curves
- * landed. The rule, worth stating once because it applies to all three of these
- * constants: a format that has never shipped is redefined in place, not
- * re-versioned. No version 2 vault had ever been written outside this
- * repository, so a version 3 would only have added a read path for a format
- * with no readers.
+ * Note that version 2 has been REDEFINED twice rather than superseded: once
+ * when the curves replaced RSA, and again when the post-quantum halves were
+ * added beside them. The rule, worth stating once because it applies to all
+ * four of these constants: a format whose users can be told to export and
+ * re-import is redefined in place, not re-versioned. Both breaks were clean
+ * ones, so a version 3 would only have added a read path for a format with no
+ * readers.
+ *
+ * The cost of that is worth naming: a vault written by the previous v2 claims
+ * this same version number, so it does not fail as "written by an older build".
+ * Its seals decrypt, and the 32-byte keys inside them are then refused by the
+ * asymmetric layer. That is the accepted price of not moving the number.
  *
  * There is no read path for version 1. It was deleted rather than migrated: a
  * v1 blob dropped over a v2 vault used to open and be silently upgraded -- a
@@ -63,11 +73,15 @@ export const STORAGE_VERSION = 2
  * a live session and a newer one means a downgrade; neither is a shape this
  * build should guess at, and both cost exactly one password prompt.
  *
- * Version 2 carries the device's two curve secret keys where version 1 carried
- * an RSA private key and its public key. This is the one version constant that
- * was BUMPED rather than redefined in place, for the reason the paragraph above
- * gives: refusing a session holding key material this build cannot use costs
- * one password prompt.
+ * Version 2 carries the device's two secret keys where version 1 carried an RSA
+ * private key and its public key. It was BUMPED from 1 rather than redefined,
+ * for the reason the paragraph above gives -- but it did NOT move again when
+ * those keys became hybrid, and that is a deliberate inconsistency rather than
+ * an oversight: the storage format it sits beside did not move either, and a
+ * session blob that outlived the upgrade of the vault it belongs to has nothing
+ * to be restored into. Such a blob passes the `!==` check and is refused a few
+ * calls later, by the asymmetric layer, when its 32-byte keys turn out not to
+ * be the composite ones. One process restart clears it.
  */
 export const SESSION_VERSION = 2
 
@@ -85,8 +99,13 @@ export const SESSION_VERSION = 2
  * SignedCommandEnvelope and is refused unless a device currently in this
  * vault's peer list signed it, for this recipient, under this command id. There
  * is no unsigned fallback and no grace period, and no version bump for it, for
- * the reason STORAGE_VERSION gives: no 2.0 command has ever left this
- * repository.
+ * the reason STORAGE_VERSION gives.
+ *
+ * The same applies to the post-quantum change, which moved the seal envelope
+ * from four colon-separated fields to five and made every signature a composite
+ * of two. Neither is negotiated and neither can be misread: the field count is
+ * what refuses an older peer's seal, and it refuses it as a format mismatch
+ * rather than as arithmetic.
  */
 export const COMMAND_VERSION = '2.0'
 
@@ -107,11 +126,15 @@ export const COMMAND_VERSION = '2.0'
  * this field, which means a build on jpake-ts 1.x, and so is treated as major 1
  * and refused.
  *
- * The handshake under it changed with storage version 2 -- the responder now
- * sends both of its public keys where it used to send one RSA key -- and the
- * major did NOT move for it, by the same "unshipped is redefined" rule. A peer
- * that could send the old shape is on jpake-ts 1.x and is already refused here
- * by version, before it can send anything at all.
+ * The handshake under it has changed twice without the major moving, by the
+ * same redefined-in-place rule STORAGE_VERSION sets out. First the responder
+ * began sending both of its public keys where it used to send one RSA key.
+ * Then the exchange gained a second leg: J-PAKE alone is a discrete-log
+ * problem, so the payload now also commits to an ML-KEM-768 public key and the
+ * sync key is derived from both shares. A payload from before that carries no
+ * `kemPublicKeyDigest`, and the responder refuses it on that field's absence
+ * -- the version gate cannot see the difference, because the J-PAKE wire format
+ * itself did not change.
  */
 export const PAIRING_VERSION = '2.0'
 

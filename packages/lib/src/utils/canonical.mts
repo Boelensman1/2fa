@@ -217,18 +217,19 @@ export const buildVaultDataSignatureMessage = (
 /**
  * Builds the message a device's key fingerprint is taken over.
  *
- * Both public keys, and the device id that claims them. The two keys are each
- * 44 characters of base64 over 32 raw bytes, so nothing about their contents
- * distinguishes the sealing key from the signing one -- only their position in
- * this message does, which is why they go through `encodeFields` like
- * everything else here rather than being concatenated.
+ * Both public keys, and the device id that claims them. The two differ in
+ * length, but nothing about their CONTENTS distinguishes the sealing key from
+ * the signing one -- only their position in this message does, which is why
+ * they go through `encodeFields` like everything else here rather than being
+ * concatenated. Length-prefixing also means the two can grow independently
+ * without the encoding becoming ambiguous.
  *
  * Including `deviceId` binds the fingerprint to the identity the keys are
  * listed under, so a record that swaps in a different id does not keep the
  * fingerprint a user already checked.
  * @param deviceId - The device the keys belong to.
- * @param publicKey - Its X25519 public key.
- * @param signingPublicKey - Its Ed25519 public key.
+ * @param publicKey - Its composite key agreement public key.
+ * @param signingPublicKey - Its composite signing public key.
  * @returns The canonical message to digest.
  */
 export const buildDeviceFingerprintMessage = (
@@ -316,6 +317,55 @@ export const buildEnvelopeMacMessage = (fields: EnvelopeMacFields): string =>
     fields.encryptedSymmetricKey,
     fields.encryptedVaultState,
   ])
+
+/**
+ * Builds the message the initiator's pairing KEM public key is digested over.
+ *
+ * The pairing payload is small on purpose -- it has to survive being a QR code
+ * on a phone screen -- and an ML-KEM-768 public key is 1184 bytes. So the key
+ * itself is relayed through the untrusted sync server and only this 32-byte
+ * digest travels out of band, where it does the same job: a relayed key that
+ * does not digest to it is not the one the initiator meant to send.
+ *
+ * `initiatorDeviceId` is in the message so a digest cannot be lifted from one
+ * initiator's payload and reused to vouch for the same key under another
+ * identity. The key is passed base64 rather than raw, because that is the exact
+ * form the wire carries and the responder checks; digesting a re-decoded form
+ * would be digesting a reconstruction.
+ * @param initiatorDeviceId - The device that generated the key.
+ * @param kemPublicKey - The base64 ML-KEM public key, exactly as it travels.
+ * @returns The canonical message to digest.
+ */
+export const buildPairingKemDigestMessage = (
+  initiatorDeviceId: string,
+  kemPublicKey: string,
+): string =>
+  encodeFields(['favalib:pairingkem:v2', initiatorDeviceId, kemPublicKey])
+
+/**
+ * Builds the transcript the two pairing key shares are combined under.
+ *
+ * The sync key comes from two exchanges, not one: J-PAKE over the out-of-band
+ * password, and an ML-KEM encapsulation to the key the digest above vouches
+ * for. Either one holding is enough to keep the key secret, which is the whole
+ * point -- J-PAKE is a discrete-log problem and a recorded pairing would
+ * otherwise be decryptable in retrospect, and ML-KEM is young enough that
+ * leaning on it alone would be its own bet.
+ *
+ * `kemCipherText` is in the transcript for the reason the seal's transcript
+ * carries one: a KEM shared secret does not by itself commit to the ciphertext
+ * it came from. Without it a tampered ciphertext could be swapped in and both
+ * sides would simply derive different keys, which is a confusing failure; with
+ * it the derivation is pinned to the exact exchange that happened.
+ * @param responderDeviceId - The device joining the vault.
+ * @param kemCipherText - The base64 ML-KEM ciphertext, exactly as it travels.
+ * @returns The canonical transcript.
+ */
+export const buildPairingCombineMessage = (
+  responderDeviceId: string,
+  kemCipherText: string,
+): string =>
+  encodeFields(['favalib:pairingcombine:v2', responderDeviceId, kemCipherText])
 
 /**
  * Builds the message a client HMACs to prove it holds the sync server's shared

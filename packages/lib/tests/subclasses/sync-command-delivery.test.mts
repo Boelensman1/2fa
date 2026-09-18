@@ -28,7 +28,7 @@ import NodeCryptoLib from '../../src/platformProviders/node/cryptoLib.mjs'
 import {
   createEncryptionKeyPair,
   createSigningKeyPair,
-} from '../../src/platformProviders/shared/curves.mjs'
+} from '../../src/platformProviders/shared/asymmetric.mjs'
 import {
   buildCommandAad,
   buildCommandSignatureMessage,
@@ -598,6 +598,13 @@ describe('sync command delivery', () => {
       expect(nameOf(restarted)).toBe('burst-1001')
       expect(restartedObserved.acknowledgments()[0]).toHaveLength(3)
     },
+    // 1002 commands, each signed once and verified once. A composite signature
+    // is Ed25519 plus ML-DSA-65, and the ML-DSA half is ~13ms to sign and
+    // ~2.6ms to verify, so this test does roughly 27s of real cryptography on
+    // an idle machine -- against a suite default of 30s, which it then loses to
+    // whichever other file is running beside it. The number is the cost of the
+    // signatures, not a hang.
+    120_000,
   )
 
   it('prunes old records per peer without dropping other commands in the batch', async () => {

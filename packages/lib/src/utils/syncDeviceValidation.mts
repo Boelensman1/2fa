@@ -7,6 +7,10 @@ import type {
   SyncDevice,
   SyncDeviceEnrolment,
 } from '../interfaces/SyncTypes.mjs'
+import {
+  PUBLIC_KEY_BYTES,
+  SIGNING_PUBLIC_KEY_BYTES,
+} from '../platformProviders/shared/asymmetric.mjs'
 
 /**
  * The most devices a vault's stored device list may hold.
@@ -25,15 +29,22 @@ import type {
 export const MAX_SYNC_DEVICES = 64
 
 /**
- * How long a base64 public key is: 32 raw bytes, so 44 characters including the
- * single padding character.
+ * How long each of the two base64 public keys is.
  *
- * An exact length, where storage version 1's RSA PEMs could only be given an
- * upper bound. X25519 and Ed25519 keys are both exactly this size, which is
- * also why nothing but the field name and the branded type keeps the two roles
- * apart -- there is no length to tell them by.
+ * Exact lengths, where storage version 1's RSA PEMs could only be given an
+ * upper bound. The byte counts come from `platformProviders/shared/asymmetric`
+ * rather than being written out here: they are a property of the primitives
+ * that file chooses, and a copy of 1624 in this one would be a second source of
+ * truth that only ever gets to be wrong.
+ *
+ * The two roles now have DIFFERENT lengths -- a key agreement key is X25519 ++
+ * ML-KEM-768, a signing key Ed25519 ++ ML-DSA-65 -- so unlike the 32-byte curve
+ * keys that preceded them, a pair swapped between the two fields no longer
+ * validates. That is a free check and the reason these are two constants rather
+ * than one.
  */
-export const PUBLIC_KEY_LENGTH = 44
+export const PUBLIC_KEY_LENGTH = base64Length(PUBLIC_KEY_BYTES)
+export const SIGNING_PUBLIC_KEY_LENGTH = base64Length(SIGNING_PUBLIC_KEY_BYTES)
 
 /**
  * The most removal tombstones a vault may keep.
@@ -66,20 +77,33 @@ const isBoundedString = (value: unknown, maxLength: number): boolean =>
   typeof value === 'string' && value.length > 0 && value.length <= maxLength
 
 /**
+ * How many base64 characters a given number of raw bytes encodes to.
+ *
+ * Padded base64, which is what `uint8ArrayToBase64` produces: four characters
+ * per three bytes, rounded up.
+ * @param bytes - The raw byte count.
+ * @returns The encoded character count.
+ */
+function base64Length(bytes: number): number {
+  return Math.ceil(bytes / 3) * 4
+}
+
+/**
  * Checks that a value is a base64 public key of exactly the right length.
  *
- * Both the length and the decode matter: 32 bytes is what the curves accept,
- * and a string that is the right length but not base64 would otherwise reach
- * noble and fail there, in an error message that names a primitive.
+ * Both the length and the decode matter: the byte count is what the primitives
+ * accept, and a string that is the right length but not base64 would otherwise
+ * reach noble and fail there, in an error message that names a primitive.
  * @param value - The value to check, which may be anything at all.
+ * @param expectedBytes - How many raw bytes this role's key decodes to.
  * @returns True when the value is a usable public key.
  */
-const isPublicKey = (value: unknown): boolean => {
-  if (typeof value !== 'string' || value.length !== PUBLIC_KEY_LENGTH) {
+const isPublicKey = (value: unknown, expectedBytes: number): boolean => {
+  if (typeof value !== 'string' || value.length !== base64Length(expectedBytes)) {
     return false
   }
   try {
-    return base64ToUint8Array(value).length === 32
+    return base64ToUint8Array(value).length === expectedBytes
   } catch {
     return false
   }
@@ -180,10 +204,10 @@ export const validateSyncDevice = (raw: unknown): string | null => {
   if (!isBoundedString(device.deviceId, MAX_DEVICE_ID_LENGTH)) {
     return 'device has no usable deviceId'
   }
-  if (!isPublicKey(device.publicKey)) {
+  if (!isPublicKey(device.publicKey, PUBLIC_KEY_BYTES)) {
     return 'device has no usable publicKey'
   }
-  if (!isPublicKey(device.signingPublicKey)) {
+  if (!isPublicKey(device.signingPublicKey, SIGNING_PUBLIC_KEY_BYTES)) {
     return 'device has no usable signingPublicKey'
   }
   if (
@@ -261,8 +285,8 @@ export const parseDevicePublicKeys = (serialised: string): DevicePublicKeys => {
   if (
     !publicKey ||
     !signingPublicKey ||
-    !isPublicKey(publicKey) ||
-    !isPublicKey(signingPublicKey)
+    !isPublicKey(publicKey, PUBLIC_KEY_BYTES) ||
+    !isPublicKey(signingPublicKey, SIGNING_PUBLIC_KEY_BYTES)
   ) {
     throw new SyncError('The other device sent unusable public keys')
   }

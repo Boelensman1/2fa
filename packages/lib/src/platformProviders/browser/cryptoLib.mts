@@ -40,7 +40,7 @@ import {
   signMessage,
   signingPublicKeyFromSecret,
   verifyMessage,
-} from '../shared/curves.mjs'
+} from '../shared/asymmetric.mjs'
 
 /**
  * The WebCrypto implementation, named so that it resolves in every browser
@@ -545,11 +545,11 @@ class BrowserCryptoLib implements CryptoLib {
    * @inheritdoc
    */
   async createSyncKey(
-    sharedKey: Uint8Array,
+    combinedKey: Uint8Array,
     responderDeviceId: string,
   ): Promise<SyncKey> {
     const key = await argon2id({
-      password: sharedKey,
+      password: combinedKey,
       salt: responderDeviceId,
       parallelism: SYNC_KDF_PARAMETERS.parallelism,
       iterations: SYNC_KDF_PARAMETERS.iterations,

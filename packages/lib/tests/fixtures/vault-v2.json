@@ -1,7 +1,7 @@
 {
-  "libVersion": "0.0.22",
+  "libVersion": "0.0.23",
   "storageVersion": 2,
-  "salt": "zN18wvYDDGZ5LGZb+ld+sg==",
+  "salt": "T9+0wEWzG4Tm6NMLN6osVQ==",
   "kdf": {
     "algorithm": "argon2id",
     "memorySize": 65536,
@@ -9,8 +9,8 @@
     "parallelism": 4,
     "hashLength": 64
   },
-  "encryptedSecretKeys": "v2:va+DZgOzCqAIFd5D:HgyLHebugm0ktNjmV1ymr8dEZFO7g0Jccyp3gRYjSoPjeNcTzsoZ7VntaL3daaMN23rdFEl1XzhxyzyXs8/XY7NBPqwYpmGjQnmfRzPiMs1tpRHONoMFFzYmFnW0l1Tk26rXkVnr2iu7ydkJQxPeVSU2e7KCsmfUdm/hyGPUPX4eiFAqFCvy5Vofw9nzkfA=",
-  "encryptedSymmetricKey": "v2:JFMaQkwdsXzHDghG:uScYcM9iIp5xsq7J99RMUofD8FaEI1/2wHavqKKHoTG71EasUZPh6L8cerkU6623Xh4IghIB/omWy1Db",
-  "encryptedVaultState": "v2:4YD+yIDPF6t3R9Kh:TSWP6Jdnc7F/rOuwZp0tU1jze1Z2hKurLK/+S++ZlnVE6MRO3iT2jytxEruGw2iIIS81ljpqm3pyhbg6oIAnXLhZ91fIz1YNfGAAP2+fvL+HUCnff02cmNJi9p6dEvK5PrKV6GpeWrerJ19TMjbYw1h4976SwjMJAS7RcPuJAvvlCZ2+x6R/8Wb6mzn4YtXhjIEQxGMoGDMJaPs3bPRE66ah+47o30XgjdJ6TW7AsiZQVmHC5kD/QPXGpaAQZVrX9zR22ZLh8AACSvdjI+m4j9FH2wD9dBU9dPPsYfE1F0b2Nt0hUEKsM3WUYOeLX/dYXVlFKnirjHcKlLuyJaOA7AK+ozXVe/znoJ1uYC/W5X9spJfpwgnhDNIg9f65oEe9PsEDTVB8JCulI2RZNVTciQsJ6vPWOJ+mBqQWMmc8WAw1O6UEx32oizMSdf+Khlxggi0W6Ucv2cc4SBEcnwF7EDHFfhoH/zWEG3W4XC3CJx5e+6+nteLRgcFtjCfAG4u0kW9C162Bzs41ojTdQhVMKhxeNU5C9khcz7iwuCCSHTyF+XWhJHkfEABMh+Y9uh/aDjnl9JTg6ISSKgDPPb7rDSKKDDD6jkRYaLc8mbcOWka9EBIbS9eapC2WvelUrct5sivrtaahF2KolRtaSEqAm/0laz2Rs9Avvzjwmuu2D1bMy6Fs+asLB/at2Lj3jRaS92o/ZAsugHIfS6eLhHSFQiZAKahBpxIQ49a5uAh+XvoZMyvJCygwCAb1+4Cl5r6Kd0KXgvbWkwQgnjyhxVnSvDzjblX7ejG6LVJ6UcXYSbmrqEQsDGZIfgq//3347ieS1ik3w7eGuTN4cM4XifCDUesQpbL/qxMHA7UuEL8cKucBUHginex2DCZPOrKj2wdw+YT5T5rgGj58SKZS0951dZhGnw==",
-  "envelopeMac": "2fftkzlHdGoBmSLti38EIWWIleiAcsgx+xHRTAiXh68="
+  "encryptedSecretKeys": "v2:RtQISsJYyoJLSYrR:m0+XsXehe3NeRYCDtCdhpzXOC4urErB8t9hp8Qa4Q7BFlqUD3rTj5XBkpK9yNPh9ga5LMrqjGGkkqh8xljxSXqTyJWzyxgyyDMOBuxt9MUXzpv3Ri434cCX6OWtmdETT0y+iFaMErOU8qp03eU2MMlW8c51n3MCF3jbaYSTN05umjLNdc9XMYd7e2o3u83tugyyQpeUnLQXGF5NHM+duA6PUVtXnFJ6zlUqWGqHTmtFMlxUgJkjl6j1vyk6gy9+G3uwFFDwiTl4qpu2NcB0m/tfSu0d7mg7GUSePjLc5saxTmDULJlwFRT7YlES6Smp1MCU2Z51+HOYinVTAzbBvwXM0Wpbj7dMtPoflAXWV2A==",
+  "encryptedSymmetricKey": "v2:8EYih5shGnQaoN/y:5ltNVH2b+ShKPlAn5Qk6D2bfVqI7j71qn/uNp1Gi5MqDa1KghXWeUClO90eUXwALbholHUSTTfxduGPb",
+  "encryptedVaultState": "v2:aMK3fuYzH2YdZIvG:PEnTtbwvVM3e5uYr5MYeZbJJNz5yb5y8KluwPlEBT+DQofUuxhhM2Q8V7S14FAJ7AymFyNu09kvDvUyjusx+Jxxekcv/a5KHN+R/xwZ9rMoX7hS/KzqglPupGT8UTlv5fDQhYtPSdM1j1bj+JTAFmq+ATvpXaOGZw57hKewoSDm6l4adzftCkBiCXngdVRv9ikFJO9NOaenI3hTvlP7Fyjq7rqX/Z+sH7YvGXcFWjYCpzx1/r8G99FTH0XnLQiZ6IbS5jCwv7egWjodnSSqhD7aKlXomvhURTewXCq15HZHM1Vlj16q8VB5wBLGqayRAu5dLrbOeEos5+QTwVneAT+nCIhgjwrUoCqOqMHhUNCwE08JpWVTbRsu/Z879tc+nTElmaxFNfygLx1QqQ2rURSB1WSiXxbgkxui7CeeEB/xZ5Q5uke5RqZ6jQL+Rxi3W8oNMBY3sy6U0y9LkuMWundxyyQWcGhInVaKnGTDgWN1kHnPAOeFRNSS78dtX/oRJUnU72eddirxH/r6jb4TQIrJcyov2sekql1xKT1MuuwdBxPQco/1jWDrfnOSTVNUNAdQ20hFejhS3Oq1dH6WmpLjwPhTjwKk94Zrblm2ye/IqQOOT05I3kaHYDE5dmkSPUKeXTRwRIBE8ZwaXWKhsCCUCKWSRoe8Om0IibSncZr1TmQTljVqz+yNqXxC2NwfnEwE+0Fnv/WqGlFf55iKvHu2RlMyYTqqrZ7h8h8JFiJR3OZXxQzeVCkoYK5PYQ2Tndan99r1H9l4hIwIcEr9YONW3cHZtxKmbwmjwMXb2SR8n72p0+DcaIzrfYsZci11bh5+7pcV2Myi9qTnmg/If05d6Lhkl2SO9AU9J3eV+s5IKkoy73i6l+GmYvp1idWkUrXKN3vAsFkygLU8rxOkcbgZOVQ==",
+  "envelopeMac": "igPhabf0U8YmGqxMkDSo2NFStoyGl8BKAlrKv5606XU="
 }

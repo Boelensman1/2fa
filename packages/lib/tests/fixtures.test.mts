@@ -31,19 +31,21 @@ const fixture = readFileSync(
 // The v2 fixture. Same two secrets as the v1 one, so the same expected OTPs
 // apply -- and those were cross-checked against an independent RFC 6238
 // implementation.
-// Regenerated once, when storage version 2 was REDEFINED to the curve hierarchy
-// before it ever shipped; see tests/fixtures/README.md on why that is not a
-// breach of the never-regenerate rule. That the OTPs came back unchanged is the
-// end-to-end evidence that the new chain is correct and not merely consistent.
+// Regenerated twice, both times because storage version 2 was REDEFINED rather
+// than superseded: once when the RSA layer became X25519/Ed25519, and again
+// when those gained their post-quantum halves. See tests/fixtures/README.md on
+// why that is not a breach of the never-regenerate rule. That the OTPs came
+// back unchanged across all three is the end-to-end evidence that each new
+// chain is correct and not merely self-consistent.
 const V2_FIXTURE_PASSWORD = 'fixture!Vault7#Frozen$v2' as Password
-const V2_FIXTURE_DEVICE_ID = '822d43ef-ab39-4a9e-a106-2e96eb3fdb82'
+const V2_FIXTURE_DEVICE_ID = 'd607e80d-b0af-409b-8e0f-9b983c5bcbf4'
 const V2_ENTRY_ONE = {
-  id: 'bc068e83-2a34-4d0d-8550-650d45a45e3c' as EntryId,
+  id: '1a0ec6e3-fab6-49bc-b8f7-3c755f7cc271' as EntryId,
   name: 'Fixture Entry One',
   otpAtFixedTimestamp: '324550',
 }
 const V2_ENTRY_TWO = {
-  id: '0d72d157-a5c1-469c-b021-c985492ebe85' as EntryId,
+  id: 'c4c1184c-571c-4f84-9227-3aee8a3681ad' as EntryId,
   name: 'Fixture Entry Two',
   otpAtFixedTimestamp: '017492',
 }
@@ -173,8 +175,8 @@ describe('stored format fixtures', () => {
     it('produces the same OTPs it did when it was written', async () => {
       // As with v1, this one assertion pins the whole chain: the v2 argon2id
       // parameters, the HKDF-derived key-wrap keys, the AES-GCM seal over the
-      // two curve secret keys, the "v2:nonce:ct||tag" envelope with its at-rest
-      // AAD, the envelope MAC, and the TOTP derivation.
+      // device's two composite secret keys, the "v2:nonce:ct||tag" envelope
+      // with its at-rest AAD, the envelope MAC, and the TOTP derivation.
       for (const expected of [V2_ENTRY_ONE, V2_ENTRY_TWO]) {
         const token = await favaLib.vault.generateTokenForEntry(
           expected.id,
@@ -186,9 +188,9 @@ describe('stored format fixtures', () => {
 
     it('is readable by the browser provider too', async () => {
       // Written by the node provider; opening it with the browser one gates
-      // the v2 format on both implementations -- the two share their curve
-      // code but not their AES, HKDF or argon2, so this is where a disagreement
-      // between those would surface.
+      // the v2 format on both implementations -- the two share their
+      // asymmetric code but not their AES, HKDF or argon2, so this is where a
+      // disagreement between those would surface.
       const { loadFavaLibFromLockedRepesentation } =
         getFavaLibVaultCreationUtils(
           browserProviders,

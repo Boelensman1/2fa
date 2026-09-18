@@ -4,12 +4,17 @@ import type { Tagged } from 'type-fest'
 export type DeviceId = Tagged<string, 'DeviceId'>
 
 /**
- * Represents a device's X25519 public key (base64 encoded, 32 raw bytes).
+ * Represents a device's key agreement public key: X25519 ++ ML-KEM-768,
+ * concatenated in that order and base64 encoded (1216 raw bytes).
  *
  * The KEY AGREEMENT half of a device's identity: what a peer seals a message
  * to. The signing half is SigningPublicKey, and the two are deliberately
- * separate types -- they are both 32 base64-encoded bytes, so nothing but the
- * type system can tell one from the other at a call site.
+ * separate types -- a brand is what tells them apart at a call site, and it
+ * matters more than the length does even though the two lengths now differ.
+ *
+ * Hybrid because X25519 alone is a discrete-log problem and a recorded seal
+ * would decrypt retroactively once that falls; see
+ * `platformProviders/shared/asymmetric.mts` for the full argument.
  *
  * Not versioned in itself. Every surface a key travels on carries a version of
  * its own (storageVersion in the vault, pairingVersion in a pairing payload,
@@ -18,7 +23,10 @@ export type DeviceId = Tagged<string, 'DeviceId'>
  */
 export type PublicKey = Tagged<string, 'PublicKey'>
 
-/** Represents a device's Ed25519 public key (base64 encoded, 32 raw bytes) */
+/**
+ * Represents a device's signing public key: Ed25519 ++ ML-DSA-65, concatenated
+ * in that order and base64 encoded (1984 raw bytes).
+ */
 export type SigningPublicKey = Tagged<string, 'SigningPublicKey'>
 
 /**
@@ -31,7 +39,10 @@ export type SigningPublicKey = Tagged<string, 'SigningPublicKey'>
  */
 export type DeviceFingerprint = Tagged<string, 'DeviceFingerprint'>
 
-/** Represents an Ed25519 signature (base64 encoded, 64 raw bytes) */
+/**
+ * Represents a composite signature: Ed25519 ++ ML-DSA-65, concatenated in that
+ * order and base64 encoded (3373 raw bytes). Both halves must verify.
+ */
 export type Signature = Tagged<string, 'Signature'>
 
 /** Represents a symmetric key */

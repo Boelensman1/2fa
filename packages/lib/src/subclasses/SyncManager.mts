@@ -823,6 +823,8 @@ class SyncManager {
         void this.finishAddDeviceFlowKeyExchangeResponder(
           pass3Result,
           data.kemPublicKey,
+        ).catch((err: unknown) =>
+          this.reportAbandonedAddDeviceFlow('completing the key exchange', err),
         )
         break
       }
@@ -838,6 +840,8 @@ class SyncManager {
           responderEncryptedPublicKeys,
           responderEncryptedDeviceInfo,
           kemCipherText,
+        ).catch((err: unknown) =>
+          this.reportAbandonedAddDeviceFlow('sending the vault', err),
         )
         break
       }
@@ -1447,6 +1451,29 @@ class SyncManager {
    * @param what - Which import failed, for the message.
    * @param err - The thrown value.
    */
+  /**
+   * Reports an add-device flow that was abandoned part way through.
+   *
+   * These two steps run from a server message, so nothing is awaiting them and
+   * a rejection has nowhere to go: before this existed it surfaced as an
+   * unhandled rejection, which in node takes the whole process down. That made
+   * the pairing key check a denial of service -- anyone able to relay a pass 3
+   * could crash a device simply by getting the check right.
+   *
+   * Reported at `error` rather than `warning`, unlike a failed vault import.
+   * The most likely way to get here is the digest mismatch, and that is not a
+   * mishap: it means the key relayed by the server is not the one the scanned
+   * code vouched for, which is what an attacker in the middle of a pairing
+   * looks like. The user needs to see it and start again.
+   * @param what - The step that was being attempted.
+   * @param err - Whatever it threw.
+   */
+  private reportAbandonedAddDeviceFlow(what: string, err: unknown) {
+    // eslint-disable-next-line no-restricted-globals
+    const detail = err instanceof Error ? err.message : 'unknown error'
+    this.log('error', `Add device flow abandoned while ${what}: ${detail}`)
+  }
+
   private reportFailedVaultImport(what: string, err: unknown) {
     // eslint-disable-next-line no-restricted-globals
     const detail = err instanceof Error ? err.message : 'unknown error'

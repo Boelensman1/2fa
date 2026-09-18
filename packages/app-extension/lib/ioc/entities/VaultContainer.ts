@@ -15,6 +15,7 @@ import {
 import IOC_TYPES from '../types'
 import Logger from '../../classes/Logger'
 import { clearDrafts } from '../../drafts'
+import { clearRememberOffers } from './RememberOfferRegistry'
 import creationUtils from '../../vault/creationUtils'
 import type {
   EntryList,
@@ -370,10 +371,12 @@ class VaultContainer {
     this.favaLib = null
     this.pairing = false
     await this.db.deleteSessionValue(SESSION_KEY)
-    // What the popup was in the middle of typing goes too: a lock is the user
-    // saying stop holding my things, and the drafts hold the sync server
-    // secret and a pairing code. `reset()` comes through here as well.
-    await clearDrafts()
+    // What the popup was in the middle of typing goes too, and any "remember
+    // this site?" question still waiting on a page: a lock is the user saying
+    // stop holding my things, and between them those hold the sync server
+    // secret, a pairing code, an entry label and a page url. `reset()` comes
+    // through here as well.
+    await Promise.all([clearDrafts(), clearRememberOffers()])
   }
 
   /** Forgets the vault entirely. Unrecoverable without another device. */
@@ -461,8 +464,8 @@ class VaultContainer {
    * the matcher list rather than merging into it, so the append is done here;
    * the encrypted save and the sync push both fall out of that one call.
    *
-   * The offer is the background's own (`siteOfferFor`), never the popup's
-   * word for it -- see `REMEMBER_ENTRY_SITE` in `handleMessage`.
+   * The offer is the background's own (`siteOfferFor`), never the caller's
+   * word for it -- see `ANSWER_REMEMBER_OFFER` in `handleMessage`.
    * @param entryId - The entry to extend.
    * @param offer - What to add, as the background decided it.
    */

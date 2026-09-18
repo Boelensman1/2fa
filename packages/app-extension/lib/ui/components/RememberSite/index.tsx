@@ -1,14 +1,14 @@
 import type { FC } from 'react'
 
-import type { ListedEntry, SiteOffer } from '@/lib/types'
+import type { RememberOfferView } from '@/lib/types'
 import Button from '../Button'
 
 interface RememberSiteProps {
-  entry: ListedEntry
-  offer: SiteOffer
-  /** True when the code went into an embedded frame rather than the page. */
-  inSubframe: boolean
+  offer: RememberOfferView
   busy: boolean
+  /** Shown in place of nothing when the write failed. Inside the panel, so it
+      lands on the panel's own background rather than on the page's. */
+  error: string | null
   onRemember: () => void
   onDismiss: () => void
 }
@@ -23,10 +23,16 @@ interface RememberSiteProps {
  * is the user editing matchers by hand in the pwa or the cli, which is why
  * entries go years without them.
  *
- * It follows `FillConfirm`'s shape, and deliberately not its tone. That one is
- * a warning and puts the safe answer first; this is a suggestion, and nothing
- * here can leak a code -- the matcher only decides where the entry is *offered*
- * later. So "Remember" is the primary and "Not now" sits under it.
+ * It is rendered **on the page**, in `entrypoints/remember`, and not in the
+ * popup where it started. A browser action popup is destroyed the moment it
+ * loses focus, and clicking the page to press Enter is the next thing anyone
+ * does after a fill -- so the popup put this question at the one moment it was
+ * certain to be dismissed unanswered.
+ *
+ * A suggestion, not a warning, and it is shaped that way: nothing here can leak
+ * a code -- the matcher only decides where the entry is *offered* later -- so
+ * "Remember" is the primary and "Not now" sits under it. `FillConfirm`, which
+ * is a warning, puts the safe answer first instead.
  *
  * The one thing it must not imply is that saying yes settles the embedded-frame
  * question: the matcher is for the page's host, so a fill into a third-party
@@ -34,27 +40,35 @@ interface RememberSiteProps {
  * discovered.
  */
 const RememberSite: FC<RememberSiteProps> = ({
-  entry,
   offer,
-  inSubframe,
   busy,
+  error,
   onRemember,
   onDismiss,
 }) => (
-  <div className="flex h-full flex-col">
-    <header className="border-b border-gray-200 px-4 py-3">
-      <h1 className="text-sm font-semibold text-gray-900">
+  <div className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg">
+    <header className="flex items-center gap-2 border-b border-gray-200 px-3 py-2">
+      <h1 className="flex-1 text-sm font-semibold text-gray-900">
         Remember this site?
       </h1>
+      {/* The same answer as "Not now", in the place a panel on someone else's
+          page is expected to put it. */}
+      <button
+        type="button"
+        onClick={onDismiss}
+        disabled={busy}
+        aria-label="Not now"
+        className="-mr-1 rounded px-1.5 text-lg leading-none text-gray-400 hover:text-gray-600 disabled:text-gray-300"
+      >
+        ×
+      </button>
     </header>
 
-    <div className="flex-1 space-y-3 overflow-y-auto p-4">
+    <div className="space-y-2 px-3 py-3">
       <p className="text-sm text-gray-700">
-        <span className="font-medium">
-          {entry.issuer || entry.name || 'That entry'}
-        </span>{' '}
-        is not listed for this site yet, so it does not appear under “For this
-        site” and the field on the page never offers it.
+        <span className="font-medium">{offer.entryLabel}</span> is not listed
+        for this site yet, so it does not appear under “For this site” and the
+        field on the page never offers it.
       </p>
       <p className="rounded-md bg-gray-50 p-2 font-mono text-xs break-all text-gray-900">
         {offer.matcher.type} {offer.matcher.value}
@@ -66,7 +80,7 @@ const RememberSite: FC<RememberSiteProps> = ({
           which is shown on the entry and never matched against.
         </p>
       )}
-      {inSubframe ? (
+      {offer.inSubframe ? (
         <p className="text-sm text-gray-700">
           The code went into an embedded frame on this page, and this remembers
           the page — not that frame. You will still be asked before a code goes
@@ -76,6 +90,7 @@ const RememberSite: FC<RememberSiteProps> = ({
     </div>
 
     <div className="space-y-2 border-t border-gray-200 p-3">
+      {error === null ? null : <p className="text-xs text-red-600">{error}</p>}
       <Button onClick={onRemember} disabled={busy}>
         Remember this site
       </Button>

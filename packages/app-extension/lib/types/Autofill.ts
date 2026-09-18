@@ -94,10 +94,10 @@ export interface SiteOffer {
   /**
    * The page url the offer is about, as the background resolved it.
    *
-   * Carried so the popup can hand it straight back when the user accepts. By
-   * then the page may well have submitted itself and navigated -- plenty of
-   * sites do, the moment the code is complete -- so re-reading it at that
-   * point would be reading a different page.
+   * Frozen at fill time and kept with the pending offer, rather than re-read
+   * when the answer arrives. By then the page may well have submitted itself
+   * and navigated -- plenty of sites do, the moment the code is complete -- so
+   * frame 0 would be reporting the page *after* login.
    */
   pageUrl: string
   /** `suggestMatchersForUrl`'s suggestion: a `BaseDomain` of the page's host. */
@@ -113,18 +113,32 @@ export interface SiteOffer {
 }
 
 /**
- * What the popup gets back from a fill.
+ * What the remember prompt is told about the question it is asking.
  *
- * `remember` is deliberately not a field on `FillResult`. That type travels to
- * the menu iframe, which is reachable from a tab; this half is the popup's and
- * is answered by an action the allowlist keeps a tab away from.
+ * Deliberately not the offer itself. It carries no entry id and no page url,
+ * so a stolen token buys a label and a matcher rather than the two things
+ * needed to name a different write -- and the answer says only yes or no, with
+ * the background recomputing what that means from the token it resolved.
  */
-export interface PopupFillResult extends FillResult {
-  /** Set only on a fill that succeeded and taught us something. */
-  remember?: SiteOffer | null
+export interface RememberOfferView {
+  /** What to call the entry on screen: its issuer, or its name. */
+  entryLabel: string
+  /** The matcher a yes would append, shown literally. */
+  matcher: UrlMatcher
+  /** The url a yes would record as the entry's site, or null to leave it. */
+  siteUrl: string | null
+  /** True when the code went into an embedded frame rather than the page. */
+  inSubframe: boolean
 }
 
-/** What the menu iframe may post up to the content script. */
+/**
+ * What an extension iframe may post up to the content script that mounted it.
+ *
+ * Shared by the autofill menu and the remember prompt: both are extension
+ * documents framed into a page, and both need exactly the same two things from
+ * their host. One constant rather than two, because the host identifies the
+ * sender by `event.source` and origin, never by this string.
+ */
 export const MENU_MESSAGE_SOURCE = 'fava-menu' as const
 
 /**

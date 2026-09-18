@@ -232,24 +232,37 @@ export interface FillDetectedFieldActionObject {
 }
 
 /**
- * The popup accepting the offer a successful fill came back with.
+ * The remember prompt asking what question it is showing.
+ *
+ * Reachable from a tab -- the prompt is a framed extension page, so it has a
+ * `sender.tab` like any other -- which is why the token is the whole of the
+ * authorisation and `RememberOfferRegistry.resolve` checks the tab as well.
+ * The answer is a {@link RememberOfferView}: a label, a matcher and a flag,
+ * with no entry id and no page url in it.
+ */
+export interface GetRememberOfferActionObject {
+  type: typeof BG_ACTION_KEYS.GET_REMEMBER_OFFER
+  data: { token: string }
+}
+
+/**
+ * The remember prompt answering it.
  *
  * The extension's only write into the vault, and the narrowest one that does
- * the job: it names an entry and a url, and the background derives the matcher
- * and the site url from that url itself, with `siteOfferFor` -- the same
- * function that produced the offer. Nothing the caller says can turn into a
- * matcher the background would not have suggested on its own.
+ * the job: the payload is a token and a boolean. Everything the write is made
+ * of -- which entry, which matcher, which site url -- comes from the offer the
+ * token resolves to, recomputed with `siteOfferFor`, the same function that
+ * produced it. Nothing the caller says can turn into a matcher the background
+ * would not have suggested on its own, which is what makes it safe for this to
+ * be answerable from a tab at all.
  *
- * The url *is* taken from the payload, like `LIST_ENTRIES`'s and unlike
- * `REPORT_OTP_FIELDS`'s: this action is popup-only -- see
- * `actionsReachableFromATab` in `background/handleMessage.ts` -- so there is no
- * untrusted page in the chain to lie about it. It is the page url the offer
- * named, echoed back rather than re-read, because a page that submitted itself
- * the moment the code was complete has already navigated by now.
+ * `remember: false` is sent too, rather than the prompt just vanishing: it
+ * retires the offer so the re-show after a navigation does not bring back a
+ * question the user has already declined.
  */
-export interface RememberEntrySiteActionObject {
-  type: typeof BG_ACTION_KEYS.REMEMBER_ENTRY_SITE
-  data: { entryId: EntryId; url: string }
+export interface AnswerRememberOfferActionObject {
+  type: typeof BG_ACTION_KEYS.ANSWER_REMEMBER_OFFER
+  data: { token: string; remember: boolean }
 }
 
 export interface GetPasswordStrengthActionObject {
@@ -279,6 +292,7 @@ export type BgActionObject =
   | ListEntriesActionObject
   | GetFillTargetActionObject
   | FillDetectedFieldActionObject
-  | RememberEntrySiteActionObject
+  | GetRememberOfferActionObject
+  | AnswerRememberOfferActionObject
   | GetTokenActionObject
   | GetPasswordStrengthActionObject

@@ -13,6 +13,8 @@ import type {
   FillResult,
   OtpFieldRegistry,
   OtpFieldReport,
+  RememberOfferRegistry,
+  RememberOfferView,
   SiteOffer,
   StateManager,
   VaultActionResult,
@@ -27,7 +29,7 @@ import { setVerboseLogging } from '../classes/Logger'
 import { describeVaultError } from '../ioc/entities/VaultContainer'
 
 import { isTrustedFrame, pickFillTarget, stillHoldsTarget } from './fillTarget'
-import { siteOfferFor } from './rememberSite'
+import { sameSiteHost, siteOfferFor } from './rememberSite'
 import handleDebugCommand from './handleDebugCommand'
 import { whenInitFinished } from './init'
 
@@ -71,6 +73,11 @@ const actionsThatMustNotWaitForInit: BgActionObject['type'][] = [
  * - `OPEN_`/`CLOSE_AUTOFILL_MENU` -- sent by the content script on focus
  * - `GET_MENU_ENTRIES`, `FILL_OTP_FIELD` -- sent by the menu iframe, and
  *   already gated on an unguessable per-tab offer token
+ * - `GET_REMEMBER_OFFER`, `ANSWER_REMEMBER_OFFER` -- sent by the remember
+ *   prompt iframe, gated on a token of its own. The second of those *writes to
+ *   the vault*, which is only acceptable because the payload is a boolean: the
+ *   matcher is rebuilt in the background from the offer the token resolves to,
+ *   so a caller who guessed a token still cannot choose what gets written
  *
  * Note that an extension page opened as an ordinary *tab* is refused too: it
  * has a `sender.tab` like anything else. That only reaches someone typing a
@@ -83,6 +90,8 @@ const actionsReachableFromATab: BgActionObject['type'][] = [
   BG_ACTION_KEYS.CLOSE_AUTOFILL_MENU,
   BG_ACTION_KEYS.GET_MENU_ENTRIES,
   BG_ACTION_KEYS.FILL_OTP_FIELD,
+  BG_ACTION_KEYS.GET_REMEMBER_OFFER,
+  BG_ACTION_KEYS.ANSWER_REMEMBER_OFFER,
 ]
 
 async function unboundHandleMessage(
@@ -91,12 +100,14 @@ async function unboundHandleMessage(
     configContainer,
     otpFieldRegistry,
     autofillOfferRegistry,
+    rememberOfferRegistry,
     vaultContainer,
   ]: [
     StateManager,
     ConfigContainer,
     OtpFieldRegistry,
     AutofillOfferRegistry,
+    RememberOfferRegistry,
     VaultContainer,
   ],
   action: BgActionObject,
@@ -202,6 +213,17 @@ async function unboundHandleMessage(
       // The debug view is still the only way to see what the heuristic did on
       // a real page; the fixture suite cannot answer that. The popup renders it.
       state.debugString = describeReport(otpFieldRegistry.forTab(tab.id))
+
+      // A submit takes the page, and the in-page remember prompt with it --
+      // the one weakness of asking here rather than in the popup. The offer
+      // outlives the navigation in session storage, so put it back on the page
+      // that loaded. Frame 0 only: the question is about the page.
+      //
+      // Not awaited. This handler's answer is the selector list a frame is
+      // waiting on to rescan, and a prompt is not worth delaying it for.
+      if ((frameId ?? 0) === 0) {
+        void reshowRememberPrompt(rememberOfferRegistry, tab.id, url ?? '')
+      }
 
       // The frame scanned without knowing the user's overrides, because only
       // the vault knows them. Handing them back lets it rescan with them --
@@ -445,29 +467,95 @@ async function unboundHandleMessage(
       // the popup offers every entry for any site, so very often it does not
       // claim the page at all. Asked about the *page*, never the frame that was
       // filled -- see `SiteOffer`.
-      return {
-        ...result,
-        remember: result.filled
-          ? entrySiteOffer(vaultContainer, entryId, pageUrl)
-          : null,
+      //
+      // Asked *on the page* rather than in the popup, which is where this used
+      // to live. A browser action popup is destroyed the moment it loses focus,
+      // and clicking the page to press Enter is the very next thing the user
+      // does after a fill -- so the question was being put at the one moment it
+      // was certain to be dismissed unanswered.
+      if (result.filled) {
+        await offerToRememberSite(rememberOfferRegistry, vaultContainer, {
+          tabId: target.tabId,
+          entryId,
+          pageUrl,
+          inSubframe: report.frameId !== 0,
+        })
       }
+
+      return result
     }
 
-    case BG_ACTION_KEYS.REMEMBER_ENTRY_SITE: {
-      const { entryId, url } = action.data
+    case BG_ACTION_KEYS.GET_REMEMBER_OFFER: {
+      const tabId = sender.tab?.id
+      if (tabId === undefined) return null
+
+      // `resolve` checks the tab as well as the token. `remember.html` is
+      // web-accessible, so a hostile site can frame it and ask; an unguessable
+      // token is the only thing that separates our prompt from theirs, since
+      // theirs is an extension page too.
+      const pending = await rememberOfferRegistry.resolve(
+        action.data.token,
+        tabId,
+      )
+      if (!pending) return null
+
+      // A label, a matcher and a flag. Never the entry id, never the page url:
+      // the prompt has no use for either, and a token that leaked should not
+      // come with the makings of a different write.
+      const view: RememberOfferView = {
+        entryLabel: pending.entryLabel,
+        matcher: pending.offer.matcher,
+        siteUrl: pending.offer.siteUrl,
+        inSubframe: pending.inSubframe,
+      }
+      return view
+    }
+
+    case BG_ACTION_KEYS.ANSWER_REMEMBER_OFFER: {
+      const tabId = sender.tab?.id
+      if (tabId === undefined) return { ok: false, error: 'No tab' }
+
+      const pending = await rememberOfferRegistry.resolve(
+        action.data.token,
+        tabId,
+      )
+      if (!pending) return { ok: false, error: 'That prompt has expired' }
+
+      // A no is an answer, and an answered offer must not be put back on the
+      // next page this tab loads.
+      if (!action.data.remember) {
+        await rememberOfferRegistry.close(pending.token, tabId)
+        return { ok: true, error: null }
+      }
+
       if (!vaultContainer.isUnlocked) {
         return { ok: false, error: 'The vault is locked' }
       }
 
-      return attempt(async () => {
-        // Recomputed rather than taken from the popup's answer, by the same
-        // function that built the offer: what is written is then what was
-        // offered, whatever the caller sent. A null offer is a no-op success --
-        // another device may have synced the matcher in while the prompt was
-        // up, and there is nothing left to do and nothing wrong.
-        const offer = entrySiteOffer(vaultContainer, entryId, url)
-        if (offer) await vaultContainer.addSiteToEntry(entryId, offer)
+      const written = await attempt(async () => {
+        // Recomputed rather than read back off the pending offer, by the same
+        // function that built it: what is written is then what was shown,
+        // whatever the caller sent -- and the caller sent a boolean anyway. A
+        // null offer is a no-op success: another device may have synced the
+        // matcher in while the prompt was up, and there is nothing left to do
+        // and nothing wrong.
+        const offer = entrySiteOffer(
+          vaultContainer,
+          pending.entryId,
+          pending.offer.pageUrl,
+        )
+        if (offer) {
+          await vaultContainer.addSiteToEntry(pending.entryId, offer)
+        }
       })
+
+      // Retired only once it has actually been written. A failed write leaves
+      // the prompt on screen saying so, and retiring the offer here would turn
+      // that into a dead panel whose button answers "expired" -- the user could
+      // unlock and try again, and nothing should stop them. A success does
+      // retire it, which is also what stops a second click appending twice.
+      if (written.ok) await rememberOfferRegistry.close(pending.token, tabId)
+      return written
     }
 
     case BG_ACTION_KEYS.GET_PASSWORD_STRENGTH: {
@@ -509,6 +597,87 @@ const entrySiteOffer = (
     matchers: entry.matchers,
     siteUrl: entry.url,
   })
+}
+
+/**
+ * Puts the "remember this site?" question on the page, if there is one to ask.
+ *
+ * Shaped like `entrySiteOffer`: the vault questions are answered here and the
+ * rule stays in the pure module. It fails quietly on purpose -- the fill has
+ * already succeeded and the code is in the field, so a page that cannot host
+ * the prompt should cost the user a matcher, never the fill.
+ * @param registry - Where the pending offer is kept.
+ * @param vaultContainer - The unlocked vault.
+ * @param about - The tab, the entry, the page url and where the code went.
+ */
+const offerToRememberSite = async (
+  registry: RememberOfferRegistry,
+  vaultContainer: VaultContainer,
+  about: {
+    tabId: number
+    entryId: EntryId
+    pageUrl: string | null
+    inSubframe: boolean
+  },
+): Promise<void> => {
+  const offer = entrySiteOffer(vaultContainer, about.entryId, about.pageUrl)
+  const entry = vaultContainer.entryFor(about.entryId)
+  if (!offer || !entry) return
+
+  const pending = await registry.open({
+    tabId: about.tabId,
+    entryId: about.entryId,
+    // Resolved here rather than in the prompt, which is never told the entry.
+    entryLabel: entry.issuer || entry.name || 'That entry',
+    offer,
+    inSubframe: about.inSubframe,
+    // The page it is about is also the page it is first shown on, so the
+    // re-show check below does not immediately fire on this same document.
+    shownOnUrl: offer.pageUrl,
+  })
+
+  // `true` is the frame confirming it mounted; anything else -- a null from a
+  // frame that is not listening, an undefined from a handler that threw -- is not.
+  const shown = await ctActions.showRememberPrompt(about.tabId, pending.token)
+  if (shown !== true) {
+    // Worth a line: from the user's side an offer that is never shown and an
+    // offer that was never made look identical, and this is the difference.
+    log.warn(
+      'Nothing answered SHOW_REMEMBER_PROMPT; the offer will expire unanswered.',
+    )
+  }
+}
+
+/**
+ * Puts an unanswered prompt back after the page navigated out from under it.
+ *
+ * The cost of asking on the page instead of in the popup: a submit replaces the
+ * document and takes the prompt with it, and submitting is exactly what the
+ * user does next. The offer itself is in session storage and survives, so the
+ * prompt is remounted when frame 0 reports from a page it has not been shown on.
+ *
+ * Both guards earn their place. `sameSiteHost` stops a prompt about one site
+ * appearing over another the user opened in the meantime, and the `shownOnUrl`
+ * comparison stops an SPA -- which re-reports on every dom change -- from
+ * remounting it on the document it is already sitting on.
+ * @param registry - Where the pending offer is kept.
+ * @param tabId - The reporting tab.
+ * @param url - Frame 0's url, as the browser supplied it.
+ */
+const reshowRememberPrompt = async (
+  registry: RememberOfferRegistry,
+  tabId: number,
+  url: string,
+): Promise<void> => {
+  const pending = await registry.forTab(tabId)
+  if (!pending) return
+  if (pending.shownOnUrl === url) return
+  if (!sameSiteHost(pending.offer.pageUrl, url)) return
+
+  // Marked before it is sent, so a frame that reports twice in quick
+  // succession cannot mount two prompts.
+  await registry.markShownOn(tabId, url)
+  await ctActions.showRememberPrompt(tabId, pending.token)
 }
 
 /**
@@ -591,6 +760,7 @@ const handleMessage = bindDependencies(unboundHandleMessage, [
   IOC_TYPES.ConfigContainer,
   IOC_TYPES.OtpFieldRegistry,
   IOC_TYPES.AutofillOfferRegistry,
+  IOC_TYPES.RememberOfferRegistry,
   IOC_TYPES.VaultContainer,
 ])
 

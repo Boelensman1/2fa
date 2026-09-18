@@ -66,6 +66,39 @@ const siteUrlFor = (url: string): string | null => {
 }
 
 /**
+ * Whether two urls name the same http(s) host.
+ *
+ * The one check on putting an unanswered prompt back after a navigation. A
+ * submit takes the page, and the prompt with it, so the offer is re-shown on
+ * the page that loads -- but only if it is the same site. Without this, a user
+ * who filled a code and then opened something else within the minute would get
+ * a prompt about the first site on top of the second, which reads as a bug.
+ *
+ * Host, not registrable domain: telling `bbc.co.uk` from `co.uk` needs a public
+ * suffix list and favalib carries none on purpose. Narrower means a prompt that
+ * does not come back after a redirect across hosts, never one that comes back
+ * somewhere it should not.
+ * @param a - One url.
+ * @param b - The other.
+ * @returns True when both parse as http(s) and their hosts are equal.
+ */
+export const sameSiteHost = (a: string, b: string): boolean => {
+  const hostOf = (url: string): string | null => {
+    try {
+      const parsed = new URL(url)
+      return parsed.protocol === 'http:' || parsed.protocol === 'https:'
+        ? parsed.host
+        : null
+    } catch {
+      return null
+    }
+  }
+
+  const host = hostOf(a)
+  return host !== null && host === hostOf(b)
+}
+
+/**
  * What to offer to remember after a fill, if anything.
  * @param question - See {@link SiteOfferQuestion}.
  * @returns The offer, or null when there is nothing to ask about.

@@ -189,13 +189,17 @@ beforeEach(async () => {
   sendMessage.mockReset()
   generateTokenForEntry.mockReset()
   updateEntry.mockReset()
-  // The fill path sends two different ct actions and reads both answers, so a
-  // single canned reply will not do.
+  // The fill path sends three different ct actions and reads every answer, so
+  // a single canned reply will not do. `SHOW_REMEMBER_PROMPT` answering `true`
+  // is a frame saying it put the prompt up; `null` is how the background learns
+  // it could not be shown.
   sendMessage.mockImplementation((_tabId: number, message: { type: string }) =>
     Promise.resolve(
       message.type === 'DETECT_OTP_FIELDS'
         ? [detectedField('otp-1')]
-        : { filled: true },
+        : message.type === 'SHOW_REMEMBER_PROMPT'
+          ? true
+          : { filled: true },
     ),
   )
   vaultContainer = container.get<VaultContainer>(IOC_TYPES.VaultContainer)
@@ -487,8 +491,8 @@ describe('who may send what', () => {
     { type: BG_ACTION_KEYS.UNLOCK_VAULT, data: { password: 'hunter2' } },
     { type: BG_ACTION_KEYS.GET_FILL_TARGET, data: { tabId: 7 } },
     {
-      type: BG_ACTION_KEYS.REMEMBER_ENTRY_SITE,
-      data: { entryId: 'a', url: 'https://elsewhere.example/login' },
+      type: BG_ACTION_KEYS.FILL_DETECTED_FIELD,
+      data: { target: {}, entryId: 'a' },
     },
   ]
 
@@ -549,6 +553,23 @@ const widgetSender = {
   url: 'https://widget.example/otp',
 }
 const popupSender = { url: 'popup.html' }
+/** The remember prompt: frame 0's shadow root, but an extension origin. */
+const promptSender = { tab: { id: 7 }, frameId: 0, url: 'remember.html' }
+
+/** The `SHOW_REMEMBER_PROMPT` the background pushed, if it pushed one. */
+const promptCall = () =>
+  sendMessage.mock.calls.find(
+    (args) =>
+      (args[1] as { type: string }).type ===
+      CT_ACTION_KEYS.SHOW_REMEMBER_PROMPT,
+  ) as [number, { data: { token: string } }, { frameId: number }] | undefined
+
+/** The token it handed over -- the prompt's whole authorisation. */
+const promptToken = () => promptCall()?.[1].data.token ?? ''
+
+/** What the prompt is shown, fetched with the token it was given. */
+const promptView = (token = promptToken(), sender: unknown = promptSender) =>
+  send({ type: BG_ACTION_KEYS.GET_REMEMBER_OFFER, data: { token } }, sender)
 
 const getFillTarget = () =>
   send(
@@ -651,9 +672,10 @@ describe('FILL_DETECTED_FIELD', () => {
     unlockWith([entryMeta('a')], '987654')
     const target = await openOn(pageSender)
 
-    // `remember: null` because this entry does claim github.com; the offer has
-    // its own tests below.
-    expect(await fill(target)).toEqual({ filled: true, remember: null })
+    // No prompt: this entry already claims github.com, so there is nothing to
+    // learn. The offer has its own tests below.
+    expect(await fill(target)).toEqual({ filled: true })
+    expect(promptCall()).toBeUndefined()
 
     const [confirm, deliver] = sendMessage.mock.calls as [
       [number, { type: string }, undefined],
@@ -686,26 +708,70 @@ describe('FILL_DETECTED_FIELD', () => {
   })
 
   /**
-   * The other half of that: the fill is the evidence, so the answer comes back
-   * with the offer to write it down.
+   * The other half of that: the fill is the evidence, so the question goes up
+   * on the page. The reply to the popup says nothing about it -- the popup is
+   * about to close, which is the whole reason this moved.
    */
-  it('offers to remember a page the entry does not claim', async () => {
+  it('puts the remember prompt on the page the entry does not claim', async () => {
     unlockWith([entryMeta('a')], '987654')
     const target = await openOn({
       ...pageSender,
       url: 'https://elsewhere.example/login?session=abc123',
     })
 
-    expect(await fill(target)).toEqual({
-      filled: true,
-      remember: {
-        pageUrl: 'https://elsewhere.example/login?session=abc123',
-        matcher: { type: 'BaseDomain', value: 'elsewhere.example' },
-        // Origin and path. The session id is not kept, and would be synced to
-        // every device the user has if it were.
-        siteUrl: 'https://elsewhere.example/login',
-      },
+    expect(await fill(target)).toEqual({ filled: true })
+    // Frame 0, never the frame that was filled: the question is about the page.
+    expect(promptCall()?.[2]).toEqual({ frameId: 0 })
+
+    expect(await promptView()).toEqual({
+      entryLabel: 'GitHub',
+      matcher: { type: 'BaseDomain', value: 'elsewhere.example' },
+      // Origin and path. The session id is not kept, and would be synced to
+      // every device the user has if it were.
+      siteUrl: 'https://elsewhere.example/login',
+      inSubframe: false,
     })
+  })
+
+  /**
+   * A label and a matcher, and nothing that would let a guessed token name a
+   * different write. The entry id and the page url stay in the background.
+   */
+  it('tells the prompt no entry id and no page url', async () => {
+    unlockWith([entryMeta('a')], '987654')
+    const target = await openOn({
+      ...pageSender,
+      url: 'https://elsewhere.example/login',
+    })
+    await fill(target)
+
+    expect(await promptView()).not.toHaveProperty('entryId')
+    expect(await promptView()).not.toHaveProperty('pageUrl')
+  })
+
+  /** The token is the whole of it, and it is scoped to the tab it was minted for. */
+  it('refuses a prompt token replayed from another tab', async () => {
+    unlockWith([entryMeta('a')], '987654')
+    const target = await openOn({
+      ...pageSender,
+      url: 'https://elsewhere.example/login',
+    })
+    await fill(target)
+
+    expect(
+      await promptView(promptToken(), { ...promptSender, tab: { id: 8 } }),
+    ).toBeNull()
+  })
+
+  it('refuses a guessed prompt token', async () => {
+    unlockWith([entryMeta('a')], '987654')
+    const target = await openOn({
+      ...pageSender,
+      url: 'https://elsewhere.example/login',
+    })
+    await fill(target)
+
+    expect(await promptView('not-the-token')).toBeNull()
   })
 
   it('leaves a site the entry already has alone', async () => {
@@ -718,7 +784,9 @@ describe('FILL_DETECTED_FIELD', () => {
       url: 'https://elsewhere.example/login',
     })
 
-    expect(await fill(target)).toMatchObject({ remember: { siteUrl: null } })
+    await fill(target)
+
+    expect(await promptView()).toMatchObject({ siteUrl: null })
   })
 
   /**
@@ -731,11 +799,13 @@ describe('FILL_DETECTED_FIELD', () => {
     await reportFrom({ ...pageSender, url: 'https://elsewhere.example/' }, [])
     const target = await openOn(widgetSender)
 
-    expect(await fill(target, 'a', true)).toMatchObject({
-      remember: {
-        pageUrl: 'https://elsewhere.example/',
-        matcher: { type: 'BaseDomain', value: 'elsewhere.example' },
-      },
+    await fill(target, 'a', true)
+
+    expect(await promptView()).toMatchObject({
+      matcher: { type: 'BaseDomain', value: 'elsewhere.example' },
+      // Said out loud in the prompt, so a yes is not read as settling the
+      // embedded-frame question `FillConfirm` asked.
+      inSubframe: true,
     })
   })
 
@@ -747,7 +817,8 @@ describe('FILL_DETECTED_FIELD', () => {
       url: 'https://github.com/otp-widget',
     })
 
-    expect(await fill(target)).toEqual({ filled: true, remember: null })
+    expect(await fill(target)).toEqual({ filled: true })
+    expect(promptCall()).toBeUndefined()
   })
 
   /**
@@ -811,10 +882,7 @@ describe('FILL_DETECTED_FIELD', () => {
     await reportFrom(pageSender, [])
     const target = await openOn(widgetSender)
 
-    expect(await fill(target, 'a', true)).toEqual({
-      filled: true,
-      remember: null,
-    })
+    expect(await fill(target, 'a', true)).toEqual({ filled: true })
   })
 
   /** The hosted second-factor widget: another origin, but one the entry names. */
@@ -826,33 +894,53 @@ describe('FILL_DETECTED_FIELD', () => {
       url: 'https://github.com/otp-widget',
     })
 
-    expect(await fill(target)).toEqual({ filled: true, remember: null })
+    expect(await fill(target)).toEqual({ filled: true })
+    expect(promptCall()).toBeUndefined()
   })
 })
 
 /**
  * The extension's only write into the vault.
  *
- * Every case here is about the same thing: what the popup sends is a url and
- * an id, and the background decides everything else -- with the same function
- * that built the offer, so what is saved is what was shown.
+ * Every case here is about the same thing: what the prompt sends is a token and
+ * a boolean, and the background decides everything else -- with the same
+ * function that built the offer, so what is saved is what was shown. That is
+ * what makes it safe for this action to be reachable from a tab at all.
  */
-describe('REMEMBER_ENTRY_SITE', () => {
-  const remember = (url: string, entryId = 'a') =>
-    send(
+describe('ANSWER_REMEMBER_OFFER', () => {
+  /** Mints a real offer the way production does: a fill on a page the entry does not claim. */
+  const offerFrom = async (
+    url = 'https://elsewhere.example/login?session=abc',
+    entryId = 'a',
+  ) => {
+    await reportFrom({ ...pageSender, url }, [detectedField('otp-1')])
+    const target = await getFillTarget()
+    sendMessage.mockClear()
+    await send(
       {
-        type: BG_ACTION_KEYS.REMEMBER_ENTRY_SITE,
-        data: { entryId: entryId as EntryId, url },
+        type: BG_ACTION_KEYS.FILL_DETECTED_FIELD,
+        data: { target, entryId: entryId as EntryId },
       },
       popupSender,
+    )
+    return promptToken()
+  }
+
+  const answer = (
+    token: string,
+    remember = true,
+    sender: unknown = promptSender,
+  ) =>
+    send(
+      { type: BG_ACTION_KEYS.ANSWER_REMEMBER_OFFER, data: { token, remember } },
+      sender,
     )
 
   it('appends the matcher and fills in the site', async () => {
     unlockWith([entryMeta('a')])
+    const token = await offerFrom()
 
-    expect(
-      await remember('https://elsewhere.example/login?session=abc'),
-    ).toEqual({ ok: true, error: null })
+    expect(await answer(token)).toEqual({ ok: true, error: null })
     // Appended, not replaced: `updateEntry` takes the whole list.
     expect(updateEntry).toHaveBeenCalledWith('a', {
       matchers: [
@@ -865,8 +953,9 @@ describe('REMEMBER_ENTRY_SITE', () => {
 
   it('does not overwrite a site the entry already has', async () => {
     unlockWith([entryMeta('a', { url: 'https://typed-by-hand.example/' })])
+    const token = await offerFrom('https://elsewhere.example/login')
 
-    await remember('https://elsewhere.example/login')
+    await answer(token)
 
     expect(updateEntry).toHaveBeenCalledWith(
       'a',
@@ -874,38 +963,207 @@ describe('REMEMBER_ENTRY_SITE', () => {
     )
   })
 
+  it('writes nothing when the answer is no', async () => {
+    unlockWith([entryMeta('a')])
+    const token = await offerFrom()
+
+    expect(await answer(token, false)).toEqual({ ok: true, error: null })
+    expect(updateEntry).not.toHaveBeenCalled()
+  })
+
+  /** A no is an answer, and an answered offer must not come back. */
+  it('retires the offer on a no', async () => {
+    unlockWith([entryMeta('a')])
+    const token = await offerFrom()
+
+    await answer(token, false)
+
+    expect(await promptView(token)).toBeNull()
+    expect(await answer(token)).toEqual({
+      ok: false,
+      error: 'That prompt has expired',
+    })
+    expect(updateEntry).not.toHaveBeenCalled()
+  })
+
+  /** And on a yes, which is what stops a second click appending twice. */
+  it('retires the offer once the write has landed', async () => {
+    unlockWith([entryMeta('a')])
+    const token = await offerFrom()
+
+    await answer(token)
+
+    expect(await answer(token)).toEqual({
+      ok: false,
+      error: 'That prompt has expired',
+    })
+    expect(updateEntry).toHaveBeenCalledTimes(1)
+  })
+
+  /**
+   * But a *failed* write must leave it answerable. The panel stays up saying
+   * what went wrong, and retiring the offer here would make its button answer
+   * "expired" -- the user can unlock and try again, and nothing should stop
+   * them.
+   */
+  it('keeps the offer alive when the write could not happen', async () => {
+    unlockWith([entryMeta('a')])
+    const token = await offerFrom()
+    loseTheKeys()
+
+    expect(await answer(token)).toEqual({
+      ok: false,
+      error: 'The vault is locked',
+    })
+
+    unlockWith([entryMeta('a')])
+    expect(await answer(token)).toEqual({ ok: true, error: null })
+    expect(updateEntry).toHaveBeenCalledTimes(1)
+  })
+
+  /**
+   * The token is the authorisation, and it is bound to one tab. A hostile
+   * frame of `remember.html` in some other tab cannot spend it.
+   */
+  it('refuses an answer from another tab, and writes nothing', async () => {
+    unlockWith([entryMeta('a')])
+    const token = await offerFrom()
+
+    expect(
+      await answer(token, true, { ...promptSender, tab: { id: 8 } }),
+    ).toEqual({ ok: false, error: 'That prompt has expired' })
+    expect(updateEntry).not.toHaveBeenCalled()
+  })
+
+  it('refuses a guessed token, and writes nothing', async () => {
+    unlockWith([entryMeta('a')])
+    await offerFrom()
+
+    expect(await answer('not-the-token')).toEqual({
+      ok: false,
+      error: 'That prompt has expired',
+    })
+    expect(updateEntry).not.toHaveBeenCalled()
+  })
+
   /**
    * A no-op success rather than an error: another device may have synced the
    * matcher in while the prompt was on screen, and the user asked for a state
    * that is now true.
    */
-  it('writes nothing when the entry already claims the page', async () => {
+  it('writes nothing when the entry has come to claim the page anyway', async () => {
     unlockWith([entryMeta('a')])
+    const token = await offerFrom('https://elsewhere.example/login')
+    // The matcher arrives from another device while the prompt is up.
+    unlockWith([
+      entryMeta('a', {
+        matchers: [
+          { type: 'BaseDomain', value: 'github.com' },
+          { type: 'BaseDomain', value: 'elsewhere.example' },
+        ],
+      }),
+    ])
+    const claimsEverything = internals(vaultContainer).favaLib
+    if (claimsEverything) {
+      claimsEverything.vault.findEntryMetasForUrl = () => [entryMeta('a')]
+    }
 
-    expect(await remember('https://github.com/2fa')).toEqual({
-      ok: true,
-      error: null,
-    })
+    expect(await answer(token)).toEqual({ ok: true, error: null })
     expect(updateEntry).not.toHaveBeenCalled()
   })
+})
 
-  it('writes nothing for an entry that is no longer there', async () => {
+/**
+ * Putting the prompt back after the page navigated out from under it.
+ *
+ * The cost of asking on the page rather than in the popup: pressing Enter
+ * submits, and the document that was holding the prompt is replaced. The offer
+ * itself is in session storage and survives, so the prompt is remounted when
+ * frame 0 next reports.
+ */
+describe('re-showing the prompt after a navigation', () => {
+  /**
+   * Lets the fire-and-forget re-show finish.
+   *
+   * `REPORT_OTP_FIELDS` deliberately does not await it -- its answer is the
+   * selector list the reporting frame is waiting on to rescan, and a prompt is
+   * not worth delaying that for. So the test waits instead, and the three
+   * negative cases below need it as much as the positive one: without it they
+   * would pass on timing rather than on the rule they are about.
+   */
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0))
+
+  const fillOn = async (url: string) => {
+    await reportFrom({ ...pageSender, url }, [detectedField('otp-1')])
+    await settle()
+    const target = await getFillTarget()
+    await send(
+      {
+        type: BG_ACTION_KEYS.FILL_DETECTED_FIELD,
+        data: { target, entryId: 'a' as EntryId },
+      },
+      popupSender,
+    )
+    const token = promptToken()
+    sendMessage.mockClear()
+    return token
+  }
+
+  it('shows it again on the page the submit landed on', async () => {
     unlockWith([entryMeta('a')])
+    const token = await fillOn('https://elsewhere.example/login')
 
-    expect(await remember('https://elsewhere.example/login', 'gone')).toEqual({
-      ok: true,
-      error: null,
-    })
-    expect(updateEntry).not.toHaveBeenCalled()
+    await reportFrom(
+      { ...pageSender, url: 'https://elsewhere.example/home' },
+      [],
+    )
+    await settle()
+
+    // Same offer, same token: the question did not change, only the document
+    // it is drawn on.
+    expect(promptCall()?.[1].data.token).toBe(token)
   })
 
-  it('says so rather than silently doing nothing on a locked vault', async () => {
-    loseTheKeys()
+  /**
+   * The guard that keeps this from being a bug of its own. A prompt about one
+   * site appearing over another the user opened in the meantime reads as the
+   * extension malfunctioning.
+   */
+  it('does not follow the tab to another site', async () => {
+    unlockWith([entryMeta('a')])
+    await fillOn('https://elsewhere.example/login')
 
-    expect(await remember('https://elsewhere.example/login')).toEqual({
-      ok: false,
-      error: 'The vault is locked',
-    })
-    expect(updateEntry).not.toHaveBeenCalled()
+    await reportFrom({ ...pageSender, url: 'https://unrelated.example/' }, [])
+    await settle()
+
+    expect(promptCall()).toBeUndefined()
+  })
+
+  /** An SPA re-reports on every dom change; one prompt per document, not per report. */
+  it('does not remount it on the document it is already on', async () => {
+    unlockWith([entryMeta('a')])
+    await fillOn('https://elsewhere.example/login')
+
+    await reportFrom(
+      { ...pageSender, url: 'https://elsewhere.example/login' },
+      [detectedField('otp-1')],
+    )
+    await settle()
+
+    expect(promptCall()).toBeUndefined()
+  })
+
+  /** Only the page asks this question, so only the page is asked it. */
+  it('ignores a report from an embedded frame', async () => {
+    unlockWith([entryMeta('a')])
+    await fillOn('https://elsewhere.example/login')
+
+    await reportFrom(
+      { ...widgetSender, url: 'https://elsewhere.example/w' },
+      [],
+    )
+    await settle()
+
+    expect(promptCall()).toBeUndefined()
   })
 })

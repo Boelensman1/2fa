@@ -9,6 +9,8 @@ import { observeOtpFields } from '../detect'
 import type { DetectedOtpFieldHandle, OtpFieldObserver } from '../detect'
 import { createAutofillMenu } from './autofillMenu'
 import type { AutofillMenu } from './autofillMenu'
+import { createRememberPrompt } from './rememberPrompt'
+import type { RememberPrompt } from './rememberPrompt'
 import { fillOtpField } from './fillField'
 import type {
   CtActionObject,
@@ -44,6 +46,8 @@ let owners = new WeakMap<Element, DetectedOtpFieldHandle>()
 
 let observer: OtpFieldObserver | null = null
 let menu: AutofillMenu | null = null
+/** Only ever mounted in frame 0; the background addresses it there. */
+let rememberPrompt: RememberPrompt | null = null
 
 /** The overrides this frame has already scanned with, so it rescans only on a change. */
 let usedInputSelectors: string[] = []
@@ -116,6 +120,15 @@ export const load = (ctx: ContentScriptContext): void => {
     handleForElement: (element) => owners.get(element),
   })
 
+  // ctx's timers, for the reason the observer's are: a timer left running after
+  // an extension reload fires against dead code on every open tab.
+  rememberPrompt = createRememberPrompt({
+    setTimeout: (callback, ms) => ctx.setTimeout(callback, ms),
+    clearTimeout: (id) => {
+      window.clearTimeout(id)
+    },
+  })
+
   observer = observeOtpFields({
     // ctx.setTimeout returns an ordinary timer id and is cleared with the
     // ordinary clearTimeout; what it adds is that the timer dies with the
@@ -150,6 +163,8 @@ export const load = (ctx: ContentScriptContext): void => {
   ctx.onInvalidated(() => {
     menu?.stop()
     menu = null
+    rememberPrompt?.stop()
+    rememberPrompt = null
     observer?.stop()
     observer = null
     handles.clear()
@@ -175,7 +190,9 @@ export const handleFor = (id: string): DetectedOtpFieldHandle | undefined =>
  */
 export const handleMessage = async (
   msg: CtActionObject,
-): Promise<DetectOtpFieldsResponse | FillOtpFieldResponse | undefined> => {
+): Promise<
+  DetectOtpFieldsResponse | FillOtpFieldResponse | true | undefined
+> => {
   switch (msg.type) {
     case CT_ACTION_KEYS.DETECT_OTP_FIELDS: {
       // Reporting is the point, not the return value. The background asks
@@ -225,8 +242,23 @@ export const handleMessage = async (
       return undefined
     }
 
+    case CT_ACTION_KEYS.SHOW_REMEMBER_PROMPT: {
+      // Sent to frame 0 only, so this never runs in an embedded widget. The
+      // token is meaningless to the page: the background will only serve it
+      // back into the tab it was minted for.
+      rememberPrompt?.show(msg.data.token)
+      // Answered, rather than left to time out, because `null` is how the
+      // background learns the prompt could not be shown at all.
+      return true
+    }
+
     case CT_ACTION_KEYS.EVENT_NOTIFICATION: {
-      if (msg.data.event === 'vaultStateChanged') menu?.close()
+      if (msg.data.event === 'vaultStateChanged') {
+        menu?.close()
+        // The pending offers went with the lock, so there is nothing to tell
+        // the background -- just take the question off the page.
+        rememberPrompt?.close('torn-down')
+      }
       return undefined
     }
   }

@@ -8,7 +8,18 @@
 
 import { MENU_MESSAGE_SOURCE } from '../types/Autofill'
 import type { MenuControlMessage } from '../types/Autofill'
-import type { MenuPosition } from './positionMenu'
+/**
+ * Where to put the host, in the frame's viewport.
+ *
+ * A subset of `MenuPosition` rather than that type itself: the remember prompt
+ * uses this host too and has no anchor and no placement to report, and the
+ * height is the iframe's to decide in both cases.
+ */
+export interface HostPosition {
+  top: number
+  left: number
+  width: number
+}
 
 /** A height outside this range is not a menu, whatever the iframe says. */
 const MIN_HEIGHT = 56
@@ -24,11 +35,21 @@ export interface MenuHostOptions {
   container: Element
   /** First paint, before the menu measures itself. */
   estimatedHeight: number
+  /**
+   * What the self-reported height is clamped to.
+   *
+   * Defaults to a menu's. The remember prompt is a different shape -- narrower
+   * and taller, with wrapping copy rather than a row list -- so it sets its
+   * own. Clamped either way: the height arrives by `postMessage`, and while it
+   * comes from our own page it is not worth trusting unconditionally.
+   */
+  minHeight?: number
+  maxHeight?: number
   onClose: () => void
 }
 
 export interface MenuHost {
-  place: (position: MenuPosition) => void
+  place: (position: HostPosition) => void
   /** Whether a node is the host, for outside-click and blur checks. */
   owns: (node: unknown) => boolean
   /** The menu's own measured height, once it has reported one. */
@@ -100,7 +121,14 @@ const menuOrigin = (src: string): string => {
  * @returns A handle to place, inspect and tear it down.
  */
 export const createMenuHost = (options: MenuHostOptions): MenuHost => {
-  const { src, container, estimatedHeight, onClose } = options
+  const {
+    src,
+    container,
+    estimatedHeight,
+    minHeight = MIN_HEIGHT,
+    maxHeight = MAX_HEIGHT,
+    onClose,
+  } = options
   const doc = container.ownerDocument
   const origin = menuOrigin(src)
 
@@ -149,7 +177,7 @@ export const createMenuHost = (options: MenuHostOptions): MenuHost => {
   container.append(host)
 
   let measured = estimatedHeight
-  let placement: MenuPosition | null = null
+  let placement: HostPosition | null = null
 
   const applyPlacement = () => {
     if (!placement) return
@@ -178,7 +206,7 @@ export const createMenuHost = (options: MenuHostOptions): MenuHost => {
 
     if ('height' in message && typeof message.height === 'number') {
       // Untrusted, even coming from our own page: clamp rather than trust.
-      measured = Math.min(Math.max(message.height, MIN_HEIGHT), MAX_HEIGHT)
+      measured = Math.min(Math.max(message.height, minHeight), maxHeight)
       applyPlacement()
     }
   }

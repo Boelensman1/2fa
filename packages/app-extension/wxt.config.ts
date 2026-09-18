@@ -29,9 +29,10 @@ export default defineConfig({
         "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'",
     },
     //host_permissions: ['https://www.google.com/*'],
-    // The inline autofill menu. The content script iframes this page into a
-    // closed shadow root on the page, which needs the page to be allowed to
-    // load it -- that is what web_accessible_resources grants.
+    // The two pages the content script iframes into a closed shadow root on
+    // the page: the inline autofill menu, and the "remember this site?" prompt
+    // that follows a fill. Framing them needs the page to be allowed to load
+    // them -- that is what web_accessible_resources grants.
     //
     // Must be the mv3 object form. wxt flattens it to mv2's plain string array
     // for the Firefox build, and throws outright if you write the string form
@@ -49,11 +50,13 @@ export default defineConfig({
     // script on every page, already announces the extension to anyone looking.
     // Worth revisiting together with that global, not before.
     //
-    // Framing the page is not itself an attack: the menu renders nothing
-    // without an offer token, which is unguessable and scoped to one tab. See
-    // `AutofillOfferRegistry`.
+    // Framing either page is not itself an attack: both render nothing without
+    // an offer token, which is unguessable and scoped to one tab, and both of
+    // the actions they can send are gated on one. See `AutofillOfferRegistry`
+    // and `RememberOfferRegistry` -- the second matters more, because the
+    // question it guards is answered by a write into the vault.
     web_accessible_resources: [
-      { resources: ['menu.html'], matches: ['<all_urls>'] },
+      { resources: ['menu.html', 'remember.html'], matches: ['<all_urls>'] },
     ],
     // Firefox only. Chrome treats browser_specific_settings as an
     // unrecognised key, and a manifest that ships keys the target browser does

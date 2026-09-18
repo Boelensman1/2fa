@@ -163,10 +163,16 @@ Writes are **not debounced**. The popup can be torn down between any two
 keystrokes, and that is the case being fixed; `storage.session` has no
 write-rate quota (that is `storage.sync`).
 
-Three things are deliberately _not_ drafted: `VaultTab`'s search query, because
-a stale one hides the entry the user came for; and `AuthenticatedApp`'s
-`confirming` and `remembering`, which are frozen snapshots of a live fill and
-must not outlive it.
+Two things are deliberately _not_ drafted: `VaultTab`'s search query, because a
+stale one hides the entry the user came for; and `AuthenticatedApp`'s
+`confirming`, which holds a `FillTarget` — a live frame id that a navigation can
+invalidate, which is exactly what `stillHoldsTarget` exists to catch.
+
+There used to be a third, `remembering`, and it is worth knowing where it went:
+[the question it held moved onto the page](#offering-to-remember-the-site),
+because no draft could have fixed it. The popup was asking at the one moment the
+user was certain to leave — they click the page to press Enter — so restoring it
+on the next open would have been asking again after the moment had passed.
 
 ## `lib/detect/` — the otp field heuristic
 
@@ -329,11 +335,20 @@ suggestion, not an authority.
 ### Who may send what
 
 A hostile frame of `menu.html` is the reason `lib/background/handleMessage.ts`
-opens with an allowlist, `actionsReachableFromATab`. Six actions are on it: the
+opens with an allowlist, `actionsReachableFromATab`. Eight actions are on it: the
 content script's `REPORT_OTP_FIELDS` and `SEND_LOG`, the two menu open/close
-actions, and the menu iframe's `GET_MENU_ENTRIES` and `FILL_OTP_FIELD`, which
-carry an offer token of their own. Everything else is refused when
-`sender.tab` is set.
+actions, the menu iframe's `GET_MENU_ENTRIES` and `FILL_OTP_FIELD`, and the
+remember prompt's `GET_REMEMBER_OFFER` and `ANSWER_REMEMBER_OFFER` — each pair
+carrying an offer token of its own. Everything else is refused when `sender.tab`
+is set.
+
+`ANSWER_REMEMBER_OFFER` is the one that **writes to the vault**, and it is on
+this list, which deserves a sentence rather than a raised eyebrow. Its payload is
+a token and a boolean. Every part of what gets written — which entry, which
+matcher, which site url — is rebuilt in the background from the offer the token
+resolves to, so a caller who somehow guessed a token still cannot choose what it
+writes; the most it can do is accept a suggestion the user was going to be shown
+anyway.
 
 `sender.tab` is filled in by the browser for anything running in a tab and is
 absent for an extension page in its own context, which is what the popup is. It
@@ -485,12 +500,71 @@ identity, which is the thing this whole design refuses.
 ### Offering to remember the site
 
 A popup fill very often lands on a page the entry does not claim -- that is the
-feature. So a fill that succeeded comes back carrying a `SiteOffer` when it
-did, and the popup asks once, instead of closing: keep it? Yes appends the
+feature. So a fill that succeeded is worth one question: keep it? Yes appends the
 `BaseDomain` matcher `suggestMatchersForUrl` suggests, and fills in
 `EntryMeta.url` when the entry has none -- origin and path, never the query,
 because a second-factor url routinely carries a session id and that string is
 stored in the vault and synced to every device.
+
+**The question is asked on the page, not in the popup.** That is the part worth
+reading before changing any of it.
+
+It was in the popup first, and it could not work there. A browser action popup is
+destroyed the moment it loses focus, and the very next thing anyone does after a
+fill is click the page to press Enter -- so the prompt was being put up at the
+one moment it was certain to be dismissed. An unanswered offer is a no, so the
+feature quietly never fired. Drafting it (`lib/drafts.ts`) would not have helped:
+it would have restored the question on the next popup open, after the moment had
+passed.
+
+Auto-submitting instead -- having the extension press Enter so the user never
+leaves the popup -- was considered and rejected. It fires only where the field is
+in a real `<form>`, and a large share of otp widgets submit from a button
+handler; where it does fire it risks a second submit of a single-use code on the
+many sites that submit themselves; and `fillOtpField` is shared with the inline
+menu, so it would have changed that too. `lib/content/fillField.ts` still
+submits nothing, deliberately.
+
+So: `entrypoints/remember` is a second extension page, framed into the page by
+the content script in a closed shadow root, exactly like the autofill menu.
+Bitwarden's notification bar is the reference for the mechanism -- **their
+autofill source is GPL-3.0 and must not be read while working on this**, see the
+note on `patterns.ts`. Theirs spans the top of the page; this is a fixed panel in
+the top-right corner, because a full-width bar covers the page's own header,
+which on a second-factor screen is usually what the user is looking at.
+
+```
+                    ┌──────────────────────────┐
+                    │ Remember this site?     ×│
+  page              │ GitHub is not listed for │
+                    │ this site yet…           │
+                    │ BaseDomain github.com    │
+                    │ [  Remember this site  ] │
+                    │ [       Not now        ] │
+                    └──────────────────────────┘
+```
+
+Four rules hold it together.
+
+- **It never takes focus.** The user is on their way to pressing Enter, and
+  standing between them and that key is the whole problem this moved to fix. No
+  autofocus in the page; Escape is handled by a capturing listener in the content
+  script, not inside the iframe, because the keystroke lands on the page.
+- **Both answers are sent.** `ANSWER_REMEMBER_OFFER` carries `remember: false`
+  for a no, the ✕ and Escape, and the content script sends one on the 60s
+  timeout. Silence would leave the offer pending and put the prompt back on the
+  next page the tab loads. The offer is retired on a no, and on a yes **only
+  once the write has landed** -- a failed write leaves the panel up saying so,
+  and retiring it there would make its own button answer "expired" to a user who
+  unlocked and tried again.
+- **The token is the whole authorisation.** `remember.html` is web-accessible, so
+  any site can frame it, and such a frame _is_ an extension context with a
+  `sender.tab` -- the same threat `AutofillOfferRegistry` documents, with a
+  sharper edge, because answering yes writes to the vault. `RememberOfferRegistry`
+  mints a `crypto.randomUUID()` and `resolve` checks the tab as well as the token.
+- **The prompt is told a label, a matcher and a flag** -- never the entry id and
+  never the page url. A token that leaked buys a question, not the makings of a
+  different write.
 
 **The matcher is for the page's host, never the frame that was filled.** A
 matcher naming an embedded third party's origin would make `isTrustedFrame`'s
@@ -502,23 +576,47 @@ to be discovered.
 The rule is `background/rememberSite.ts`: pure, beside `fillTarget.ts` for the
 reason that file gives, and shaped like `isTrustedFrame` -- the vault question
 (`entryClaimsPage`) is answered by the caller. It is called **twice**, and that
-is the point. `REMEMBER_ENTRY_SITE` carries an entry id and a url and nothing
-else; the background re-derives the matcher and the site url with the same
-function that built the offer, so what is written is what was shown.
+is the point. The answer carries a token and a boolean and nothing else; the
+background re-derives the matcher and the site url with the same function that
+built the offer, so what is written is what was shown.
 
-The url is echoed back from the offer rather than re-read from the registry,
+The page url is frozen on the offer rather than re-read when the answer arrives,
 because plenty of sites submit themselves the moment the code is complete: by
-the time the user answers, frame 0 may be reporting the page _after_ login.
+then, frame 0 is reporting the page _after_ login.
 
-This is the package's first write into the vault. `VaultContainer.addSiteToEntry`
+This is the package's only write into the vault. `VaultContainer.addSiteToEntry`
 is the only mutator there is, and `updateEntry` replaces the matcher list
 rather than merging into it, so the append happens there; the encrypted save
 and the sync push both fall out of that one call.
 
-It also means the popup's auto-close waits on an answer. Closing behind the
-toast exists because the popup is standing between the user and the page's own
-submit button, and the offer is the one thing worth that delay. An unanswered
-offer is a no: clicking the page dismisses the popup and drops it.
+#### The offer outlives the page, and the worker
+
+`RememberOfferRegistry` is the one registry here that is **not** in memory, and
+that is the difference from `AutofillOfferRegistry` rather than an oversight. It
+lives in `Db`'s `session:` area -- memory-backed, never on disk, wiped when the
+browser closes, unreadable from content scripts, the same contract as the
+unlocked session blob and `lib/drafts.ts`. Two reasons, and either alone would
+be enough. The offer lives 60s and mv3 evicts the worker after ~30s idle, so an
+in-memory offer would routinely be gone before its own buttons were pressed. And
+pressing Enter navigates the page, which destroys the prompt.
+
+That second one is why `REPORT_OTP_FIELDS` has a tail on it. When frame 0 reports
+and a pending offer exists for that tab, the prompt goes back up -- guarded by
+`sameSiteHost`, so a question about one site never appears over another the user
+opened in the meantime, and by `shownOnUrl`, so an SPA re-reporting on every dom
+change does not remount it on the document it is already on. The re-show is not
+awaited: the handler's answer is the selector list the reporting frame is waiting
+on, and a prompt is not worth delaying that for.
+
+It is dropped on a vault lock, from `VaultContainer.lock()` beside `clearDrafts()`
+-- not from `handleMessage`, because `restoreSession()`'s failure path reaches
+`lock()` without going through a message at all.
+
+The one thing lost by moving off the popup: a page whose CSP refuses to frame an
+extension resource gets no prompt, and the offer expires unanswered. The inline
+menu has carried that same exposure since it shipped. The background logs a line
+when nothing answers `SHOW_REMEMBER_PROMPT`, because from the user's side an
+offer never shown and an offer never made look identical.
 
 ## Development commands
 
@@ -579,6 +677,11 @@ about:debugging → Load Temporary Add-on → `.output/firefox-mv2/manifest.json
 where every script is bundled into the extension and nothing reaches for
 localhost. `make dev` remains fine for the popup, the background and detection.
 
+**`remember.html` has exactly the same problem**, for exactly the same reason: it
+is an extension document framed by a web page, so its top-level site is the page.
+Under `make dev` on Firefox the prompt mounts, sizes itself from the estimate and
+renders nothing. Test it from a production build too.
+
 ## Package-specific configuration
 
 Unlike the other packages, this one keeps its own `eslint.config.mjs` (built on
@@ -630,7 +733,7 @@ and are referenced as `"typescript": "catalog:"`.
   to take `Logger` and `bgActions` from it, and that alone put **2.7MB** of
   vault code into `content-scripts/content.js`, injected into every frame of
   every page. It imports `../classes/Logger` and `../state` directly for that
-  reason; the content script is ~25kB. Check the build's size table after
+  reason; the content script is ~27kB. Check the build's size table after
   touching those imports. The same rule is why the autofill menu is an iframe
   rather than a react root in the shadow root — React and the components stay
   in `menu.html`'s chunk, which loads only when someone focuses an otp field.
@@ -669,6 +772,11 @@ and are referenced as `"typescript": "catalog:"`.
   re-reported. Re-anchoring also keeps `onFocusOut`'s identity check
   (`handleForElement(active) === openFor`) true; without it a rescan while the
   menu is up makes the next focus event look like focus leaving the field.
+- **`web_accessible_resources` lists two pages**, `menu.html` and
+  `remember.html`, and both are framed into arbitrary sites by the content
+  script. Anything added here can be framed by any page and answers as an
+  extension context, so it needs a token-gated story of its own before it goes
+  on the list.
 - **`web_accessible_resources` must be written in the mv3 object form.** wxt
   flattens it to mv2's plain string array for the Firefox build and throws
   outright if you write the string form yourself. `use_dynamic_url` is

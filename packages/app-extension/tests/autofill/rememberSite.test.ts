@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { MAX_MATCHERS_PER_ENTRY, MAX_URL_LENGTH } from 'favalib'
 import type { UrlMatcher } from 'favalib'
 
-import { siteOfferFor } from '../../lib/background/rememberSite'
+import { sameSiteHost, siteOfferFor } from '../../lib/background/rememberSite'
 
 /**
  * What a popup fill offers to write into the vault.
@@ -109,5 +109,57 @@ describe('siteOfferFor', () => {
         siteUrl: null,
       })
     })
+  })
+})
+
+/**
+ * The one guard on putting an unanswered prompt back after a navigation.
+ *
+ * Too loose and a question about one site appears over another the user opened
+ * in the meantime, which reads as the extension malfunctioning. Too tight and
+ * the prompt does not survive the redirect a login performs, which is the
+ * whole case it exists for.
+ */
+describe('sameSiteHost', () => {
+  it('follows a redirect within one host', () => {
+    expect(
+      sameSiteHost('https://github.com/login', 'https://github.com/dashboard'),
+    ).toBe(true)
+  })
+
+  it('does not follow the tab to another site', () => {
+    expect(
+      sameSiteHost('https://github.com/login', 'https://unrelated.example/'),
+    ).toBe(false)
+  })
+
+  /**
+   * Host, not registrable domain. Telling `bbc.co.uk` from `co.uk` needs a
+   * public suffix list and favalib carries none on purpose, so a subdomain is
+   * treated as a different site -- a prompt that does not come back, never one
+   * that comes back somewhere it should not.
+   */
+  it('treats a subdomain as another site', () => {
+    expect(
+      sameSiteHost('https://github.com/login', 'https://gist.github.com/'),
+    ).toBe(false)
+  })
+
+  it('tells ports and schemes apart the way the url does', () => {
+    expect(
+      sameSiteHost('https://example.com:8443/a', 'https://example.com/a'),
+    ).toBe(false)
+    expect(sameSiteHost('http://example.com/a', 'https://example.com/a')).toBe(
+      true,
+    )
+  })
+
+  it.each([
+    ['about:blank', 'https://github.com/'],
+    ['https://github.com/', 'moz-extension://uuid/remember.html'],
+    ['not a url', 'https://github.com/'],
+    ['', ''],
+  ])('refuses %s against %s', (a, b) => {
+    expect(sameSiteHost(a, b)).toBe(false)
   })
 })

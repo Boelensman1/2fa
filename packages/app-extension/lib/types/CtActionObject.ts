@@ -6,10 +6,10 @@ import type { FillResult } from './Autofill'
 /**
  * Things the background tells every frame about, fire and forget.
  *
- * `vaultStateChanged` exists for exactly one job: closing a menu that is
- * already open when the vault locks. Everything else about the offer is
- * fetched on focus, so there is no cached state anywhere that needs
- * invalidating.
+ * `vaultStateChanged` exists for exactly one job: taking down whatever this
+ * frame has on screen -- an open menu, an unanswered remember prompt -- when
+ * the vault locks. Everything else about an offer is fetched on demand, so
+ * there is no cached state anywhere that needs invalidating.
  */
 export type CTEvent = 'configUpdated' | 'vaultStateChanged'
 export interface EventNotificationCTActionObject {
@@ -63,11 +63,30 @@ export interface CloseAutofillMenuCTActionObject {
   type: typeof CT_ACTION_KEYS.CLOSE_AUTOFILL_MENU
 }
 
+/**
+ * The background asking the *page's own* frame to put the remember prompt up.
+ *
+ * Sent to `{ frameId: 0 }` and nowhere else. The question is about the page,
+ * never about the frame the code went into -- see `SiteOffer` -- and frame 0 is
+ * also the only frame with a viewport the user is looking at.
+ *
+ * It carries a token and nothing else, for the same reason
+ * `OPEN_AUTOFILL_MENU`'s answer does: the content script shares a realm with
+ * the page, and the entry label lives on the other side of the iframe's origin
+ * boundary. The token is meaningless to the page -- it names an offer the
+ * background will only serve back into the tab it was minted for.
+ */
+export interface ShowRememberPromptCTActionObject {
+  type: typeof CT_ACTION_KEYS.SHOW_REMEMBER_PROMPT
+  data: { token: string }
+}
+
 export type CtActionObject =
   | EventNotificationCTActionObject
   | DetectOtpFieldsCTActionObject
   | FillOtpFieldCTActionObject
   | CloseAutofillMenuCTActionObject
+  | ShowRememberPromptCTActionObject
 
 export type DetectOtpFieldsResponse = DetectedOtpField[]
 export type FillOtpFieldResponse = FillResult

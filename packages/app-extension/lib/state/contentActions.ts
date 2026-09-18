@@ -7,6 +7,7 @@ import type {
   EventNotificationCTActionObject,
   FillOtpFieldCTActionObject,
   FillOtpFieldResponse,
+  ShowRememberPromptCTActionObject,
   CTEvent,
 } from '../types'
 
@@ -15,6 +16,7 @@ export const CT_ACTION_KEYS = {
   DETECT_OTP_FIELDS: 'DETECT_OTP_FIELDS' as const,
   FILL_OTP_FIELD: 'FILL_OTP_FIELD' as const,
   CLOSE_AUTOFILL_MENU: 'CLOSE_AUTOFILL_MENU' as const,
+  SHOW_REMEMBER_PROMPT: 'SHOW_REMEMBER_PROMPT' as const,
 }
 
 type TabIdOpt = number | undefined
@@ -101,6 +103,23 @@ const actions = {
       tabId,
       { type: CT_ACTION_KEYS.CLOSE_AUTOFILL_MENU },
       target,
+    ),
+  /**
+   * Asks the page's own frame to put the remember prompt up.
+   *
+   * Targeted at frame 0 rather than broadcast, and not because the token is
+   * secret -- it is useless outside the tab it was minted for. The prompt is
+   * about the *page*, so a copy of it in every embedded widget would be three
+   * prompts asking one question, each in a box too small to read it.
+   *
+   * Resolves to `null` when nothing answered, which is how the background
+   * learns the prompt could not be shown.
+   */
+  showRememberPrompt: (tabId: TabIdOpt, token: string) =>
+    send<ShowRememberPromptCTActionObject, true>(
+      tabId,
+      { type: CT_ACTION_KEYS.SHOW_REMEMBER_PROMPT, data: { token } },
+      { frameId: 0 },
     ),
 }
 

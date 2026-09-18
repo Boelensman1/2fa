@@ -23,8 +23,9 @@ import type {
   FillOtpFieldActionObject,
   FillResult,
   FillTarget,
-  PopupFillResult,
-  RememberEntrySiteActionObject,
+  RememberOfferView,
+  GetRememberOfferActionObject,
+  AnswerRememberOfferActionObject,
   GetFillTargetActionObject,
   GetMenuEntriesActionObject,
   ListedEntry,
@@ -73,7 +74,8 @@ export const BG_ACTION_KEYS = {
 
   GET_FILL_TARGET: 'GET_FILL_TARGET' as const,
   FILL_DETECTED_FIELD: 'FILL_DETECTED_FIELD' as const,
-  REMEMBER_ENTRY_SITE: 'REMEMBER_ENTRY_SITE' as const,
+  GET_REMEMBER_OFFER: 'GET_REMEMBER_OFFER' as const,
+  ANSWER_REMEMBER_OFFER: 'ANSWER_REMEMBER_OFFER' as const,
 }
 
 const send = <T extends BgActionObject, U = void>(arg: T): Promise<U | null> =>
@@ -232,25 +234,36 @@ const actions = {
     target: FillTarget,
     entryId: EntryId,
     confirmed = false,
-  ): Promise<PopupFillResult | null> =>
-    send<FillDetectedFieldActionObject, PopupFillResult>({
+  ): Promise<FillResult | null> =>
+    send<FillDetectedFieldActionObject, FillResult>({
       type: BG_ACTION_KEYS.FILL_DETECTED_FIELD,
       data: { target, entryId, confirmed },
     }),
   /**
-   * Accepts the offer a fill came back with.
+   * Asks what question the remember prompt is showing.
    *
-   * The url is the page's, echoed back from the offer rather than looked up
-   * again: the site may well have submitted the form itself the moment the
-   * code was complete, and the background re-derives everything else from it.
+   * Sent from the prompt iframe, which knows only its token. The reply names
+   * no entry and no url -- see {@link RememberOfferView}.
    */
-  rememberEntrySite: (
-    entryId: EntryId,
-    url: string,
+  getRememberOffer: (token: string): Promise<RememberOfferView | null> =>
+    send<GetRememberOfferActionObject, RememberOfferView>({
+      type: BG_ACTION_KEYS.GET_REMEMBER_OFFER,
+      data: { token },
+    }),
+  /**
+   * Answers it.
+   *
+   * A boolean, not an offer: what a yes writes is rebuilt in the background
+   * from the offer the token resolves to. A no is worth sending -- it retires
+   * the offer, so it is not put back on the next page the tab loads.
+   */
+  answerRememberOffer: (
+    token: string,
+    remember: boolean,
   ): Promise<VaultActionResult | null> =>
-    send<RememberEntrySiteActionObject, VaultActionResult>({
-      type: BG_ACTION_KEYS.REMEMBER_ENTRY_SITE,
-      data: { entryId, url },
+    send<AnswerRememberOfferActionObject, VaultActionResult>({
+      type: BG_ACTION_KEYS.ANSWER_REMEMBER_OFFER,
+      data: { token, remember },
     }),
 }
 

@@ -5,6 +5,7 @@ import { setVerboseLogging } from '../classes/Logger'
 import type {
   AutofillOfferRegistry,
   ConfigContainer,
+  RememberOfferRegistry,
   Db,
   OtpFieldRegistry,
   StateManager,
@@ -33,9 +34,15 @@ const runInit = async () => {
     const offers = container.get<AutofillOfferRegistry>(
       IOC_TYPES.AutofillOfferRegistry,
     )
+    const rememberOffers = container.get<RememberOfferRegistry>(
+      IOC_TYPES.RememberOfferRegistry,
+    )
     browser.tabs.onRemoved.addListener((tabId) => {
       registry.forgetTab(tabId)
       offers.forgetTab(tabId)
+      // Async, unlike the other two: this one is in session storage so that a
+      // pending question survives the worker being evicted. Nothing waits on it.
+      void rememberOffers.forgetTab(tabId)
     })
 
     // mv3 evicts this worker after ~30s idle, so a popup opening a minute

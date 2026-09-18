@@ -16,5 +16,7 @@ export type {
   OtpFieldReport,
   AutofillOfferRegistry,
   AutofillOffer,
+  RememberOfferRegistry,
+  RememberOffer,
   VaultContainer,
 } from '../ioc/entities'

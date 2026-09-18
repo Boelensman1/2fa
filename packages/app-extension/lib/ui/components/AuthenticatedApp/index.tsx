@@ -4,17 +4,11 @@ import { useCallback, useRef, useState } from 'react'
 import { bgActions } from '@/lib/state'
 import { closeSyncServerEditor, popupTabDraft } from '@/lib/drafts'
 import Logger from '@/lib/classes/Logger'
-import type {
-  FillTarget,
-  ListedEntry,
-  SiteOffer,
-  VaultSummary,
-} from '@/lib/types'
+import type { FillTarget, ListedEntry, VaultSummary } from '@/lib/types'
 import { useActiveTab, useDraft, useFillTarget } from '../../hooks'
 import { describeFillFailure } from '../../fillMessages'
 import EntryDetail from '../EntryDetail'
 import FillConfirm from '../FillConfirm'
-import RememberSite from '../RememberSite'
 import SettingsTab from '../SettingsTab'
 import Splash from '../Splash'
 import TabBar, { type TabId } from '../TabBar'
@@ -38,9 +32,10 @@ const AuthenticatedApp: FC<AuthenticatedAppProps> = ({
   /**
    * Which tab was open, kept across the popup closing.
    *
-   * `selected`, `confirming` and `remembering` below are deliberately not:
-   * the latter two are frozen snapshots of a live fill and must not outlive
-   * it, and a restored detail view would hide the list the popup is for.
+   * `selected` and `confirming` below are deliberately not: `confirming` holds
+   * a `FillTarget`, a live frame id a navigation can invalidate -- which is
+   * what `stillHoldsTarget` exists to catch -- and a restored detail view would
+   * hide the list the popup is for.
    */
   const [tab, setTab, { ready }] = useDraft<TabId>(popupTabDraft, 'vault')
   const [selected, setSelected] = useState<ListedEntry | null>(null)
@@ -55,19 +50,6 @@ const AuthenticatedApp: FC<AuthenticatedAppProps> = ({
     entry: ListedEntry
     target: FillTarget
   } | null>(null)
-  /**
-   * Set when a fill just succeeded and the entry did not claim the page.
-   *
-   * Frozen like `confirming`, and for a second reason as well: by the time
-   * this is up the page may have submitted itself and navigated, so the url
-   * the offer was made about is no longer anything that can be looked up.
-   */
-  const [remembering, setRemembering] = useState<{
-    entry: ListedEntry
-    offer: SiteOffer
-    inSubframe: boolean
-  } | null>(null)
-  const [savingSite, setSavingSite] = useState(false)
   const activeTab = useActiveTab()
   const fillTarget = useFillTarget(activeTab?.id)
   const [toast, setToast] = useState<{
@@ -154,18 +136,18 @@ const AuthenticatedApp: FC<AuthenticatedAppProps> = ({
             result.reason ? describeFillFailure(result.reason) : 'Code filled',
           )
 
-          const offer = result.remember
-          if (offer) {
-            // The one thing worth holding the popup open for. Everything below
-            // says why it normally is not.
-            setRemembering({ entry, offer, inSubframe: target.inSubframe })
-            return
-          }
-
           // Close behind the toast: the code is in the field, and the popup is
           // now standing between the user and the button they are about to
           // press. Deliberately not immediate, so "did that work?" has an
           // answer other than the popup vanishing.
+          //
+          // Nothing is asked here any more. A fill that lands on a page the
+          // entry does not claim is still worth a question -- it is how an
+          // entry ever gets a matcher -- but the background now puts that
+          // question on the page, where it survives this popup closing. Asking
+          // it here meant asking at the one moment the user was certain to
+          // dismiss it: they click the page to press Enter, and that destroys
+          // the popup. See `offerToRememberSite` in `background/handleMessage`.
           setTimeout(() => window.close(), TOAST_MS)
           return
         }
@@ -183,43 +165,6 @@ const AuthenticatedApp: FC<AuthenticatedAppProps> = ({
     (entry: ListedEntry) => void fill(entry, fillTarget),
     [fill, fillTarget],
   )
-
-  /**
-   * Answers the offer, then gets out of the way.
-   *
-   * Both answers close the popup, because the fill has already happened and
-   * the user is on their way to the page's own submit button. A third outcome
-   * -- ignoring it -- closes the popup too, since clicking the page is what
-   * dismisses a popup; an unanswered offer is a no, which is the right default
-   * for something that writes to the vault.
-   */
-  const remember = useCallback(async () => {
-    if (!remembering) return
-    setSavingSite(true)
-    try {
-      const result = await bgActions.rememberEntrySite(
-        remembering.entry.id,
-        remembering.offer.pageUrl,
-      )
-      if (result?.ok === true) {
-        showToast('Site remembered')
-      } else {
-        showToast(result?.error ?? 'Could not save that', 'error')
-      }
-    } catch (error) {
-      log.error(error instanceof Error ? error : new Error(String(error)))
-      showToast('Could not save that', 'error')
-    } finally {
-      setSavingSite(false)
-      setRemembering(null)
-      setTimeout(() => window.close(), TOAST_MS)
-    }
-  }, [remembering, showToast])
-
-  const dismissOffer = useCallback(() => {
-    setRemembering(null)
-    setTimeout(() => window.close(), TOAST_MS)
-  }, [])
 
   /**
    * Switching tabs is leaving the sync server form, not stepping out of it.
@@ -246,15 +191,6 @@ const AuthenticatedApp: FC<AuthenticatedAppProps> = ({
       <div className="min-h-0 flex-1">
         {!ready ? (
           <Splash />
-        ) : remembering ? (
-          <RememberSite
-            entry={remembering.entry}
-            offer={remembering.offer}
-            inSubframe={remembering.inSubframe}
-            busy={savingSite}
-            onRemember={() => void remember()}
-            onDismiss={dismissOffer}
-          />
         ) : confirming ? (
           <FillConfirm
             entry={confirming.entry}
@@ -293,10 +229,10 @@ const AuthenticatedApp: FC<AuthenticatedAppProps> = ({
 
       <Toast message={toast?.message ?? null} tone={toast?.tone} />
 
-      {/* Hidden behind the detail view and the two fill questions: all of them
-          are drill-downs from the vault tab, not third destinations, so a
+      {/* Hidden behind the detail view and the fill confirmation: both are
+          drill-downs from the vault tab, not third destinations, so a
           highlighted tab there would lie. */}
-      {!ready || selected || confirming || remembering ? null : (
+      {!ready || selected || confirming ? null : (
         <TabBar active={tab} onChange={changeTab} />
       )}
     </div>

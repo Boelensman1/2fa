@@ -7,6 +7,7 @@ class ConnectCommand extends BaseCommand {
   static override paths = [['sync', 'connect']]
   requireFavaLib = true
   override requiresSyncConnection = true
+  override requiresLiveSyncConnection = true
 
   static usage = BaseCommand.Usage({
     category: 'Sync',

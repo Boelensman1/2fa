@@ -13,11 +13,13 @@ import EntriesSearchCommand from './commands/entries/search.mjs'
 import EntriesGetTokenByIdCommand from './commands/entries/getTokenById.mjs'
 import SyncSetServerUrlCommand from './commands/sync/setServerUrl.mjs'
 import SyncConnect from './commands/sync/connect.mjs'
+import SyncAddDevice from './commands/sync/addDevice.mjs'
 import SyncResilver from './commands/sync/resilver.mjs'
 import SyncListDevices from './commands/sync/listDevices.mjs'
 import SyncRemoveDeviceCommand from './commands/sync/removeDevice.mjs'
 import SyncSetFriendlyNameCommand from './commands/sync/setFriendlyName.mjs'
 import ExportTextCommand from './commands/export/text.mjs'
+import ImportTextCommand from './commands/import/text.mjs'
 import SyncStatusCommand from './commands/sync/status.mjs'
 import VersionCommand from './commands/version.mjs'
 import binaryVersion from './utils/binaryVersion.mjs'
@@ -49,10 +51,12 @@ cli.register(EntriesSearchCommand)
 cli.register(EntriesGetTokenByIdCommand)
 cli.register(SyncSetServerUrlCommand)
 cli.register(SyncConnect)
+cli.register(SyncAddDevice)
 cli.register(SyncResilver)
 cli.register(SyncListDevices)
 cli.register(SyncRemoveDeviceCommand)
 cli.register(ExportTextCommand)
+cli.register(ImportTextCommand)
 cli.register(SyncSetFriendlyNameCommand)
 cli.register(SyncStatusCommand)
 cli.register(VersionCommand)

@@ -236,13 +236,14 @@ export const processImportLines = async (
 ): Promise<{ lineNr: number; entryId: EntryId | null; error: unknown }[]> => {
   return Promise.all(
     lines
+      .map((line, lineNr) => ({ line: line.trim(), lineNr }))
       // The version is informational; accept any numeric version and legacy
       // exports without a marker. Do not send metadata to the OTP URI parser.
       .filter(
-        (line) =>
+        ({ line }) =>
           line !== '' && !/^# fava-export-version: \d+$/.test(line.trim()),
       )
-      .map(async (line, lineNr) => {
+      .map(async ({ line, lineNr }) => {
         try {
           return {
             lineNr,

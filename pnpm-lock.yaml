@@ -113,6 +113,9 @@ catalogs:
     '@types/node':
       specifier: ^22.15.21
       version: 22.19.19
+    '@types/qrcode':
+      specifier: ^1.5.6
+      version: 1.5.6
     '@vitest/coverage-v8':
       specifier: ^4.1.7
       version: 4.1.7
@@ -122,6 +125,9 @@ catalogs:
     eslint:
       specifier: ^9.10.0
       version: 9.39.4
+    qrcode:
+      specifier: ^1.5.4
+      version: 1.5.4
     type-fest:
       specifier: ^5.6.0
       version: 5.6.0
@@ -252,6 +258,9 @@ importers:
       keytar:
         specifier: ^7.9.0
         version: 7.9.0
+      qrcode:
+        specifier: 'catalog:'
+        version: 1.5.4
       tty-table:
         specifier: ^5.0.0
         version: 5.0.0
@@ -259,6 +268,9 @@ importers:
         specifier: ^3.14.0
         version: 3.14.0
     devDependencies:
+      '@types/qrcode':
+        specifier: 'catalog:'
+        version: 1.5.6
       type-fest:
         specifier: 'catalog:'
         version: 5.6.0
@@ -369,7 +381,7 @@ importers:
         specifier: ^6.3.1
         version: 6.3.1
       qrcode:
-        specifier: ^1.5.4
+        specifier: 'catalog:'
         version: 1.5.4
       totp-generator:
         specifier: 2.0.1
@@ -391,7 +403,7 @@ importers:
         version: 8.20.1(bufferutil@4.1.0)
     devDependencies:
       '@types/qrcode':
-        specifier: ^1.5.6
+        specifier: 'catalog:'
         version: 1.5.6
       '@vitest/coverage-v8':
         specifier: 'catalog:'

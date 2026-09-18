@@ -11,13 +11,66 @@ server, and then whether to import an existing vault from another device. Say
 no at either question and you are left with a working local vault; the sync
 commands below pick up from there.
 
-Importing an existing vault needs a connection string from the device that
-already holds it -- in the browser app, the Add Device screen. Both devices must
-point at the same sync server.
+Importing an existing vault from another device needs a connection string from
+the device that already holds it: run `favacli sync add-device` there, or use the
+browser app's Add Device screen. Both devices must point at the same sync server.
 
 `setup` refuses to run when a vault already exists, so it cannot replace one
 that holds entries. On an existing vault, use `sync setServerUrl` and
 `sync connect` directly, or `vault delete` first to start over.
+
+## Importing text exports
+
+Create a local vault with `favacli setup` or `favacli vault create`, then import
+an export into it:
+
+```sh
+favacli import text --path backup.txt
+favacli import text --path backup.asc --password-file /run/secrets/export-password
+```
+
+The importer accepts `otpauth://` text exports, including Fava's version header
+and older exports without one. Password-encrypted OpenPGP exports are detected
+automatically. Without `--password-file`, encrypted imports prompt for a masked
+password in an interactive terminal; unattended imports must use a password
+file. The export password can differ from your local vault password, and is
+never stored. Password files are UTF-8; one final LF or CRLF is removed and all
+other whitespace is preserved.
+
+Valid lines are appended to the current vault, even if other lines fail. The
+command reports counts and failed file line numbers, and exits nonzero if any
+line failed. Repeating an import adds entries again. Wrong passwords and
+decryption failures import nothing. Empty exports succeed with zero entries.
+
+Use `--format json` for counts and per-line results (with one-based file line
+numbers), or `--no-sync` to keep the import local until the next sync. Saved vault
+JSON files and HTML exports are not text entry exports.
+
+## Sending a vault to another device
+
+On the device that already has the entries:
+
+```sh
+favacli sync add-device
+```
+
+This displays a connection string and a terminal QR code. On the receiving CLI,
+create a local vault, configure the same sync server and secret, and run
+`favacli sync connect`. In the browser, use Connect to Existing Vault and paste
+the text or a QR image. Pairing does not share the sender's vault password or
+sync server secret.
+
+Keep the sender running until pairing finishes. It reports the receiving
+device's fingerprint after sending the vault and saving enrollment locally;
+this is not an acknowledgment that the receiver finished importing. A terminal
+about 100 columns wide is usually needed for the QR code. Use `--no-qr` for text
+only, and `--timeout 600` to wait up to ten minutes instead of the default five.
+Ctrl-C cancels with exit status 130; timeout, disconnect, and pairing failures
+exit nonzero. Run the command again to generate a fresh code after a failure.
+
+With `--format json`, pairing codes and instructions appear immediately on
+stderr, while stdout contains only the final result. Treat the pairing code as
+a temporary secret: anyone holding it and access to the sync server can join.
 
 ## Sync configuration
 

@@ -1,6 +1,6 @@
 {
   "name": "favacli",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "",
   "type": "module",
   "author": "",
@@ -12,10 +12,12 @@
     "env-paths": "^4.0.0",
     "favalib": "workspace:*",
     "keytar": "^7.9.0",
+    "qrcode": "catalog:",
     "tty-table": "^5.0.0",
     "typanion": "^3.14.0"
   },
   "devDependencies": {
+    "@types/qrcode": "catalog:",
     "type-fest": "catalog:",
     "vitest": "catalog:"
   },

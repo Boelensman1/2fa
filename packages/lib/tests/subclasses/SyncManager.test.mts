@@ -34,6 +34,7 @@ import {
   SigningPublicKey,
   EncryptedVaultStateString,
   PlatformProviders,
+  CryptoLib,
   type EntryId,
 } from '../../src/main.mjs'
 import {
@@ -74,6 +75,7 @@ import {
 import { PAIRING_VERSION } from '../../src/version.mjs'
 import type {
   DeviceFriendlyName,
+  AddDeviceFlowResult,
   DeviceId,
   SyncDevice,
 } from '../../src/interfaces/SyncTypes.mjs'
@@ -268,6 +270,147 @@ describe('SyncManager', () => {
     ).rejects.toThrow(SyncAddDeviceFlowConflictError)
   })
 
+  describe('sender pairing outcomes', () => {
+    const begin = async () => {
+      const pending = senderFavaLib.sync!.initiateAddDeviceFlow({
+        qr: false,
+        text: true,
+      })
+      await server.nextMessage
+      send(senderWsInstance, 'confirmAddSyncDeviceInitialiseData')
+      return (await pending).text
+    }
+
+    it('settles pending registration on cancellation and ignores repeated cleanup', async () => {
+      const results: AddDeviceFlowResult[] = []
+      senderFavaLib.addEventListener(
+        FavaLibEvent.AddDeviceFlowFinished,
+        (ev) => {
+          results.push(ev.detail)
+        },
+      )
+      const pending = senderFavaLib.sync!.initiateAddDeviceFlow({
+        qr: false,
+        text: true,
+      })
+      const rejected = expect(pending).rejects.toThrow('Pairing cancelled')
+      await server.nextMessage
+      senderFavaLib.sync!.cancelAddSyncDevice()
+      await rejected
+      senderFavaLib.sync!.closeServerConnection()
+      expect(results).toEqual([
+        { status: 'cancelled', reason: 'Pairing cancelled.' },
+      ])
+      expect(senderFavaLib.sync!.inAddDeviceFlow).toBe(false)
+    })
+
+    it('reports remote cancellation and permits a fresh flow', async () => {
+      const results: AddDeviceFlowResult[] = []
+      senderFavaLib.addEventListener(
+        FavaLibEvent.AddDeviceFlowFinished,
+        (ev) => {
+          results.push(ev.detail)
+        },
+      )
+      await begin()
+      send(senderWsInstance, 'addSyncDeviceCancelled')
+      await vi.waitUntil(() => results.length === 1)
+      expect(results[0].status).toBe('cancelled')
+      expect(senderFavaLib.sync!.inAddDeviceFlow).toBe(false)
+      await begin()
+      expect(senderFavaLib.sync!.inAddDeviceFlow).toBe(true)
+    })
+
+    it('reports asynchronous proof failures without unhandled rejections', async () => {
+      const results: AddDeviceFlowResult[] = []
+      senderFavaLib.addEventListener(
+        FavaLibEvent.AddDeviceFlowFinished,
+        (ev) => {
+          results.push(ev.detail)
+        },
+      )
+      await begin()
+      send(senderWsInstance, 'JPAKEPass2', {
+        responderDeviceId: receiverFavaLib.meta.deviceId,
+        pass2Result: { round1Result: {}, round2Result: {} },
+      })
+      await vi.waitUntil(() => results.length === 1)
+      expect(results[0].status).toBe('failed')
+      expect(senderFavaLib.sync!.inAddDeviceFlow).toBe(false)
+    })
+
+    it('does not revive a sender cancelled while deriving the pairing key', async () => {
+      const text = await begin()
+      const cryptoPrototype = platformProviders.CryptoLib.prototype as CryptoLib
+      const original = cryptoPrototype.createSyncKey
+      let resume!: () => void
+      const blocked = new Promise<void>((resolve) => {
+        resume = resolve
+      })
+      const deriving = vi
+        .spyOn(cryptoPrototype, 'createSyncKey')
+        .mockImplementationOnce(async function (this: CryptoLib, ...args) {
+          const key = await original.apply(this, args)
+          await blocked
+          return key
+        })
+      try {
+        await receiverFavaLib.sync!.respondToAddDeviceFlow(text, 'text')
+        const message = (await server.nextMessage) as {
+          data: ServerMessage['data']
+        }
+        send(senderWsInstance, 'JPAKEPass2', message.data)
+        await vi.waitUntil(() => deriving.mock.calls.length === 1)
+        const results: AddDeviceFlowResult[] = []
+        senderFavaLib.addEventListener(
+          FavaLibEvent.AddDeviceFlowFinished,
+          (ev) => {
+            results.push(ev.detail)
+          },
+        )
+        senderFavaLib.sync!.cancelAddSyncDevice()
+        resume()
+        await deriving.mock.results[0].value
+        await Promise.resolve()
+        expect(senderFavaLib.sync!.inAddDeviceFlow).toBe(false)
+        expect(results.map((result) => result.status)).toEqual(['cancelled'])
+      } finally {
+        resume()
+        deriving.mockRestore()
+      }
+    })
+
+    it('stops before registering if the socket closes while generating randomness', async () => {
+      let resume!: (bytes: Uint8Array) => void
+      const random = vi
+        .spyOn(
+          platformProviders.CryptoLib.prototype as CryptoLib,
+          'getRandomBytes',
+        )
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              resume = resolve
+            }),
+        )
+      try {
+        const pending = senderFavaLib.sync!.initiateAddDeviceFlow({
+          qr: false,
+          text: true,
+        })
+        const rejected = expect(pending).rejects.toThrow(
+          SyncNoServerConnectionError,
+        )
+        senderFavaLib.sync!.closeServerConnection()
+        resume(new Uint8Array(60))
+        await rejected
+        expect(senderFavaLib.sync!.inAddDeviceFlow).toBe(false)
+      } finally {
+        random.mockRestore()
+      }
+    })
+  })
+
   describe('pairing version', () => {
     /**
      * Runs an initiator far enough to hand out its pairing payload.
@@ -366,6 +509,18 @@ describe('SyncManager', () => {
       [receiverFavaLib.meta.deviceId, receiverWsInstance],
     ])
 
+    const senderResults: AddDeviceFlowResult[] = []
+    senderFavaLib.addEventListener(FavaLibEvent.AddDeviceFlowFinished, (ev) => {
+      senderResults.push(ev.detail)
+      // Enrollment is visible before the sender tells its consumer to exit.
+      expect(
+        senderFavaLib.sync
+          ?.getSyncDevices()
+          .some((device) => device.deviceId === receiverFavaLib.meta.deviceId),
+      ).toBe(true)
+      expect(senderFavaLib.sync?.inAddDeviceFlow).toBe(false)
+    })
+
     // initiate the add device flow
     const initiateResultPromise = senderFavaLib.sync.initiateAddDeviceFlow({
       qr: false,
@@ -405,6 +560,9 @@ describe('SyncManager', () => {
       timeout: 5000,
       interval: 5,
     })
+    expect(senderResults).toEqual([
+      { status: 'completed', deviceId: receiverFavaLib.meta.deviceId },
+    ])
     // The nonce field every client message used to carry is gone: the client
     // generated one and nobody read it. A field that looks like a security
     // control and is read by nobody is worse than no field.

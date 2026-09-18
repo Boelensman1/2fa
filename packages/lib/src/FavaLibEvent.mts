@@ -15,6 +15,8 @@ export enum FavaLibEvent {
   PasswordChanged = 'passwordChanged',
   LoadedFromLockedRepresentation = 'loadedFromLockedRepresentation',
   ConnectToExistingVaultFinished = 'connectToExistingVaultFinished',
+  /** Sender pairing ended. Completion means sent and enrolled, not peer receipt. */
+  AddDeviceFlowFinished = 'addDeviceFlowFinished',
   ConnectionToSyncServerStatusChanged = 'connectionToSyncServerStatusChanged',
   /**
    * A peer introduced a device this vault had not paired with itself.

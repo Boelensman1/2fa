@@ -30,6 +30,8 @@ abstract class BaseCommand extends Command {
   // (no JSON.stringify, no escaping/trimming) — e.g. rofi script-mode output
   rawOutput = false
 
+  protected exitCode = 0
+
   format = Option.String('--format', {
     description: 'output format (e.g. json)',
   })
@@ -101,7 +103,7 @@ abstract class BaseCommand extends Command {
 
     if (!this.requiresSettings) {
       this.writeResult(await this.exec())
-      return 0
+      return this.exitCode
     }
 
     const { lockedRepresentationString, settings } = await init()
@@ -121,33 +123,33 @@ abstract class BaseCommand extends Command {
 
     let syncRecorded = false
 
-    if (lockedRepresentationString && this.requireFavaLib) {
-      this.favaLib = await loadVault(
-        lockedRepresentationString,
-        settings,
-        this.reportLibLog.bind(this),
-        await this.vaultLoadOptions(connectToSyncServer),
-      )
-      syncRecorded = await this.recordSuccessfulSync(connectToSyncServer)
-      await this.assertLiveSyncConnection()
-    } else {
-      if (this.requireFavaLib) {
-        throw new Error('No vault loaded, was it created?')
+    try {
+      if (lockedRepresentationString && this.requireFavaLib) {
+        this.favaLib = await loadVault(
+          lockedRepresentationString,
+          settings,
+          this.reportLibLog.bind(this),
+          await this.vaultLoadOptions(connectToSyncServer),
+        )
+        syncRecorded = await this.recordSuccessfulSync(connectToSyncServer)
+        await this.assertLiveSyncConnection()
+      } else {
+        if (this.requireFavaLib) {
+          throw new Error('No vault loaded, was it created?')
+        }
       }
-    }
 
-    const result = await this.exec()
-    await this.flushSync(connectToSyncServer)
-    if (!syncRecorded) {
-      await this.recordSuccessfulSync(connectToSyncServer)
-    }
-    if (this.favaLib?.sync) {
-      this.favaLib.sync.closeServerConnection()
-    }
+      const result = await this.exec()
+      await this.flushSync(connectToSyncServer)
+      if (!syncRecorded) {
+        await this.recordSuccessfulSync(connectToSyncServer)
+      }
+      this.writeResult(result)
 
-    this.writeResult(result)
-
-    return 0
+      return this.exitCode
+    } finally {
+      this.favaLib?.sync?.closeServerConnection()
+    }
   }
 
   /**

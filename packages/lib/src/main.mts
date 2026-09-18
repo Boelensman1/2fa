@@ -60,6 +60,7 @@ import type {
   DeviceType,
   DeviceFriendlyName,
   DeviceInfo,
+  AddDeviceFlowResult,
 } from './interfaces/SyncTypes.mjs'
 import type {
   EncryptedVaultStateString,
@@ -179,6 +180,7 @@ export type {
   DeviceFingerprint,
   DeviceLabelSource,
   PublicSyncDevice,
+  AddDeviceFlowResult,
   ServerSecret,
   SyncDeviceEnrolment,
   SyncDeviceEnrolmentRoute,

@@ -17,9 +17,11 @@ import BaseCommand from '../src/BaseCommand.mjs'
 class TestCommand extends BaseCommand {
   requireFavaLib = true
   execCalls = 0
+  resultExitCode = 0
 
   async exec() {
     this.execCalls += 1
+    this.exitCode = this.resultExitCode
     return Promise.resolve({ success: true })
   }
 }
@@ -180,6 +182,33 @@ describe('BaseCommand sync lifecycle', () => {
     ).toBeLessThan(
       favaLib.sync.closeServerConnection.mock.invocationCallOrder[0],
     )
+  })
+
+  it('flushes partial results and returns the command exit status', async () => {
+    mocks.init.mockResolvedValue({
+      lockedRepresentationString: 'vault',
+      settings: { vaultLocation: '/unused', syncIntervalMinutes: 5 },
+    })
+    const favaLib = makeFavaLib(true)
+    mocks.loadVault.mockResolvedValue(favaLib)
+    const command = makeCommand()
+    command.resultExitCode = 1
+    expect(await command.execute()).toBe(1)
+    expect(favaLib.sync.flushCommandSendQueue).toHaveBeenCalled()
+    expect(favaLib.sync.closeServerConnection).toHaveBeenCalled()
+  })
+
+  it('closes the connection when a command throws', async () => {
+    mocks.init.mockResolvedValue({
+      lockedRepresentationString: 'vault',
+      settings: { vaultLocation: '/unused', syncIntervalMinutes: 5 },
+    })
+    const favaLib = makeFavaLib(true)
+    mocks.loadVault.mockResolvedValue(favaLib)
+    const command = makeCommand()
+    vi.spyOn(command, 'exec').mockRejectedValue(new Error('command failed'))
+    await expect(command.execute()).rejects.toThrow('command failed')
+    expect(favaLib.sync.closeServerConnection).toHaveBeenCalledOnce()
   })
 
   it('does not wait when the command never connected', async () => {

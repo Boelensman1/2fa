@@ -17,6 +17,7 @@ import type ClientMessage from '../interfaces/protocol/ClientMessage.mjs'
 import { FavaLibEvent } from '../FavaLibEvent.mjs'
 import {
   ActiveAddDeviceFlow,
+  AddDeviceFlowResult,
   InitiateAddDeviceFlowResult,
   SyncDevice,
   SyncDeviceEnrolmentRoute,
@@ -73,7 +74,6 @@ import {
   SyncInWrongStateError,
   SyncNoServerConnectionError,
   SyncPairingVersionError,
-  FavaLibError,
 } from '../FavaLibError.mjs'
 import { PAIRING_VERSION } from '../version.mjs'
 import {
@@ -688,6 +688,10 @@ class SyncManager {
     this.ws = ws
   }
   private handleWebSocketClose(event: CloseEvent) {
+    this.finishInitiatorFlow({
+      status: 'failed',
+      reason: 'Connection lost during pairing. Run pairing again.',
+    })
     if (this.shouldReconnect) {
       // Only an unexpected close says anything about why this device is not
       // connected. closeServerConnection clears shouldReconnect before it
@@ -791,6 +795,7 @@ class SyncManager {
         break
       }
       case 'JPAKEPass2': {
+        const flow = this.activeAddDeviceFlow
         const { data } = message
 
         const unconvertedPass2Result = data.pass2Result
@@ -802,7 +807,7 @@ class SyncManager {
         void this.finishAddDeviceFlowKeyExchangeInitiator(
           pass2Result,
           data.responderDeviceId,
-        )
+        ).catch((err: unknown) => this.failInitiatorFlow(err, flow))
         break
       }
       case 'JPAKEPass3': {
@@ -816,6 +821,7 @@ class SyncManager {
         break
       }
       case 'publicKeyAndDeviceInfo': {
+        const flow = this.activeAddDeviceFlow
         const { data } = message
         const { responderEncryptedPublicKeys, responderEncryptedDeviceInfo } =
           data
@@ -823,7 +829,14 @@ class SyncManager {
         void this.sendFullVaultDataAndSetDeviceInfo(
           responderEncryptedPublicKeys,
           responderEncryptedDeviceInfo,
-        )
+        ).catch((err: unknown) => this.failInitiatorFlow(err, flow))
+        break
+      }
+      case 'addSyncDeviceCancelled': {
+        this.finishInitiatorFlow({
+          status: 'cancelled',
+          reason: 'Pairing cancelled by the other device.',
+        })
         break
       }
       case 'initialVault': {
@@ -979,9 +992,17 @@ class SyncManager {
       throw new SyncNoServerConnectionError()
     }
 
+    const ws = this.ws
     const addDevicePassword = deriveSFromPassword(
       uint8ArrayToBase64(await this.cryptoLib.getRandomBytes(60)),
     )
+    // A caller can cancel while the crypto provider is still producing bytes.
+    if (this.ws !== ws || !this.webSocketConnected) {
+      throw new SyncNoServerConnectionError()
+    }
+    if (this.activeAddDeviceFlow) {
+      throw new SyncAddDeviceFlowConflictError()
+    }
     const timestamp = Date.now()
 
     const jpak = new JPakeThreePass(this.deviceId)
@@ -991,12 +1012,10 @@ class SyncManager {
       // Set a timeout for if we get no response from the server
       const timeout = setTimeout(() => {
         if (this.activeAddDeviceFlow?.state === 'initiator:initiated') {
-          reject(
-            new FavaLibError(
-              'Timeout of registerAddDeviceFlowRequest, no response',
-            ),
-          )
-          this.activeAddDeviceFlow = undefined
+          this.finishInitiatorFlow({
+            status: 'failed',
+            reason: 'Timeout of registerAddDeviceFlowRequest, no response',
+          })
         }
       }, 10000)
 
@@ -1007,18 +1026,26 @@ class SyncManager {
         initiatorDeviceId: this.deviceId,
         timestamp,
         resolveContinuePromise: resolve,
+        rejectContinuePromise: reject,
         timeout,
       }
     })
 
     // register this add device request at the server
-    this.sendToServer('addSyncDeviceInitialiseData', {
-      initiatorDeviceId: this.deviceId,
-      timestamp,
-    })
+    try {
+      this.sendToServer('addSyncDeviceInitialiseData', {
+        initiatorDeviceId: this.deviceId,
+        timestamp,
+      })
+    } catch (err) {
+      this.failInitiatorFlow(err, this.activeAddDeviceFlow)
+    }
 
     // wait for the server to confirm it has registered the add device request
     await continuePromise
+    if (!this.activeAddDeviceFlow) {
+      throw new SyncError('Pairing ended before the connection code was ready.')
+    }
 
     const returnData: InitiateAddDeviceFlowResult = {
       pairingVersion: PAIRING_VERSION,
@@ -1150,7 +1177,8 @@ class SyncManager {
       )
     }
 
-    const pass3Result = this.activeAddDeviceFlow.jpak.pass3(
+    const flow = this.activeAddDeviceFlow
+    const pass3Result = flow.jpak.pass3(
       pass2Result,
       this.activeAddDeviceFlow.addDevicePassword,
       responderDeviceId,
@@ -1167,8 +1195,9 @@ class SyncManager {
       sharedKey,
       responderDeviceId,
     )
+    if (this.activeAddDeviceFlow !== flow) return
     this.activeAddDeviceFlow = {
-      ...this.activeAddDeviceFlow,
+      ...flow,
       state: 'initiator:syncKeyCreated',
       responderDeviceId: responderDeviceId,
       syncKey,
@@ -1249,10 +1278,11 @@ class SyncManager {
       throw new SyncError('Public key not set')
     }
 
-    const syncKey = this.activeAddDeviceFlow.syncKey
+    const flow = this.activeAddDeviceFlow
+    const syncKey = flow.syncKey
     const handshakeAad = buildHandshakeAad(
-      this.activeAddDeviceFlow.initiatorDeviceId,
-      this.activeAddDeviceFlow.responderDeviceId,
+      flow.initiatorDeviceId,
+      flow.responderDeviceId,
     )
 
     // Decrypt the received public keys. Shape-checked before use: they arrive
@@ -1275,37 +1305,70 @@ class SyncManager {
         handshakeAad,
       ),
     ) as DeviceInfo
+    if (this.activeAddDeviceFlow !== flow) return
 
     // get the vault data (encrypted with the sync key)
     const encryptedVaultData =
       await this.persistentStorageManager.getEncryptedVaultState(
         syncKey,
-        this.activeAddDeviceFlow.responderDeviceId,
-        buildVaultDataAad(
-          this.deviceId,
-          this.activeAddDeviceFlow.responderDeviceId,
-        ),
+        flow.responderDeviceId,
+        buildVaultDataAad(this.deviceId, flow.responderDeviceId),
       )
+    if (this.activeAddDeviceFlow !== flow) return
 
     // Send the encrypted vault data to the server. No signature: it is
     // encrypted under the JPAKE-derived sync key, which only a party that knew
     // the out-of-band secret can hold. See importInitialVault.
     this.sendToServer('initialVault', {
       encryptedVaultData,
-      initiatorDeviceId: this.activeAddDeviceFlow.initiatorDeviceId,
+      initiatorDeviceId: flow.initiatorDeviceId,
     })
 
     // save the added the sync device, done via command so this is synced to all sync devices
     const command = AddSyncDeviceCommand.create({
-      deviceId: this.activeAddDeviceFlow.responderDeviceId,
+      deviceId: flow.responderDeviceId,
       publicKey: decryptedPublicKeys.publicKey,
       signingPublicKey: decryptedPublicKeys.signingPublicKey,
       deviceInfo: responderDeviceInfo,
     })
     await this.commandManager.execute(command)
 
-    // all done
+    if (this.activeAddDeviceFlow === flow) {
+      this.finishInitiatorFlow({
+        status: 'completed',
+        deviceId: flow.responderDeviceId,
+      })
+    }
+  }
+
+  /**
+   * Settles one sender flow, including a pending registration promise.
+   * @param result - Its terminal outcome.
+   */
+  private finishInitiatorFlow(result: AddDeviceFlowResult) {
+    const flow = this.activeAddDeviceFlow
+    if (!flow || !('rejectContinuePromise' in flow)) return
+    clearTimeout(flow.timeout)
     this.activeAddDeviceFlow = undefined
+    if (result.status !== 'completed') {
+      flow.rejectContinuePromise(new SyncError(result.reason))
+    }
+    this.dispatchLibEvent(FavaLibEvent.AddDeviceFlowFinished, result)
+  }
+
+  /**
+   * Handles an asynchronous sender failure without ending a newer flow.
+   * @param err - The rejected operation's error.
+   * @param flow - The flow the operation belonged to.
+   */
+  private failInitiatorFlow(
+    err: unknown,
+    flow: ActiveAddDeviceFlow | undefined,
+  ) {
+    if (this.activeAddDeviceFlow !== flow) return
+    // eslint-disable-next-line no-restricted-globals
+    const reason = err instanceof Error ? err.message : 'Pairing failed.'
+    this.finishInitiatorFlow({ status: 'failed', reason })
   }
 
   private async importInitialVault(
@@ -1490,6 +1553,13 @@ class SyncManager {
     this.sendToServer('addSyncDeviceCancelled', {
       initiatorDeviceId: this.activeAddDeviceFlow.initiatorDeviceId,
     })
+    if ('rejectContinuePromise' in this.activeAddDeviceFlow) {
+      this.finishInitiatorFlow({
+        status: 'cancelled',
+        reason: 'Pairing cancelled.',
+      })
+      return
+    }
     // Reset the active add device flow
     this.activeAddDeviceFlow = undefined
     this.dispatchLibEvent(FavaLibEvent.ConnectToExistingVaultFinished)
@@ -2438,6 +2508,10 @@ class SyncManager {
    */
   public closeServerConnection() {
     this.shouldReconnect = false
+    this.finishInitiatorFlow({
+      status: 'cancelled',
+      reason: 'Pairing connection closed.',
+    })
     if (this.reconnectTimeout) {
       clearTimeout(this.reconnectTimeout)
       this.reconnectTimeout = undefined

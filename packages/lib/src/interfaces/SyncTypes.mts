@@ -109,10 +109,16 @@ export interface BaseAddDeviceFlow {
   timestamp: number
 }
 
+/** The sender's terminal pairing result; contains no pairing secrets. */
+export type AddDeviceFlowResult =
+  | { status: 'completed'; deviceId: DeviceId }
+  | { status: 'cancelled' | 'failed'; reason: string }
+
 // Add device flow from the initiator's perspective
 export interface AddDeviceFlowInitiator_Initiated extends BaseAddDeviceFlow {
   state: 'initiator:initiated'
   resolveContinuePromise: (value: unknown) => void
+  rejectContinuePromise: (reason: Error) => void
   initiatorDeviceId: DeviceId
   timeout: NodeJS.Timeout
 }

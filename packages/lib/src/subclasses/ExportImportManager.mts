@@ -133,7 +133,7 @@ class ExportImportManager {
       return this.importFromTextFile(decrypted)
     }
 
-    const lines = fileContents.trim().split('\n')
+    const lines = fileContents.split('\n')
     const result = await processImportLines(lines, (uri) =>
       this.importFromUri(uri),
     )

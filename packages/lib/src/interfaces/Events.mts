@@ -2,7 +2,12 @@ import type { EmptyObject } from 'type-fest'
 import type { FavaLibEvent } from '../FavaLibEvent.mjs'
 import type { ConnectionStatus } from '../subclasses/SyncManager.mjs'
 import type { DeviceFingerprint } from './BrandedTypes.mjs'
-import type { DeviceId, DeviceInfo, SyncDeviceEnrolment } from './SyncTypes.mjs'
+import type {
+  AddDeviceFlowResult,
+  DeviceId,
+  DeviceInfo,
+  SyncDeviceEnrolment,
+} from './SyncTypes.mjs'
 
 export interface FavaLibEventMap {
   [FavaLibEvent.Changed]: EmptyObject
@@ -11,6 +16,7 @@ export interface FavaLibEventMap {
   [FavaLibEvent.PasswordChanged]: EmptyObject
   [FavaLibEvent.LoadedFromLockedRepresentation]: EmptyObject
   [FavaLibEvent.ConnectToExistingVaultFinished]: EmptyObject
+  [FavaLibEvent.AddDeviceFlowFinished]: AddDeviceFlowResult
   [FavaLibEvent.ConnectionToSyncServerStatusChanged]: {
     newStatus: ConnectionStatus
   }

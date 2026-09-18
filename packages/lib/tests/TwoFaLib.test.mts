@@ -324,7 +324,7 @@ describe('2falib', () => {
       await expect(
         favaLib.setSyncServerUrl(newUrl, testServerSecret),
       ).rejects.toThrow(
-        'Failed to connect to server at ws://unreachable:1234, not setting',
+        /^Failed to connect to sync backend at ws:\/\/unreachable:1234/,
       )
       expect(favaLib.sync?.serverUrl).toBe(originalUrl)
 

@@ -7,6 +7,7 @@ import type {
 } from 'favalib'
 
 import loadVault from './utils/loadVault.mjs'
+import CliError from './CliError.mjs'
 import init, { saveSettings, Settings } from './utils/init.mjs'
 import { shouldConnectToSyncServer } from './utils/syncPolicy.mjs'
 import { readSyncServerConfig } from './utils/syncConfig.mjs'
@@ -43,6 +44,13 @@ abstract class BaseCommand extends Command {
   })
 
   requiresSyncConnection = false
+
+  // when true the command can do nothing at all without a live, authenticated
+  // server connection -- pairing and resilvering both reach the other device
+  // through the server -- so execute() refuses with a diagnosis before exec()
+  // runs. Without this, such a command would go on to prompt for a connection
+  // string and then fail on the first message it tried to send.
+  requiresLiveSyncConnection = false
 
   // when false, execute() skips init() altogether: nothing reads the settings
   // file, nothing writes one, and no vault is touched. For a command that only
@@ -104,7 +112,8 @@ abstract class BaseCommand extends Command {
     const connectToSyncServer = shouldConnectToSyncServer({
       forceSync: this.forceSync,
       noSync: this.noSync,
-      requiresSyncConnection: this.requiresSyncConnection,
+      requiresSyncConnection:
+        this.requiresSyncConnection || this.requiresLiveSyncConnection,
       mutatesVault: this.mutatesVault,
       lastSyncedAt: settings.lastSyncedAt,
       syncIntervalMs: settings.syncIntervalMinutes * 60 * 1000,
@@ -121,6 +130,7 @@ abstract class BaseCommand extends Command {
         await this.vaultLoadOptions(connectToSyncServer),
       )
       syncRecorded = await this.recordSuccessfulSync(connectToSyncServer)
+      await this.assertLiveSyncConnection()
     } else {
       if (this.requireFavaLib) {
         throw new Error('No vault loaded, was it created?')
@@ -139,6 +149,40 @@ abstract class BaseCommand extends Command {
     this.writeResult(result)
 
     return 0
+  }
+
+  /**
+   * Refuses a command that needs the sync server when the server is not there.
+   *
+   * The vault has loaded by now and `favaLib.ready` has settled, so the
+   * connection is as connected as it is going to get: waiting longer would only
+   * move the failure to the first message the command sends -- or, for one that
+   * prompts first, to after the user has typed a connection string that was
+   * never going anywhere.
+   * @throws {CliError} If there is no usable connection.
+   */
+  private async assertLiveSyncConnection() {
+    if (!this.requiresLiveSyncConnection) {
+      return
+    }
+
+    const sync = this.favaLib.sync
+    if (!sync) {
+      throw new CliError(
+        'This command needs a sync server, and this vault is not configured ' +
+          'with one. Run "favacli sync setServerUrl <url>" first.',
+      )
+    }
+
+    if (sync.webSocketConnected) {
+      return
+    }
+
+    throw new CliError(
+      `${await sync.diagnoseConnectionFailure()}. This command needs a live ` +
+        'connection, so it has not run.',
+      'SyncConnectionError',
+    )
   }
 
   private writeResult(result: Jsonifiable) {
@@ -201,7 +245,10 @@ abstract class BaseCommand extends Command {
     if (this.machineOutput && !this.verbose) {
       this.errors.push({ timestamp: Date.now(), message: err.message })
     } else {
-      console.error(err)
+      // The message, not the error: these are carried out of favalib's log
+      // events, so the stack points at the line that dispatched the event and
+      // reads as a crash in loadVault. --verbose asks for the whole thing.
+      console.error(this.verbose ? err : err.message)
     }
   }
 }

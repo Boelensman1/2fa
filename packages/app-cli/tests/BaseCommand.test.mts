@@ -16,8 +16,10 @@ import BaseCommand from '../src/BaseCommand.mjs'
 
 class TestCommand extends BaseCommand {
   requireFavaLib = true
+  execCalls = 0
 
   async exec() {
+    this.execCalls += 1
     return Promise.resolve({ success: true })
   }
 }
@@ -29,6 +31,13 @@ const makeFavaLib = (connected: boolean, flushed = true) => ({
     webSocketConnected: connected,
     closeServerConnection: vi.fn(),
     flushCommandSendQueue: vi.fn().mockResolvedValue(flushed),
+    diagnoseConnectionFailure: vi
+      .fn()
+      .mockResolvedValue(
+        'Failed to connect to sync backend at ws://sync.example.com:8080/: ' +
+          'the socket closed with code 1006 while still opening the ' +
+          'connection. GET http://sync.example.com:8080/ failed: ECONNREFUSED',
+      ),
   },
 })
 
@@ -224,6 +233,94 @@ describe('BaseCommand sync lifecycle', () => {
     expect(command.errors[0].message).toMatch(/will be sent the next time/)
     const printed = JSON.parse(stdout.join('')) as { errors: unknown[] }
     expect(printed.errors).toHaveLength(1)
+  })
+
+  it('refuses a command that needs a live connection, before exec runs', async () => {
+    const settings = {
+      vaultLocation: '/tmp/vault.json',
+      syncIntervalMinutes: 5,
+    }
+    mocks.init.mockResolvedValue({
+      lockedRepresentationString: 'vault-data',
+      settings,
+    })
+    const favaLib = makeFavaLib(false)
+    mocks.loadVault.mockResolvedValue(favaLib)
+
+    const command = makeCommand()
+    command.requiresLiveSyncConnection = true
+
+    await expect(command.execute()).rejects.toThrow(
+      /at ws:\/\/sync\.example\.com:8080\/.*ECONNREFUSED.*has not run/s,
+    )
+    expect(favaLib.sync.diagnoseConnectionFailure).toHaveBeenCalled()
+    expect(command.execCalls).toBe(0)
+  })
+
+  it('runs a command that needs a live connection once connected', async () => {
+    const settings = {
+      vaultLocation: '/tmp/vault.json',
+      syncIntervalMinutes: 5,
+    }
+    mocks.init.mockResolvedValue({
+      lockedRepresentationString: 'vault-data',
+      settings,
+    })
+    const favaLib = makeFavaLib(true)
+    mocks.loadVault.mockResolvedValue(favaLib)
+
+    const command = makeCommand()
+    command.requiresLiveSyncConnection = true
+
+    await command.execute()
+
+    expect(command.execCalls).toBe(1)
+    expect(favaLib.sync.diagnoseConnectionFailure).not.toHaveBeenCalled()
+  })
+
+  it('refuses a command that needs a live connection with no server set', async () => {
+    mocks.init.mockResolvedValue({
+      lockedRepresentationString: 'vault-data',
+      settings: {
+        vaultLocation: '/tmp/vault.json',
+        syncIntervalMinutes: 5,
+      },
+    })
+    mocks.loadVault.mockResolvedValue({ sync: undefined })
+
+    const command = makeCommand()
+    command.requiresLiveSyncConnection = true
+
+    await expect(command.execute()).rejects.toThrow(
+      'This command needs a sync server',
+    )
+    expect(command.execCalls).toBe(0)
+  })
+
+  it('connects for a live-connection command even when sync is recent', async () => {
+    const settings = {
+      vaultLocation: '/tmp/vault.json',
+      lastSyncedAt: now - 1,
+      syncIntervalMinutes: 5,
+    }
+    mocks.init.mockResolvedValue({
+      lockedRepresentationString: 'vault-data',
+      settings,
+    })
+    mocks.loadVault.mockResolvedValue(makeFavaLib(true))
+
+    const command = makeCommand()
+    command.requiresLiveSyncConnection = true
+
+    await command.execute()
+
+    expect(mocks.loadVault).toHaveBeenCalledWith(
+      'vault-data',
+      settings,
+      expect.any(Function),
+      false,
+      { connectToSyncServer: true, syncServer: undefined },
+    )
   })
 
   it('rejects no-sync for commands that require a connection', async () => {

@@ -2,12 +2,12 @@ import { createSignal, Show, createEffect } from 'solid-js'
 import useStore from '../store/useStore'
 import PasswordStrengthMeter from './PasswordStrengthMeter'
 import type { Password } from 'favalib'
-import type { ZxcvbnResult } from '@zxcvbn-ts/core'
+import type { PasswordStrength } from 'favalib'
 import creationUtils from '../utils/creationUtils'
 
 const calculatePasswordStrength = async (
   password: Password,
-): Promise<ZxcvbnResult> => {
+): Promise<PasswordStrength> => {
   return await creationUtils.getPasswordStrength(password)
 }
 
@@ -17,7 +17,7 @@ const Exporter = () => {
   const [password, setPassword] = createSignal<Password>('' as Password)
   const [acknowledgedWarning, setAcknowledgedWarning] = createSignal(false)
   const [passwordStrength, setPasswordStrength] =
-    createSignal<ZxcvbnResult | null>(null)
+    createSignal<PasswordStrength | null>(null)
 
   createEffect(() => {
     if (password()) {

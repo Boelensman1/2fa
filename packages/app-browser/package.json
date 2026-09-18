@@ -12,7 +12,6 @@
   "license": "MIT",
   "devDependencies": {
     "@playwright/test": "^1.63.0",
-    "@zxcvbn-ts/core": "catalog:",
     "autoprefixer": "^10.5.5",
     "postcss": "^8.5.28",
     "tailwindcss": "^4.3.3",

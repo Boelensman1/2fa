@@ -1,6 +1,6 @@
 import { type Component, createSignal, createEffect } from 'solid-js'
 import { Password, FavaLibEvent } from 'favalib'
-import type { ZxcvbnResult } from '@zxcvbn-ts/core'
+import type { PasswordStrength } from 'favalib'
 
 import useStore from '../store/useStore'
 import actions from '../store/actions'
@@ -15,7 +15,7 @@ const CreateVault: Component = () => {
   const [mode, setMode] = createSignal<'create' | 'connect'>('create')
   const syncStoreWithLib = useSyncStoreWithLib()
   const [passwordStrength, setPasswordStrength] =
-    createSignal<ZxcvbnResult | null>(null)
+    createSignal<PasswordStrength | null>(null)
 
   const createVault = async (enteredPassword: Password) => {
     const { favaLib } =
@@ -47,7 +47,7 @@ const CreateVault: Component = () => {
 
   const calculatePasswordStrength = async (
     password: Password,
-  ): Promise<ZxcvbnResult> => {
+  ): Promise<PasswordStrength> => {
     return await creationUtils.getPasswordStrength(password)
   }
 

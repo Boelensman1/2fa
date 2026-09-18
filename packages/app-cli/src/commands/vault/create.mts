@@ -1,7 +1,7 @@
-import fs from 'node:fs/promises'
 import keytar from 'keytar'
 
 import BaseCommand from '../../BaseCommand.mjs'
+import createVaultSaveFunction from '../../utils/vaultSaveFunction.mjs'
 
 import { DeviceType, getFavaLibVaultCreationUtils, Password } from 'favalib'
 import NodePlatformProvider from 'favalib/platformProviders/node'
@@ -29,11 +29,7 @@ class VaultCreateCommand extends BaseCommand {
       NodePlatformProvider,
       'cli' as DeviceType,
       ['cli'],
-      (newLockedRepresentationString) =>
-        fs.writeFile(
-          this.settings.vaultLocation,
-          newLockedRepresentationString,
-        ),
+      createVaultSaveFunction(this.settings.vaultLocation),
     )
 
     const password = (await passwordInput({

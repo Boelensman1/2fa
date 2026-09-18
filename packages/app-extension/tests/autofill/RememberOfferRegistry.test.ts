@@ -40,6 +40,7 @@ const offer = (over: { tabId?: number; entryId?: string } = {}) => ({
   tabId: over.tabId ?? 7,
   entryId: (over.entryId ?? 'a') as EntryId,
   entryLabel: 'GitHub',
+  pageHost: 'elsewhere.example',
   offer: {
     pageUrl: 'https://elsewhere.example/login',
     matcher: { type: 'BaseDomain' as const, value: 'elsewhere.example' },

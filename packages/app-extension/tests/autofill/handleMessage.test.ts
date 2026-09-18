@@ -725,6 +725,8 @@ describe('FILL_DETECTED_FIELD', () => {
 
     expect(await promptView()).toEqual({
       entryLabel: 'GitHub',
+      // Named out loud, because the prompt follows the tab off this page.
+      pageHost: 'elsewhere.example',
       matcher: { type: 'BaseDomain', value: 'elsewhere.example' },
       // Origin and path. The session id is not kept, and would be synced to
       // every device the user has if it were.
@@ -1125,18 +1127,26 @@ describe('re-showing the prompt after a navigation', () => {
   })
 
   /**
-   * The guard that keeps this from being a bug of its own. A prompt about one
-   * site appearing over another the user opened in the meantime reads as the
-   * extension malfunctioning.
+   * Across hosts too, and that is the point rather than an oversight. Logging
+   * in routinely lands somewhere other than the login domain -- an idp hands
+   * off to the app, an `accounts.` host redirects to a bare one -- and those
+   * are exactly the entries with no matcher yet. What makes it readable is
+   * that the prompt names the host it is asking about; see `pageHost`.
    */
-  it('does not follow the tab to another site', async () => {
+  it('follows the tab across a redirect to another host', async () => {
     unlockWith([entryMeta('a')])
-    await fillOn('https://elsewhere.example/login')
+    const token = await fillOn('https://accounts.elsewhere.example/login')
 
-    await reportFrom({ ...pageSender, url: 'https://unrelated.example/' }, [])
+    await reportFrom({ ...pageSender, url: 'https://app.other.example/' }, [])
     await settle()
 
-    expect(promptCall()).toBeUndefined()
+    expect(promptCall()?.[1].data.token).toBe(token)
+    // Still asking about the page the code went into, not the one it is
+    // drawn on.
+    expect(await promptView(token)).toMatchObject({
+      pageHost: 'accounts.elsewhere.example',
+      matcher: { type: 'BaseDomain', value: 'accounts.elsewhere.example' },
+    })
   })
 
   /** An SPA re-reports on every dom change; one prompt per document, not per report. */

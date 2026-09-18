@@ -38,6 +38,12 @@ interface RememberSiteProps {
  * question: the matcher is for the page's host, so a fill into a third-party
  * frame will be asked about again. That is said out loud rather than left to be
  * discovered.
+ *
+ * **Nothing here says "this site".** The prompt follows the tab across the
+ * redirect a login performs, so it is routinely drawn on a page other than the
+ * one it is asking about -- an idp handing off to the app, an `accounts.` host
+ * redirecting to a bare one. Every line therefore names `pageHost` instead of
+ * pointing at whatever happens to be underneath it.
  */
 const RememberSite: FC<RememberSiteProps> = ({
   offer,
@@ -48,8 +54,8 @@ const RememberSite: FC<RememberSiteProps> = ({
 }) => (
   <div className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg">
     <header className="flex items-center gap-2 border-b border-gray-200 px-3 py-2">
-      <h1 className="flex-1 text-sm font-semibold text-gray-900">
-        Remember this site?
+      <h1 className="flex-1 truncate text-sm font-semibold text-gray-900">
+        Remember {offer.pageHost}?
       </h1>
       {/* The same answer as "Not now", in the place a panel on someone else's
           page is expected to put it. */}
@@ -66,9 +72,10 @@ const RememberSite: FC<RememberSiteProps> = ({
 
     <div className="space-y-2 px-3 py-3">
       <p className="text-sm text-gray-700">
-        <span className="font-medium">{offer.entryLabel}</span> is not listed
-        for this site yet, so it does not appear under “For this site” and the
-        field on the page never offers it.
+        <span className="font-medium">{offer.entryLabel}</span> was just filled
+        on <span className="font-medium break-all">{offer.pageHost}</span>,
+        which it does not list yet — so it never appears under “For this site”
+        there, and the field never offers it.
       </p>
       <p className="rounded-md bg-gray-50 p-2 font-mono text-xs break-all text-gray-900">
         {offer.matcher.type} {offer.matcher.value}
@@ -82,7 +89,7 @@ const RememberSite: FC<RememberSiteProps> = ({
       )}
       {offer.inSubframe ? (
         <p className="text-sm text-gray-700">
-          The code went into an embedded frame on this page, and this remembers
+          The code went into an embedded frame on that page, and this remembers
           the page — not that frame. You will still be asked before a code goes
           into it again.
         </p>
@@ -92,7 +99,7 @@ const RememberSite: FC<RememberSiteProps> = ({
     <div className="space-y-2 border-t border-gray-200 p-3">
       {error === null ? null : <p className="text-xs text-red-600">{error}</p>}
       <Button onClick={onRemember} disabled={busy}>
-        Remember this site
+        Remember
       </Button>
       <Button variant="secondary" onClick={onDismiss} disabled={busy}>
         Not now

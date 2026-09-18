@@ -123,6 +123,15 @@ export interface SiteOffer {
 export interface RememberOfferView {
   /** What to call the entry on screen: its issuer, or its name. */
   entryLabel: string
+  /**
+   * The host the question is about, for the prompt to name out loud.
+   *
+   * Not decoration. The prompt follows the tab across the redirect a login
+   * performs, so it is routinely drawn on a page that is *not* the one it is
+   * asking about -- and copy saying "this site" would then be pointing at the
+   * wrong one. Derived where the url is validated, like `FillTarget.host`.
+   */
+  pageHost: string
   /** The matcher a yes would append, shown literally. */
   matcher: UrlMatcher
   /** The url a yes would record as the entry's site, or null to leave it. */

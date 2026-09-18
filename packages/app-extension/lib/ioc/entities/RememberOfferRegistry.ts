@@ -34,6 +34,8 @@ export interface RememberOffer {
   entryId: EntryId
   /** What to call the entry on screen. The prompt is never told its id. */
   entryLabel: string
+  /** The host the question is about, frozen with the rest of the offer. */
+  pageHost: string
   /** The background's own suggestion, recomputed before it is applied. */
   offer: SiteOffer
   /** True when the code went into an embedded frame rather than the page. */

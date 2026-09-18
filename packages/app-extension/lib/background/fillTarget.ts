@@ -13,16 +13,17 @@ import type { FillTarget } from '../types/Autofill'
 import type { OtpFieldReport } from '../ioc/entities/OtpFieldRegistry'
 
 /**
- * A frame's host, when it has one worth naming.
+ * A url's host, when it has one worth naming.
  *
  * `REPORT_OTP_FIELDS` stores `url: url ?? ''` when the browser supplied none,
  * and an extension, `about:` or `data:` frame has no origin the user could
  * recognise. Disclosure is this feature's only real control, so a frame that
- * cannot be disclosed is not offered at all.
- * @param url - The frame's url, as reported.
+ * cannot be disclosed is not offered at all -- and the same rule decides
+ * whether a *page* can be named in the remember prompt.
+ * @param url - The url, as the browser reported it.
  * @returns The host, or null when there is nothing honest to show.
  */
-const hostOf = (url: string): string | null => {
+export const hostOf = (url: string): string | null => {
   try {
     const parsed = new URL(url)
     return parsed.protocol === 'http:' || parsed.protocol === 'https:'

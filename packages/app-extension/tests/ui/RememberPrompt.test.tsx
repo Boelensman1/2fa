@@ -59,6 +59,7 @@ const flush = (work: () => void) => act(() => Promise.resolve(work()))
 
 const offer = {
   entryLabel: 'GitHub',
+  pageHost: 'elsewhere.example',
   matcher: { type: 'BaseDomain', value: 'elsewhere.example' },
   siteUrl: 'https://elsewhere.example/login',
   inSubframe: false,
@@ -123,6 +124,20 @@ describe('the remember prompt', () => {
   })
 
   /**
+   * It follows the tab across the redirect a login performs, so it is often
+   * drawn on a page it is not about. Saying "this site" would then point at
+   * the wrong one, so every line names the host instead.
+   */
+  it('names the host it is asking about, never "this site"', async () => {
+    await open()
+
+    expect(container.textContent).toContain('Remember elsewhere.example?')
+    expect(container.textContent).toContain(
+      'GitHub was just filled on elsewhere.example',
+    )
+  })
+
+  /**
    * The one thing it must not imply. The matcher is for the page's host, so a
    * yes does not settle the embedded-frame question `FillConfirm` asked -- and
    * that is said out loud rather than left to be discovered.
@@ -145,7 +160,7 @@ describe('the remember prompt', () => {
   it('writes on a yes, then asks to be taken down', async () => {
     await open()
 
-    await click('Remember this site')
+    await click('Remember')
 
     expect(answerRememberOffer).toHaveBeenCalledWith('the-token', true)
     expect(closeRequests()).toHaveLength(1)
@@ -183,7 +198,7 @@ describe('the remember prompt', () => {
     answerRememberOffer.mockResolvedValue({ ok: false, error: 'Nope' })
     await open()
 
-    await click('Remember this site')
+    await click('Remember')
 
     expect(container.textContent).toContain('Nope')
     expect(closeRequests()).toHaveLength(0)

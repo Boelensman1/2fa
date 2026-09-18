@@ -28,8 +28,13 @@ import { setVerboseLogging } from '../classes/Logger'
 
 import { describeVaultError } from '../ioc/entities/VaultContainer'
 
-import { isTrustedFrame, pickFillTarget, stillHoldsTarget } from './fillTarget'
-import { sameSiteHost, siteOfferFor } from './rememberSite'
+import {
+  hostOf,
+  isTrustedFrame,
+  pickFillTarget,
+  stillHoldsTarget,
+} from './fillTarget'
+import { siteOfferFor } from './rememberSite'
 import handleDebugCommand from './handleDebugCommand'
 import { whenInitFinished } from './init'
 
@@ -504,6 +509,7 @@ async function unboundHandleMessage(
       // come with the makings of a different write.
       const view: RememberOfferView = {
         entryLabel: pending.entryLabel,
+        pageHost: pending.pageHost,
         matcher: pending.offer.matcher,
         siteUrl: pending.offer.siteUrl,
         inSubframe: pending.inSubframe,
@@ -624,11 +630,18 @@ const offerToRememberSite = async (
   const entry = vaultContainer.entryFor(about.entryId)
   if (!offer || !entry) return
 
+  // The prompt names this page, because it is often drawn on a different one.
+  // A page that cannot be named honestly is not asked about at all -- the same
+  // rule `pickFillTarget` applies to a frame it cannot disclose.
+  const pageHost = hostOf(offer.pageUrl)
+  if (pageHost === null) return
+
   const pending = await registry.open({
     tabId: about.tabId,
     entryId: about.entryId,
     // Resolved here rather than in the prompt, which is never told the entry.
     entryLabel: entry.issuer || entry.name || 'That entry',
+    pageHost,
     offer,
     inSubframe: about.inSubframe,
     // The page it is about is also the page it is first shown on, so the
@@ -656,10 +669,17 @@ const offerToRememberSite = async (
  * user does next. The offer itself is in session storage and survives, so the
  * prompt is remounted when frame 0 reports from a page it has not been shown on.
  *
- * Both guards earn their place. `sameSiteHost` stops a prompt about one site
- * appearing over another the user opened in the meantime, and the `shownOnUrl`
- * comparison stops an SPA -- which re-reports on every dom change -- from
- * remounting it on the document it is already sitting on.
+ * **It follows the tab wherever it goes, host included.** Logging in routinely
+ * lands somewhere other than the login domain -- an idp hands off to the app, a
+ * `accounts.` host redirects to a bare one -- and those are exactly the entries
+ * with no matcher yet, which is the case this whole feature exists for. A
+ * same-host guard would have switched it off for them.
+ *
+ * What makes that safe to read is that the prompt names the host it is asking
+ * about rather than saying "this site" (`RememberOfferView.pageHost`), so a
+ * panel drawn on a page it is not about still says something true. The
+ * `shownOnUrl` comparison remains: an SPA re-reports on every dom change, and
+ * the prompt should not be remounted on the document it is already sitting on.
  * @param registry - Where the pending offer is kept.
  * @param tabId - The reporting tab.
  * @param url - Frame 0's url, as the browser supplied it.
@@ -672,7 +692,6 @@ const reshowRememberPrompt = async (
   const pending = await registry.forTab(tabId)
   if (!pending) return
   if (pending.shownOnUrl === url) return
-  if (!sameSiteHost(pending.offer.pageUrl, url)) return
 
   // Marked before it is sent, so a frame that reports twice in quick
   // succession cannot mount two prompts.

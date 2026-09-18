@@ -562,9 +562,13 @@ Four rules hold it together.
   `sender.tab` -- the same threat `AutofillOfferRegistry` documents, with a
   sharper edge, because answering yes writes to the vault. `RememberOfferRegistry`
   mints a `crypto.randomUUID()` and `resolve` checks the tab as well as the token.
-- **The prompt is told a label, a matcher and a flag** -- never the entry id and
-  never the page url. A token that leaked buys a question, not the makings of a
-  different write.
+- **The prompt is told a label, a host, a matcher and a flag** -- never the
+  entry id and never the page url. A token that leaked buys a question, not the
+  makings of a different write.
+- **Nothing in it says "this site".** It follows the tab across the redirect a
+  login performs, so it is routinely drawn on a page it is not asking about.
+  Every line names `pageHost` instead, and a page that `hostOf` cannot name
+  honestly is not asked about at all.
 
 **The matcher is for the page's host, never the frame that was filled.** A
 matcher naming an embedded third party's origin would make `isTrustedFrame`'s
@@ -601,12 +605,21 @@ in-memory offer would routinely be gone before its own buttons were pressed. And
 pressing Enter navigates the page, which destroys the prompt.
 
 That second one is why `REPORT_OTP_FIELDS` has a tail on it. When frame 0 reports
-and a pending offer exists for that tab, the prompt goes back up -- guarded by
-`sameSiteHost`, so a question about one site never appears over another the user
-opened in the meantime, and by `shownOnUrl`, so an SPA re-reporting on every dom
-change does not remount it on the document it is already on. The re-show is not
-awaited: the handler's answer is the selector list the reporting frame is waiting
-on, and a prompt is not worth delaying that for.
+and a pending offer exists for that tab, the prompt goes back up. The re-show is
+not awaited: the handler's answer is the selector list the reporting frame is
+waiting on, and a prompt is not worth delaying that for.
+
+**It follows the tab wherever it goes, host included**, and that is deliberate
+rather than an oversight. Logging in routinely lands somewhere other than the
+login domain -- an idp hands off to the app, an `accounts.` host redirects to a
+bare one -- and those are exactly the entries with no matcher yet, which is the
+case this whole feature exists for. A same-host guard was tried and switched the
+feature off for precisely them. What makes it readable instead is the copy: the
+prompt names the host it is asking about, so a panel drawn on a page it is not
+about still says something true.
+
+The one guard that remains is `shownOnUrl`, so an SPA re-reporting on every dom
+change does not remount the prompt on the document it is already on.
 
 It is dropped on a vault lock, from `VaultContainer.lock()` beside `clearDrafts()`
 -- not from `handleMessage`, because `restoreSession()`'s failure path reaches

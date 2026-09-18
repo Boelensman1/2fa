@@ -1,5 +1,24 @@
 # favacli
 
+## Getting started
+
+```sh
+favacli setup
+```
+
+One guided run: it asks for a vault password, then whether to connect to a sync
+server, and then whether to import an existing vault from another device. Say
+no at either question and you are left with a working local vault; the sync
+commands below pick up from there.
+
+Importing an existing vault needs a connection string from the device that
+already holds it -- in the browser app, the Add Device screen. Both devices must
+point at the same sync server.
+
+`setup` refuses to run when a vault already exists, so it cannot replace one
+that holds entries. On an existing vault, use `sync setServerUrl` and
+`sync connect` directly, or `vault delete` first to start over.
+
 ## Sync configuration
 
 For automatic configuration, provide the URL and a secret source in the
@@ -49,7 +68,8 @@ on the next vault load without reapplying the settings to the vault.
 
 ## One-time setup
 
-To store the settings in the vault explicitly:
+`favacli setup` walks through this interactively. To store the settings in the
+vault explicitly instead:
 
 ```sh
 favacli sync setServerUrl wss://sync.example.com/sync \

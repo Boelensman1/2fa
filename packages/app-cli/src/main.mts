@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { Cli, Builtins } from 'clipanion'
 
+import SetupCommand from './commands/setup.mjs'
 import VaultCreateCommand from './commands/vault/create.mjs'
 import VaultDeleteCommand from './commands/vault/delete.mjs'
 import VaultRestorePasswordCommand from './commands/vault/restorePassword.mjs'
@@ -35,6 +36,8 @@ const cli = new Cli({
   binaryVersion,
 })
 
+// First, so it heads the help output: it is the command a new user wants.
+cli.register(SetupCommand)
 cli.register(VaultCreateCommand)
 cli.register(VaultDeleteCommand)
 cli.register(VaultRestorePasswordCommand)

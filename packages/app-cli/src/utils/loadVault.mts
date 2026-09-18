@@ -1,4 +1,3 @@
-import fs from 'node:fs/promises'
 import keytar from 'keytar'
 
 import {
@@ -6,7 +5,6 @@ import {
   getFavaLibVaultCreationUtils,
   type LockedRepresentationString,
   Password,
-  SaveFunction,
   FavaLibEvent,
   StorageVersionError,
   UnsupportedStorageVersionError,
@@ -14,6 +12,7 @@ import {
 } from 'favalib'
 import NodePlatformProvider from 'favalib/platformProviders/node'
 import { Settings } from './init.mjs'
+import createVaultSaveFunction from './vaultSaveFunction.mjs'
 
 const loadVault = async (
   vaultData: LockedRepresentationString,
@@ -22,32 +21,7 @@ const loadVault = async (
   verbose = false,
   options: LoadFavaLibOptions = {},
 ) => {
-  const saveFunction: SaveFunction = async (newLockedRepresentationString) => {
-    const tempFile = `${settings.vaultLocation}.tmp`
-    const backupFile = `${settings.vaultLocation}.backup`
-    try {
-      // Write to temporary file first, so we don't have to worry about partial writes
-      await fs.writeFile(tempFile, newLockedRepresentationString)
-
-      // Create backup of existing vault if it exists
-      try {
-        await fs.copyFile(settings.vaultLocation, backupFile)
-      } catch (err) {
-        // If the error is not because the original file doesn't exist yet, throw it
-        if (err instanceof Error && 'code' in err && err.code !== 'ENOENT')
-          throw err
-      }
-
-      // Atomically rename temp file to target file
-      await fs.rename(tempFile, settings.vaultLocation)
-    } catch (error) {
-      // Clean up temp file if something went wrong
-      await fs.unlink(tempFile).catch((err) => {
-        console.error('Failed to clean up temp file:', err)
-      })
-      throw error
-    }
-  }
+  const saveFunction = createVaultSaveFunction(settings.vaultLocation)
 
   const favaLibVaultCreationUtils = getFavaLibVaultCreationUtils(
     NodePlatformProvider,

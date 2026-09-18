@@ -47,7 +47,7 @@ import {
   signMessage,
   signingPublicKeyFromSecret,
   verifyMessage,
-} from '../shared/curves.mjs'
+} from '../shared/asymmetric.mjs'
 
 const generateKey = promisify(generateKeyCb)
 const hkdf = promisify(hkdfCb)
@@ -476,11 +476,11 @@ class NodeCryptoLib implements CryptoLib {
    * @inheritdoc
    */
   async createSyncKey(
-    sharedKey: Uint8Array,
+    combinedKey: Uint8Array,
     responderDeviceId: string,
   ): Promise<SyncKey> {
     const keyBuffer = await argon2id({
-      password: sharedKey,
+      password: combinedKey,
       salt: responderDeviceId,
       parallelism: SYNC_KDF_PARAMETERS.parallelism,
       iterations: SYNC_KDF_PARAMETERS.iterations,

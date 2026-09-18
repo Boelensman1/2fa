@@ -64,6 +64,10 @@ import {
   testServerSecret,
 } from '../testUtils.mjs'
 import { createConnectProof } from '../../src/utils/connectAuth.mjs'
+import {
+  createEncryptionKeyPair,
+  createPairingKemKeyPair,
+} from '../../src/platformProviders/shared/asymmetric.mjs'
 import { ConnectionStatus } from '../../src/subclasses/SyncManager.mjs'
 import { Client as WsClient } from 'mock-socket'
 import {
@@ -353,6 +357,119 @@ describe('SyncManager', () => {
       ).resolves.toBeUndefined()
       expect(receiverFavaLib.sync!.inAddDeviceFlow).toBe(true)
     })
+
+    it('should refuse a payload with no pairing key commitment', async () => {
+      // A build from before the post-quantum leg. The pairing version cannot
+      // see the difference -- the JPAKE wire format did not change -- so the
+      // absence of this field is the only thing that can refuse it.
+      const text = await getInitiatorText()
+      const payload = JSON.parse(base64ToString(text)) as Record<
+        string,
+        unknown
+      >
+      delete payload.kemPublicKeyDigest
+
+      await expect(
+        receiverFavaLib.sync!.respondToAddDeviceFlow(
+          stringToBase64(JSON.stringify(payload), { urlSafe: true }),
+          'text',
+        ),
+      ).rejects.toThrow(/Missing required fields/)
+      expect(receiverFavaLib.sync!.inAddDeviceFlow).toBe(false)
+    })
+  })
+
+  describe('the pairing key commitment', () => {
+    /**
+     * Runs a pairing as far as pass 3, with the relayed ML-KEM public key
+     * rewritten on the way through -- which is exactly what a sync server
+     * substituting its own key would look like.
+     * @param tamper - Rewrites the key the responder is given.
+     * @returns The errors the receiver reported while the flow ran.
+     */
+    const pairWithRelayedKey = async (
+      tamper: (kemPublicKey: string) => string,
+    ) => {
+      const errors: string[] = []
+      receiverFavaLib.addEventListener(FavaLibEvent.Log, (event) => {
+        if (event.detail.severity === 'error') {
+          errors.push(event.detail.message)
+        }
+      })
+
+      const initiateResultPromise = senderFavaLib.sync!.initiateAddDeviceFlow({
+        qr: false,
+        text: true,
+      })
+      await server.nextMessage
+      send(senderWsInstance, 'confirmAddSyncDeviceInitialiseData')
+      const { text } = await initiateResultPromise
+      await receiverFavaLib.sync!.respondToAddDeviceFlow(text, 'text')
+
+      // pass 2 to the initiator, then pass 3 back with the key rewritten
+      const pass2 = (await server.nextMessage) as { data: unknown }
+      send(senderWsInstance, 'JPAKEPass2', pass2.data)
+      const pass3 = (await server.nextMessage) as {
+        data: { kemPublicKey: string }
+      }
+      send(receiverWsInstance, 'JPAKEPass3', {
+        ...pass3.data,
+        kemPublicKey: tamper(pass3.data.kemPublicKey),
+      })
+
+      return errors
+    }
+
+    /**
+     * Waits for the responder to give up on the flow it is running.
+     * @returns Nothing; it throws if the flow is still live.
+     */
+    const waitForAbandoned = () =>
+      vi.waitUntil(() => !receiverFavaLib.sync?.inAddDeviceFlow, {
+        timeout: 5000,
+        interval: 5,
+      })
+
+    it('carries on when the relayed key is the one the code vouched for', async () => {
+      const errors = await pairWithRelayedKey((kemPublicKey) => kemPublicKey)
+
+      // The responder answers with its public keys and the KEM ciphertext, and
+      // stays in the flow waiting for the vault -- which is what NOT being
+      // refused looks like from here.
+      const next = (await server.nextMessage) as {
+        type: string
+        data: { kemCipherText: string }
+      }
+      expect(next.type).toBe('publicKeyAndDeviceInfo')
+      expect(next.data.kemCipherText).toEqual(expect.any(String))
+      expect(errors).toEqual([])
+      expect(receiverFavaLib.sync!.inAddDeviceFlow).toBe(true)
+    })
+
+    it('abandons the flow when the relayed key is substituted', async () => {
+      // The entire defence against a sync server that hands the responder its
+      // own ML-KEM key and then reads the vault it is sent. Nothing may be
+      // sent before the check passes, so there is no message here at all.
+      const errors = await pairWithRelayedKey(
+        () => createPairingKemKeyPair().publicKey,
+      )
+      await waitForAbandoned()
+
+      expect(errors.join('\n')).toMatch(/does not match the code/)
+      expect(receiverFavaLib.sync!.getSyncDevices()).toHaveLength(0)
+    })
+
+    it('reports rather than crashing, so the check is not a denial of service', async () => {
+      // This runs from a server message with nothing awaiting it, so a throw
+      // used to become an unhandled rejection -- which in node takes the
+      // process down. Anyone able to relay a pass 3 could then crash a device
+      // by getting the check RIGHT.
+      const errors = await pairWithRelayedKey(() => 'not even base64!!')
+      await waitForAbandoned()
+
+      expect(errors.join('\n')).toMatch(/Add device flow abandoned/)
+      expect(receiverFavaLib.sync!.getSyncDevices()).toHaveLength(0)
+    })
   })
 
   it('should complete the full flow', async () => {
@@ -466,11 +583,11 @@ describe('SyncManager', () => {
       },
       acknowledged: true,
     })
-    // Six groups of four uppercase hex: 96 bits, short enough to read aloud
-    // off one screen and check against another, which is the only thing a
-    // fingerprint is for.
+    // Eight groups of four uppercase hex: 128 bits, still short enough to read
+    // aloud off one screen and check against another, which is the only thing
+    // a fingerprint is for.
     for (const device of [senderSyncDevices[0], receiverSyncDevices[0]]) {
-      expect(device.fingerprint).toMatch(/^[0-9A-F]{4}(-[0-9A-F]{4}){5}$/)
+      expect(device.fingerprint).toMatch(/^[0-9A-F]{4}(-[0-9A-F]{4}){7}$/)
     }
     expect(senderSyncDevices[0].fingerprint).not.toBe(
       receiverSyncDevices[0].fingerprint,
@@ -1550,7 +1667,13 @@ describe('SyncManager', () => {
 
       await expect(
         sync().addSyncDevice(
-          { ...peer(), publicKey: ('B'.repeat(43) + '=') as PublicKey },
+          {
+            ...peer(),
+            // A well-formed key of the right length that is simply not the one
+            // already pinned -- a shorter string would be refused as malformed
+            // before the pinning check could be reached.
+            publicKey: createEncryptionKeyPair().publicKey,
+          },
           { via: 'peer', by: 'alice' as DeviceId, saveAfter: false },
         ),
       ).rejects.toThrow(/contradicts the keys this vault already holds/)

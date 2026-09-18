@@ -1,24 +1,50 @@
 import { describe, it, expect } from 'vitest'
+import { uint8ArrayToBase64 } from 'uint8array-extras'
+
+import {
+  PUBLIC_KEY_BYTES,
+  SIGNING_PUBLIC_KEY_BYTES,
+} from '../../src/platformProviders/shared/asymmetric.mjs'
 
 import {
   MAX_REMOVED_DEVICES,
-  PUBLIC_KEY_LENGTH,
   parseDevicePublicKeys,
   validateRemovedDevices,
   validateSyncDevice,
 } from '../../src/utils/syncDeviceValidation.mjs'
 
 /**
- * Builds a base64 key of exactly the right length: 32 raw bytes.
- * @param fill - The character to repeat, so two keys can be told apart.
+ * Builds a base64 key that really decodes to the right number of bytes.
+ *
+ * Built from bytes rather than by repeating a character: the two roles want
+ * 1216 and 1984 raw bytes, both of which are one more than a multiple of three,
+ * so the encoding ends in two padding characters and a hand-written string of
+ * the right LENGTH would still decode to the wrong byte count.
+ * @param bytes - How many raw bytes the role's key has.
+ * @param fill - The byte to repeat, so two keys can be told apart.
  * @returns The base64 key.
  */
-const key = (fill = 'A') => fill.repeat(43) + '='
+const key = (bytes: number, fill = 1) =>
+  uint8ArrayToBase64(new Uint8Array(bytes).fill(fill))
+
+/**
+ * Builds a key agreement public key of the right length.
+ * @param fill - The byte to repeat.
+ * @returns The base64 key.
+ */
+const encryptionKey = (fill = 1) => key(PUBLIC_KEY_BYTES, fill)
+
+/**
+ * Builds a signing public key of the right length.
+ * @param fill - The byte to repeat.
+ * @returns The base64 key.
+ */
+const signingKey = (fill = 2) => key(SIGNING_PUBLIC_KEY_BYTES, fill)
 
 const validDevice = {
   deviceId: 'a5b4e2b0-1f4e-4a4a-9a0e-2d9b5d5a1c11',
-  publicKey: key('A'),
-  signingPublicKey: key('B'),
+  publicKey: encryptionKey(),
+  signingPublicKey: signingKey(),
   deviceInfo: { deviceType: '2fa-cli', deviceFriendlyName: 'my-laptop' },
 }
 
@@ -110,18 +136,39 @@ describe('validateSyncDevice', () => {
     expect(validateSyncDevice(deviceWith(overrides))).not.toBeNull()
   })
 
-  // Storage version 1's RSA keys could only be bounded; a curve key has one
-  // correct length, so anything else is refused outright rather than passed on
-  // to a curve that would name the primitive in its error message.
+  // Storage version 1's RSA keys could only be bounded; these have one correct
+  // length each, so anything else is refused outright rather than passed on to
+  // a primitive that would name itself in its error message.
   it.each([
-    ['one character short', key().slice(0, PUBLIC_KEY_LENGTH - 1)],
-    ['one character long', key() + 'A'],
-    ['a PEM', '-----BEGIN PUBLIC KEY-----\nAAAA\n-----END PUBLIC KEY-----'],
-    ['right length, not base64', '!'.repeat(PUBLIC_KEY_LENGTH)],
-  ])('rejects a publicKey that is %s', (_label, publicKey) => {
-    expect(validateSyncDevice(deviceWith({ publicKey }))).not.toBeNull()
+    ['one character short', (n: number) => key(n).slice(0, -1)],
+    ['one character long', (n: number) => key(n) + 'A'],
+    [
+      'a PEM',
+      () => '-----BEGIN PUBLIC KEY-----\nAAAA\n-----END PUBLIC KEY-----',
+    ],
+    ['right length, not base64', (n: number) => '!'.repeat(key(n).length)],
+  ])('rejects a key that is %s', (_label, build) => {
     expect(
-      validateSyncDevice(deviceWith({ signingPublicKey: publicKey })),
+      validateSyncDevice(deviceWith({ publicKey: build(PUBLIC_KEY_BYTES) })),
+    ).not.toBeNull()
+    expect(
+      validateSyncDevice(
+        deviceWith({ signingPublicKey: build(SIGNING_PUBLIC_KEY_BYTES) }),
+      ),
+    ).not.toBeNull()
+  })
+
+  // The two roles no longer have the same length, so a pair written into each
+  // other's field is refused on length alone -- something the 32-byte curve
+  // keys they replaced could not be.
+  it('rejects a well-formed pair swapped between the two fields', () => {
+    expect(
+      validateSyncDevice(
+        deviceWith({
+          publicKey: signingKey(),
+          signingPublicKey: encryptionKey(),
+        }),
+      ),
     ).not.toBeNull()
   })
 
@@ -139,18 +186,27 @@ describe('parseDevicePublicKeys', () => {
   it('reads a well-formed pair', () => {
     expect(
       parseDevicePublicKeys(
-        JSON.stringify({ publicKey: key('A'), signingPublicKey: key('B') }),
+        JSON.stringify({
+          publicKey: encryptionKey(),
+          signingPublicKey: signingKey(),
+        }),
       ),
-    ).toEqual({ publicKey: key('A'), signingPublicKey: key('B') })
+    ).toEqual({
+      publicKey: encryptionKey(),
+      signingPublicKey: signingKey(),
+    })
   })
 
   it.each([
     ['not JSON', 'not json at all'],
     ['JSON that is not an object', '"a string"'],
-    ['a pair with one key missing', JSON.stringify({ publicKey: key() })],
+    [
+      'a pair with one key missing',
+      JSON.stringify({ publicKey: encryptionKey() }),
+    ],
     [
       'a pair with an unusable key',
-      JSON.stringify({ publicKey: key(), signingPublicKey: 'short' }),
+      JSON.stringify({ publicKey: encryptionKey(), signingPublicKey: 'short' }),
     ],
   ])('refuses %s', (_label, serialised) => {
     expect(() => parseDevicePublicKeys(serialised)).toThrow(/public keys/)

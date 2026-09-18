@@ -64,6 +64,19 @@ export interface JPAKEPass3ClientMessage {
   data: {
     initiatorDeviceId: DeviceId
     pass3Result: { A: JsonifiedUint8Array; ZKPx2s: JsonifiedUint8Array }
+    /**
+     * The initiator's one-pairing ML-KEM public key, base64.
+     *
+     * Relayed through the server rather than carried in the QR code, which is
+     * why the out-of-band payload has a digest of it: 1184 bytes would make for
+     * a punishing QR code, 32 would not. The responder checks the digest before
+     * it answers, so the server relaying this cannot substitute its own.
+     *
+     * base64 rather than the JsonifiedUint8Array the JPAKE fields use. That
+     * encoding is a Record<string, number> -- roughly seven bytes of JSON per
+     * byte of key -- which the 32-byte JPAKE values can afford and this cannot.
+     */
+    kemPublicKey: string
   }
 }
 
@@ -73,6 +86,17 @@ export interface PublicKeyAndDeviceInfoClientMessage {
     initiatorDeviceId: DeviceId
     responderEncryptedPublicKeys: EncryptedPublicKeys
     responderEncryptedDeviceInfo: Encrypted<string>
+    /**
+     * The ML-KEM ciphertext the responder encapsulated to `kemPublicKey`, base64.
+     *
+     * In the clear, beside two fields that are not, and it has to be: the sync
+     * key those two are encrypted under is derived FROM this ciphertext, so the
+     * initiator cannot read anything here until it has decapsulated. Publishing
+     * it costs nothing -- a KEM ciphertext is public by construction -- and it
+     * is bound into the key derivation transcript, so a server that swaps it
+     * only stops the two sides agreeing.
+     */
+    kemCipherText: string
   }
 }
 

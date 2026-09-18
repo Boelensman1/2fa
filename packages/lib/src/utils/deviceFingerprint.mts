@@ -8,17 +8,22 @@ import type { SyncDevice } from '../interfaces/SyncTypes.mjs'
 /**
  * How many bytes of the digest a fingerprint shows.
  *
- * 12 bytes -- 96 bits -- because the adversary this defends against is one
- * grinding their own keypair until it renders as a fingerprint the user is
- * reading off another screen. A collision only has to fool a person doing a
- * visual comparison, so the usual birthday bound is the wrong model: what
- * matters is the cost of a second preimage on a specific target, and 64 bits is
- * thin for that where 96 is not.
+ * The adversary this defends against is one grinding their own keypair until it
+ * renders as a fingerprint the user is reading off another screen. A collision
+ * only has to fool a person doing a visual comparison, so the usual birthday
+ * bound is the wrong model: what matters is the cost of a second preimage on a
+ * specific target.
  *
- * The cost is six groups to read instead of four. Longer would be safer still
- * and less likely to be compared at all.
+ * 16 bytes -- 128 bits -- because that grind is exactly the search a quantum
+ * computer speeds up. Grover takes a second preimage from 2^n to roughly 2^(n/2)
+ * work, which would have left the 12 bytes this used to be at about 2^48: not a
+ * number to hand an attacker who only has to fool a human comparison once. At 16
+ * bytes the same argument lands at 2^64.
+ *
+ * The cost is eight groups to read instead of six. Longer would be safer still
+ * and less likely to be compared at all, which is the real limit here.
  */
-const FINGERPRINT_BYTES = 12
+const FINGERPRINT_BYTES = 16
 
 /** How many hex characters go between the dashes. */
 const FINGERPRINT_GROUP = 4

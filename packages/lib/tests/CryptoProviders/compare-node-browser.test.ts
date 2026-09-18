@@ -16,6 +16,14 @@ import {
 
 import { nodeProviders } from '../../src/platformProviders/node/index.mjs'
 import { browserProviders } from '../../src/platformProviders/browser/index.mjs'
+import {
+  combinePairingShares,
+  createPairingKemKeyPair,
+  pairingKemDecapsulate,
+  pairingKemEncapsulate,
+  pairingKemPublicKeyDigest,
+  verifyPairingKemPublicKey,
+} from '../../src/platformProviders/shared/asymmetric.mjs'
 
 // No `globalThis.window` shim here, deliberately.
 //
@@ -321,20 +329,90 @@ describe('Crypto Provider Comparison', () => {
     })
 
     test('Node and Browser createSyncKey produce the same result', async () => {
-      const sharedKey = new Uint8Array([1, 2, 3, 4, 5])
+      // Fed what the pairing flow actually feeds it: the 64 bytes
+      // combinePairingShares returns, not an arbitrary short buffer. The
+      // combining is shared code, so what this compares is the argon2id pass on
+      // either side of it -- but running the real input through means a change
+      // to the combiner's output length would surface here too.
+      const combinedKey = combinePairingShares(
+        new Uint8Array(32).fill(7),
+        new Uint8Array(32).fill(9),
+        'testDeviceId',
+        'dGVzdCBjaXBoZXJ0ZXh0',
+      )
       const responderDeviceId = 'testDeviceId' as DeviceId
 
       const nodeSyncKey = await nodeCrypto.createSyncKey(
-        sharedKey,
+        combinedKey,
         responderDeviceId,
       )
       const browserSyncKey = await browserCrypto.createSyncKey(
-        sharedKey,
+        combinedKey,
         responderDeviceId,
       )
 
       expect(nodeSyncKey).toBe(browserSyncKey)
       expect(nodeSyncKey.length).toBeGreaterThan(0)
+    })
+
+    test('a pairing exchange reaches the same sync key on both sides', async () => {
+      // The two halves of a real pairing, each run through a different
+      // provider: the responder encapsulates and the initiator decapsulates,
+      // and both then stretch the combined material. A divergence anywhere in
+      // that chain shows up as two devices that cannot read each other, which
+      // is exactly the failure this test exists to catch early.
+      const initiator = createPairingKemKeyPair()
+      const jpakeShare = new Uint8Array(32).fill(11)
+      const responderDeviceId = 'responder-device' as DeviceId
+
+      const { kemCipherText, sharedSecret } = pairingKemEncapsulate(
+        initiator.publicKey,
+      )
+      const responderKey = await browserCrypto.createSyncKey(
+        combinePairingShares(
+          sharedSecret,
+          jpakeShare,
+          responderDeviceId,
+          kemCipherText,
+        ),
+        responderDeviceId,
+      )
+
+      const initiatorKey = await nodeCrypto.createSyncKey(
+        combinePairingShares(
+          pairingKemDecapsulate(kemCipherText, initiator.secretKey),
+          jpakeShare,
+          responderDeviceId,
+          kemCipherText,
+        ),
+        responderDeviceId,
+      )
+
+      expect(initiatorKey).toBe(responderKey)
+    })
+
+    test('a pairing key commitment refuses a substituted key', () => {
+      // The whole of what stands between a pairing and a sync server that
+      // hands the responder its own ML-KEM key.
+      const initiator = createPairingKemKeyPair()
+      const attacker = createPairingKemKeyPair()
+      const deviceId = 'initiator-device'
+      const digest = pairingKemPublicKeyDigest(deviceId, initiator.publicKey)
+
+      expect(
+        verifyPairingKemPublicKey(digest, deviceId, initiator.publicKey),
+      ).toBe(true)
+      expect(
+        verifyPairingKemPublicKey(digest, deviceId, attacker.publicKey),
+      ).toBe(false)
+      // Bound to the device id too, so a digest cannot vouch for the same key
+      // under another identity.
+      expect(
+        verifyPairingKemPublicKey(digest, 'other-device', initiator.publicKey),
+      ).toBe(false)
+      expect(
+        verifyPairingKemPublicKey('not base64!', deviceId, initiator.publicKey),
+      ).toBe(false)
     })
   })
 })

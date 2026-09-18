@@ -33,14 +33,14 @@ import {
 // version 2 was redefined to the curve hierarchy before it ever shipped, which
 // is why these ids are not the ones this file was written with.
 const V2_FIXTURE_PASSWORD = 'fixture!Vault7#Frozen$v2' as Password
-const V2_FIXTURE_DEVICE_ID = '822d43ef-ab39-4a9e-a106-2e96eb3fdb82'
+const V2_FIXTURE_DEVICE_ID = 'd607e80d-b0af-409b-8e0f-9b983c5bcbf4'
 const V2_ENTRY_ONE = {
-  id: 'bc068e83-2a34-4d0d-8550-650d45a45e3c' as EntryId,
+  id: '1a0ec6e3-fab6-49bc-b8f7-3c755f7cc271' as EntryId,
   // Cross-checked against an independent RFC 6238 implementation.
   otpAtFixedTimestamp: '324550',
 }
 const V2_ENTRY_TWO = {
-  id: '0d72d157-a5c1-469c-b021-c985492ebe85' as EntryId,
+  id: 'c4c1184c-571c-4f84-9227-3aee8a3681ad' as EntryId,
   otpAtFixedTimestamp: '017492',
 }
 const FIXED_TIMESTAMP = 1_700_000_000_000

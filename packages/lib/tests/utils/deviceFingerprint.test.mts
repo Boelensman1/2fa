@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { uint8ArrayToBase64 } from 'uint8array-extras'
 
 import { deviceFingerprint } from '../../src/utils/deviceFingerprint.mjs'
 import type {
@@ -6,18 +7,24 @@ import type {
   SigningPublicKey,
 } from '../../src/interfaces/CryptoLib.mjs'
 import type { DeviceId } from '../../src/interfaces/SyncTypes.mjs'
+import {
+  PUBLIC_KEY_BYTES,
+  SIGNING_PUBLIC_KEY_BYTES,
+} from '../../src/platformProviders/shared/asymmetric.mjs'
 
 /**
- * Builds a base64 key of exactly the right length: 32 raw bytes.
- * @param fill - The character to repeat, so two keys can be told apart.
+ * Builds a base64 key of exactly the right length for its role.
+ * @param bytes - How many raw bytes the role's key has.
+ * @param fill - The byte to repeat, so two keys can be told apart.
  * @returns The base64 key.
  */
-const key = (fill: string) => (fill.repeat(43) + '=') as PublicKey
+const key = (bytes: number, fill: number) =>
+  uint8ArrayToBase64(new Uint8Array(bytes).fill(fill))
 
 const device = {
   deviceId: 'a5b4e2b0-1f4e-4a4a-9a0e-2d9b5d5a1c11' as DeviceId,
-  publicKey: key('A'),
-  signingPublicKey: key('B') as string as SigningPublicKey,
+  publicKey: key(PUBLIC_KEY_BYTES, 1) as PublicKey,
+  signingPublicKey: key(SIGNING_PUBLIC_KEY_BYTES, 2) as SigningPublicKey,
 }
 
 describe('deviceFingerprint', () => {
@@ -27,16 +34,19 @@ describe('deviceFingerprint', () => {
     // A change here is a change every already-compared fingerprint disagrees
     // with, so it has to be a deliberate one.
     // Cross-checked against an independent SHA-256 of the canonical message
-    // (`19:favalib:devicefp:v2` + `36:<deviceId>` + `44:<publicKey>` +
-    // `44:<signingPublicKey>`), not merely read back from this implementation.
-    expect(deviceFingerprint(device)).toBe('F94E-B724-E102-3FB2-514C-1743')
+    // (`19:favalib:devicefp:v2` + `36:<deviceId>` + `1624:<publicKey>` +
+    // `2648:<signingPublicKey>`), not merely read back from this
+    // implementation. Eight groups rather than six: see FINGERPRINT_BYTES.
+    expect(deviceFingerprint(device)).toBe(
+      '5579-6908-68C6-5F83-2B84-CB51-C275-47E4',
+    )
   })
 
   it('changes when the two keys are swapped', () => {
-    // The sealing key and the signing key are both 44 characters of base64 over
-    // 32 raw bytes, so nothing about their contents tells them apart -- only
-    // their position in the signed message does. A fingerprint that did not
-    // notice the swap would not be distinguishing the two roles at all.
+    // The two keys differ in length now, but nothing about their CONTENTS
+    // tells them apart -- only their position in the digested message does. A
+    // fingerprint that did not notice the swap would not be distinguishing the
+    // two roles at all.
     expect(
       deviceFingerprint({
         ...device,

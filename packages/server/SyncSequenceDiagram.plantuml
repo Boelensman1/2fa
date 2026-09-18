@@ -25,10 +25,10 @@ note right of Server: Process device addition request
 Server --> ExistingDevice: confirmAddSyncDeviceInitialiseData()
 deactivate Server
 
-note right of ExistingDevice: Generate J-PAKE Pass1 Data (usually shared via QR)
+note right of ExistingDevice: Generate J-PAKE Pass1 Data and a one-pairing ML-KEM keypair.\nThe out-of-band payload (usually a QR) carries Pass1, the password\nand a DIGEST of the ML-KEM public key -- the key itself is 1184 bytes,\nfar too big for a QR, so it is relayed through the server instead.
 
 
-ExistingDevice -> NewDevice: JPAKEPass1(jpakePass1Data)
+ExistingDevice -> NewDevice: JPAKEPass1(jpakePass1Data, addDevicePassword, kemPublicKeyDigest)
 activate NewDevice
 NewDevice -> Server: JPAKEPass2(jpakePass2Data)
 deactivate NewDevice
@@ -37,16 +37,18 @@ note right of Server: Forward J-PAKE Pass2 data to ExistingDevice
 Server -> ExistingDevice: JPAKEPass2(jpakePass2Data)
 deactivate Server
 
-ExistingDevice -> Server: JPAKEPass3(jpakePass3Confirmation)
+ExistingDevice -> Server: JPAKEPass3(jpakePass3Confirmation, kemPublicKey)
 activate Server
-note right of Server: Forward J-PAKE Pass3 confirmation to NewDevice
-Server -> NewDevice: JPAKEPass3(jpakePass3Confirmation)
+note right of Server: Forward J-PAKE Pass3 confirmation and the ML-KEM public key to NewDevice.\nThe server is not trusted with that key: NewDevice checks it against\nthe digest it got out of band before it answers at all.
+Server -> NewDevice: JPAKEPass3(jpakePass3Confirmation, kemPublicKey)
 deactivate Server
 
-NewDevice -> Server: publicKeyAndDeviceInfo(publicKey, deviceInfo)
+note right of NewDevice: Verify the digest, encapsulate to the ML-KEM key, then derive the sync key\nfrom BOTH shares: HKDF(kemSharedSecret || jpakeKey, transcript) -> argon2id.\nEither leg holding keeps the key secret, which is the point -- J-PAKE alone\nis a discrete-log problem and a recorded pairing would not stay private.
+
+NewDevice -> Server: publicKeyAndDeviceInfo(publicKey, deviceInfo, kemCipherText)
 activate Server
-note right of Server: Share public key and device info (device type, friendly name) with ExistingDevice
-Server -> ExistingDevice: publicKeyAndDeviceInfo(publicKey, deviceInfo)
+note right of Server: Share public key and device info (device type, friendly name) with ExistingDevice.\nkemCipherText travels in the clear beside them: the key those two are\nencrypted under is derived from it, so it has to.
+Server -> ExistingDevice: publicKeyAndDeviceInfo(publicKey, deviceInfo, kemCipherText)
 deactivate Server
 
 ExistingDevice -> Server: vault(vaultData)

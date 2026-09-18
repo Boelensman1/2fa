@@ -91,35 +91,46 @@ once checked in, which is why the table above lists the ids literally.
 ## `vault-v2.json`
 
 - **Storage version:** 2
-- **Written by:** favalib 0.0.22, on the commit that redefined storage version 2
-  to the curve hierarchy
+- **Written by:** favalib 0.0.23, on the commit that made the asymmetric layer
+  post-quantum
 - **Password:** `fixture!Vault7#Frozen$v2`
 - **Crypto it pins:** argon2id (m = 64 MiB, t = 3, p = 4, len = 64, salt used
   as a 24-byte UTF-8 string) -> HKDF-SHA256 over the password hash for two
-  wrapping keys -> AES-256-GCM seals over the device's X25519 and Ed25519
-  secret keys and over the vault's symmetric key -> AES-256-GCM with a
+  wrapping keys -> AES-256-GCM seals over the device's two composite secret
+  keys (X25519 ++ an ML-KEM-768 seed, and Ed25519 ++ an ML-DSA-65 seed) and
+  over the vault's symmetric key -> AES-256-GCM with a
   `v2:base64(nonce):base64(ciphertext||tag)` payload bound to the at-rest AAD,
   plus an `envelopeMac` (HMAC-SHA256 keyed by HKDF-SHA256 over the password
   hash).
 
-### Regenerated once, and why that is not a breach of the rule above
+### Regenerated twice, and why that is not a breach of the rule above
 
-This file was replaced when storage version 2 was **redefined** -- the RSA layer
-was taken out and X25519/Ed25519 put in its place -- rather than superseded by a
-version 3. Nothing in the wild had ever written a version 2 vault, so there was
-no released format for the old file to be evidence of: it pinned a shape with no
-writers and no readers, and keeping it would have meant keeping a parallel RSA
-reader alive to open it.
+This file has been replaced each time storage version 2 was **redefined** rather
+than superseded by a version 3: once when the RSA layer was taken out and
+X25519/Ed25519 put in its place, and once when those gained their post-quantum
+halves.
 
-The convention holds for every format that has shipped. `vault-v1.json` is the
-one that has, and it is untouched -- and still doing work, though not the work
-it used to: it is the only thing proving that a real v1 vault is refused rather
-than read.
+Both times the number stayed at 2 because the break was a clean one -- the way
+across is to export the entries under the old build and import them under the
+new, which is what a v1 -> v2 user is told to do anyway. The cost of keeping the
+old file would have been keeping a parallel reader alive to open it, for a
+format nothing can produce any more.
 
-The evidence that the regeneration is honest is in the OTPs: the secrets are
+Be clear about what is lost, though, because it is not nothing: there is no
+fixture left for the X25519/Ed25519 shape, so nothing in the suite proves that a
+vault written by that build is refused rather than misread. What proves it in
+practice is the asymmetric layer's length checks, which have no path that
+accepts a 32-byte key.
+
+The convention holds for every format that has shipped as one users were told to
+keep. `vault-v1.json` is the one that has, and it is untouched -- and still
+doing work, though not the work it used to: it is the only thing proving that a
+real v1 vault is refused rather than read.
+
+The evidence that each regeneration is honest is in the OTPs: the secrets are
 unchanged, so the expected values are the ones already cross-checked against an
-independent RFC 6238 implementation, and they came back identical through an
-entirely different key hierarchy.
+independent RFC 6238 implementation, and they have come back identical through
+three entirely different key hierarchies.
 
 Contents -- the same two TOTP entries as v1, deliberately: the secrets are
 identical, so the expected OTPs are the ones already cross-checked against an
@@ -128,10 +139,10 @@ format under test.
 
 | Entry id                               | Name              | Issuer           | Secret             |
 | -------------------------------------- | ----------------- | ---------------- | ------------------ |
-| `bc068e83-2a34-4d0d-8550-650d45a45e3c` | Fixture Entry One | Fixture Issuer A | `JBSWY3DPEHPK3PXP` |
-| `0d72d157-a5c1-469c-b021-c985492ebe85` | Fixture Entry Two | Fixture Issuer B | `GEZDGNBVGY3TQOJQ` |
+| `1a0ec6e3-fab6-49bc-b8f7-3c755f7cc271` | Fixture Entry One | Fixture Issuer A | `JBSWY3DPEHPK3PXP` |
+| `c4c1184c-571c-4f84-9227-3aee8a3681ad` | Fixture Entry Two | Fixture Issuer B | `GEZDGNBVGY3TQOJQ` |
 
-`deviceId` is `822d43ef-ab39-4a9e-a106-2e96eb3fdb82` and `sync.serverUrl` is
+`deviceId` is `d607e80d-b0af-409b-8e0f-9b983c5bcbf4` and `sync.serverUrl` is
 `undefined`, so no `SyncManager` is ever constructed.
 
 Unlike v1, this fixture's password and salt are **not** reused as the argon2id
@@ -146,3 +157,9 @@ Identical to the v1 recipe above, at the commit named for this fixture. The
 only differences are the password and that `createNewFavaLibVault` now writes
 `storageVersion: 2`. Note that the v1 recipe can only be followed at the commit
 it names: the current library has no v1 writer and no v1 reader.
+
+The device id and the two entry ids are random at generation time, so
+regenerating this fixture changes all three. They are referenced literally by
+`fixtures.test.mts`, `unlocked-session.test.mts` and -- across packages --
+`packages/app-browser/tests/creationUtils.test.ts`, all of which have to be
+updated alongside it. The OTPs are what must NOT change.

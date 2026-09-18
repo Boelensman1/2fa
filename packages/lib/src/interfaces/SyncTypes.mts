@@ -115,15 +115,32 @@ export interface AddDeviceFlowInitiator_Initiated extends BaseAddDeviceFlow {
   resolveContinuePromise: (value: unknown) => void
   initiatorDeviceId: DeviceId
   timeout: NodeJS.Timeout
+  /**
+   * This flow's ML-KEM keypair, the post-quantum half of the exchange.
+   *
+   * Created with the flow and dropped with it. That is what gives the initial
+   * vault -- every secret the vault holds, in one message -- forward secrecy
+   * against a future quantum adversary: there is no long-term key left behind
+   * whose compromise would open a recording of this pairing.
+   */
+  kemKeyPair: { secretKey: Uint8Array; publicKey: string }
 }
 
-export interface AddDeviceFlowInitiator_SyncKeyCreated extends Omit<
+/**
+ * The initiator between sending pass 3 and hearing back from the responder.
+ *
+ * It cannot have a sync key yet, which is why this state is named for the key
+ * EXCHANGE being done rather than the key being made. Half the key material
+ * comes from the responder's ML-KEM ciphertext, and that arrives with the
+ * handshake payload; until then the initiator holds the J-PAKE half and waits.
+ */
+export interface AddDeviceFlowInitiator_KeyExchangeComplete extends Omit<
   AddDeviceFlowInitiator_Initiated,
   'state' | 'resolveContinuePromise'
 > {
-  state: 'initiator:syncKeyCreated'
+  state: 'initiator:keyExchangeComplete'
   responderDeviceId: DeviceId
-  syncKey: SyncKey
+  jpakeSharedKey: Uint8Array
 }
 
 // Add device flow from the responder's perspective
@@ -131,6 +148,11 @@ export interface AddDeviceFlowResponder_Initiated extends BaseAddDeviceFlow {
   state: 'responder:initated'
   responderDeviceId: DeviceId
   initiatorDeviceId: DeviceId
+  /**
+   * The commitment from the out-of-band payload, kept until the initiator's
+   * ML-KEM public key arrives through the server to be checked against it.
+   */
+  kemPublicKeyDigest: string
 }
 
 export interface AddDeviceFlowResponder_SyncKeyCreated extends Omit<
@@ -143,7 +165,7 @@ export interface AddDeviceFlowResponder_SyncKeyCreated extends Omit<
 
 export type ActiveAddDeviceFlow =
   | AddDeviceFlowInitiator_Initiated
-  | AddDeviceFlowInitiator_SyncKeyCreated
+  | AddDeviceFlowInitiator_KeyExchangeComplete
   | AddDeviceFlowResponder_Initiated
   | AddDeviceFlowResponder_SyncKeyCreated
 
@@ -158,6 +180,17 @@ export interface InitiateAddDeviceFlowResult {
   initiatorDeviceId: DeviceId
   timestamp: number
   pass1Result: Record<keyof Round1Result, string>
+  /**
+   * base64 SHA-256 over buildPairingKemDigestMessage, committing to the
+   * initiator's ML-KEM public key.
+   *
+   * The key itself is far too big for a QR code, so this travels out of band in
+   * its place and the key comes through the sync server. Absent on a payload
+   * from a build that predates the post-quantum leg, which is why the responder
+   * checks for it at runtime rather than trusting this type -- the same reason
+   * `pairingVersion` is checked.
+   */
+  kemPublicKeyDigest: string
 }
 
 export interface VaultStateSend {

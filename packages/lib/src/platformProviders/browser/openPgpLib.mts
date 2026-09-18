@@ -15,6 +15,22 @@ export class BrowserOpenPgpLib implements OpenPgpLib {
       this.openPgpModule = await import('openpgp')
       // enable Authenticated Encryption with Associated Data
       this.openPgpModule.config.aeadProtect = true
+      // Stretch the export password with Argon2 rather than OpenPGP's default
+      // iterated-and-salted S2K, which is a plain SHA-256 loop with no memory
+      // hardness at all. The vault itself has used argon2id since storage
+      // version 2, and an export holds exactly the same secrets in exactly the
+      // same danger from an offline guesser -- a weaker KDF on the copy that
+      // gets emailed to yourself is the wrong way round.
+      //
+      // Nothing post-quantum here, and nothing needed: this path uses no public
+      // keys at all, only a password-derived symmetric key, so it was never
+      // exposed to the break the rest of this change is about. (openpgp 6.3.1
+      // declares pqc_mlkem_x25519 and pqc_mldsa_ed25519 in its enums but ships
+      // no implementation of either; generateKey({type: 'pqc'}) throws.)
+      //
+      // Read compatibility is unaffected: an OpenPGP message names its own S2K,
+      // so exports written before this still import.
+      this.openPgpModule.config.s2kType = this.openPgpModule.enums.s2k.argon2
     }
     return this.openPgpModule
   }

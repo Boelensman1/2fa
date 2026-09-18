@@ -53,7 +53,7 @@ import {
 import {
   encryptionPublicKeyFromSecret,
   signingPublicKeyFromSecret,
-} from '../platformProviders/shared/curves.mjs'
+} from '../platformProviders/shared/asymmetric.mjs'
 
 /** Appended to every message that refuses a vault the user can still recover. */
 const DATA_IS_INTACT = 'Do not reset or delete the vault, its data is intact.'

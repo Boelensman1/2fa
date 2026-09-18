@@ -56,11 +56,12 @@ favacli sync setServerUrl wss://sync.example.com/sync \
   --secret-file /run/secrets/fava-sync
 ```
 
-`--secret` and `--secret-file` are mutually exclusive. Either explicit option
-takes precedence over the secret environment variables. Without either option,
-the command uses an environment secret source or prompts if none is configured.
-It connects directly to the URL given on the command line. Later commands still
-prefer runtime environment settings when present.
+The secret cannot be given as a command line argument; `--secret-file` is the
+only explicit source and takes precedence over the secret environment
+variables. Without it, the command uses an environment secret source, or else
+prompts for the secret, masked, the way `vault create` asks for a vault
+password. It connects directly to the URL given on the command line. Later
+commands still prefer runtime environment settings when present.
 
 ## Security notes
 
@@ -70,8 +71,9 @@ in Nix: plaintext secrets embedded in derivations can enter the
 Give the runtime file restrictive permissions (for example, `0400` or `0600`,
 owned by the user running favacli), or configure equivalent access in your
 secret manager. favacli does not enforce file permissions. The direct secret
-environment variable and `--secret` option remain available, but may expose
-the value through process environments, command arguments, or shell history.
+environment variable remains available, but may expose the value through
+process environments and shell history; there is no command line option for
+the secret itself, since arguments are visible in process listings.
 
 The secret controls access to the sync service; it is separate from the vault
 password and device encryption keys. Knowing it alone does not decrypt a vault,

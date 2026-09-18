@@ -89,9 +89,10 @@ describe('sync setServerUrl', () => {
     expect(mocks.password).not.toHaveBeenCalled()
   })
 
-  it('still prompts when no secret source is provided', async () => {
+  it('prompts once when no secret source is provided', async () => {
     mocks.password.mockResolvedValue('prompt-secret')
     await run()
+    expect(mocks.password).toHaveBeenCalledTimes(1)
     expect(mocks.setSyncServerUrl).toHaveBeenCalledWith(
       'wss://explicit.example.com',
       'prompt-secret',

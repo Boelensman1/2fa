@@ -60,22 +60,16 @@ describe('sync configuration', () => {
     ).toEqual({ serverUrl: 'ws://localhost:8080', serverSecret: 'env-secret' })
   })
 
-  it('prefers explicit options over either environment secret source', async () => {
+  it('prefers the explicit file over either environment secret source', async () => {
     const env = {
       FAVACLI_SYNC_SERVER_SECRET: 'env-secret',
       FAVACLI_SYNC_SERVER_SECRET_FILE: '/missing',
     }
     await fs.writeFile(secretFile, 'file-secret')
-    expect(await readServerSecret({ secret: 'explicit-secret' }, env)).toBe(
-      'explicit-secret',
-    )
     expect(await readServerSecret({ secretFile }, env)).toBe('file-secret')
   })
 
-  it('rejects conflicting sources without revealing the secret', async () => {
-    await expect(
-      readServerSecret({ secret: 'sensitive', secretFile }, {}),
-    ).rejects.toThrow('Use only one of --secret and --secret-file')
+  it('rejects conflicting environment sources without revealing the secret', async () => {
     await expect(
       readServerSecret(
         {},
@@ -97,9 +91,9 @@ describe('sync configuration', () => {
     await expect(readServerSecret({ secretFile }, {})).rejects.toThrow(
       'The server secret is empty',
     )
-    await expect(readServerSecret({ secret: '' }, {})).rejects.toThrow(
-      'The server secret is empty',
-    )
+    await expect(
+      readServerSecret({}, { FAVACLI_SYNC_SERVER_SECRET: '' }),
+    ).rejects.toThrow('The server secret is empty')
     await expect(readServerSecret({ secretFile: '' }, {})).rejects.toThrow(
       'The server secret file path is empty',
     )

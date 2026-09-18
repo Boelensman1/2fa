@@ -20,9 +20,10 @@ class SetServerUrlCommand extends BaseCommand {
       your vault and is never sent to the server - what travels is an HMAC over
       a challenge the server issues.
 
-      Supply --secret-file to read the secret from a file. Without an explicit
-      --secret or --secret-file, FAVACLI_SYNC_SERVER_SECRET or
-      FAVACLI_SYNC_SERVER_SECRET_FILE is used; otherwise you will be prompted.
+      The secret is never taken from the command line. Supply --secret-file to
+      read it from a file. Without that option, FAVACLI_SYNC_SERVER_SECRET or
+      FAVACLI_SYNC_SERVER_SECRET_FILE is used; otherwise you are prompted for
+      it, the way \`vault create\` asks for a vault password.
 
       For automatic configuration on every vault load, set
       FAVACLI_SYNC_SERVER_URL together with either secret environment variable.
@@ -41,9 +42,6 @@ class SetServerUrlCommand extends BaseCommand {
   requireFavaLib = true
 
   serverUrl = Option.String({ required: true })
-  secret = Option.String('--secret', {
-    description: 'The server secret. Prefer --secret-file or the prompt.',
-  })
   secretFile = Option.String('--secret-file', {
     description:
       'Read the server secret from this file (one trailing newline is removed).',
@@ -60,13 +58,10 @@ class SetServerUrlCommand extends BaseCommand {
 
   async exec() {
     const secret =
-      (await readServerSecret({
-        secret: this.secret,
-        secretFile: this.secretFile,
-      })) ??
+      (await readServerSecret({ secretFile: this.secretFile })) ??
       (await passwordInput({
         message: 'Enter the sync server secret:',
-        mask: true,
+        mask: '*',
       }))
 
     if (!secret) {

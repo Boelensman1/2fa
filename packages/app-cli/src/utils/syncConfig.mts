@@ -3,22 +3,22 @@ import type { LoadFavaLibOptions, ServerSecret } from 'favalib'
 
 type Environment = Record<string, string | undefined>
 
+// The secret is never read from a command line argument: that would expose it
+// through process listings and shell history. --secret-file is the only
+// explicit source, and it overrides both secret environment variables.
 export const readServerSecret = async (
-  options: { secret?: string; secretFile?: string } = {},
+  options: { secretFile?: string } = {},
   env: Environment = process.env,
 ): Promise<ServerSecret | undefined> => {
-  const explicit =
-    options.secret !== undefined || options.secretFile !== undefined
-  const secret = explicit ? options.secret : env.FAVACLI_SYNC_SERVER_SECRET
+  const explicit = options.secretFile !== undefined
+  const secret = explicit ? undefined : env.FAVACLI_SYNC_SERVER_SECRET
   const secretFile = explicit
     ? options.secretFile
     : env.FAVACLI_SYNC_SERVER_SECRET_FILE
 
   if (secret !== undefined && secretFile !== undefined) {
     throw new Error(
-      explicit
-        ? 'Use only one of --secret and --secret-file'
-        : 'Set only one of FAVACLI_SYNC_SERVER_SECRET and FAVACLI_SYNC_SERVER_SECRET_FILE',
+      'Set only one of FAVACLI_SYNC_SERVER_SECRET and FAVACLI_SYNC_SERVER_SECRET_FILE',
     )
   }
 

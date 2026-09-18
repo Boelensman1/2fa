@@ -211,6 +211,7 @@ const AuthenticatedApp: FC<AuthenticatedAppProps> = ({
         ) : tab === 'vault' ? (
           <VaultTab
             url={activeTab?.url}
+            urlNamed={activeTab?.named}
             fillTarget={fillTarget}
             onCopy={onCopy}
             onOpen={setSelected}

@@ -17,7 +17,9 @@ entries that match that frame ([the inline autofill
 menu](#the-inline-autofill-menu)); and while a page has a field on it, every row
 in the popup gains a Fill button ([filling from the
 popup](#filling-from-the-popup)). The two look similar and are matched
-differently on purpose.
+differently on purpose — the menu against the frame's url, the popup's group
+against the tab's, which is also why they can disagree; see [the popup can only
+match what the browser will name](#the-popup-can-only-match-what-the-browser-will-name).
 
 ## The vault
 
@@ -52,7 +54,62 @@ Three things are worth knowing before changing any of it.
 - **Search is delegated,** not filtered locally, so this and the pwa agree on
   what matches: `searchEntriesMetas` is a case-insensitive substring of issuer
   or name. The "for this site" group is `findEntryMetasForUrl(activeTabUrl)`,
-  already sorted most-specific-first, and is hidden while a query is active.
+  already sorted most-specific-first, and is hidden while a query is active --
+  and the search box has `autoFocus`, so the first keystroke after opening the
+  popup takes the group away. That is deliberate, and it is also the first
+  thing to rule out when someone reports the group missing. Where
+  `activeTabUrl` comes from is its own problem; see below.
+
+### The popup can only match what the browser will name
+
+`tabs.query()` answers whatever the permissions are, but the browser **scrubs
+`url`, `title` and `favIconUrl` off the `Tab`** unless the extension holds the
+`tabs` permission, host access, or `activeTab`. A content script's `matches` is
+none of those: it grants the _script_ injection and its own host access, and
+grants the extension apis nothing.
+
+That is not a Chrome mv3 subtlety. On **Firefox mv2**, with
+`matches: ['<all_urls>']` declared and `permissions: ['storage']`,
+`browser.permissions.getAll()` answers `origins: []` and `tabs.query` returns a
+`Tab` with an `id` and no `url`. Both builds behaved the same way, and both
+were broken.
+
+The failure had no symptom of its own, which is why it lasted. `useActiveTab`
+folded a withheld url into the same `null` it uses for a new tab or a pdf
+viewer; `listEntries` takes `url && !trimmed` to `forSite: []`; `VaultTab`
+renders the section only when that list is non-empty. So the group silently
+never appeared on any site, and looked exactly like a vault with no entry for
+the site you were on -- while the inline menu, which matches on a
+browser-supplied `sender.url` and needs no permission at all, went on offering
+the very same entry. Two surfaces disagreeing about one question is what got it
+reported.
+
+Two things fix it and both matter:
+
+- **`activeTab`**, not `tabs` and not `host_permissions: ['<all_urls>']`. It is
+  granted by the click that opens the popup, carries no install warning on
+  either store, and lapses when the tab navigates -- all fine for a value read
+  once, in an effect, at popup open. `wxt.config.ts` carries the full argument,
+  including why a permanent "Read your browsing history" warning is the wrong
+  price for one string, and why `<all_urls>` would switch the feature back off
+  for every existing user on a move to Firefox mv3.
+- **`ActiveTab.named`**, so "the browser named no url" stops being the same
+  value as "this page has no url worth matching". `VaultTab` says the first out
+  loud where the group would be. The same principle as the background logging a
+  line when nothing answers `SHOW_REMEMBER_PROMPT`: a feature that fails by
+  rendering nothing needs somewhere to say it failed, or the next occurrence is
+  invisible too.
+
+Note what is _not_ the fix. The background does hold a browser-supplied page
+url -- `otpFieldRegistry.forFrame(tabId, 0)?.url`, the read
+`FILL_DETECTED_FIELD` already makes -- and `LIST_ENTRIES` could fall back to it
+with no permission. It was rejected: `report()` is driven by the detected set
+changing, so an spa that navigates without changing its fields leaves a stale
+url; an mv3 eviction empties the registry; and it would put a `tabId` on a
+popup-only action for insurance the `named` flag already provides visibly.
+`FillTarget` is disqualified outright, for a sharper reason -- `pickFillTarget`
+filters `fields.length > 0`, so it is null on exactly the pages where the
+heuristic missed the field and the user wants to copy a code by hand.
 
 ### The sync server is set up after the vault, not baked into it
 
@@ -419,6 +476,13 @@ yet, or a second-factor step that lives on a different host, can otherwise
 never be filled at all. Site matches still sort to the top, in the "For this
 site" group that was already there -- and a fill that was not one of them ends
 in an offer to make it one next time ([below](#offering-to-remember-the-site)).
+
+The group itself is **not** conditional on there being anything to fill.
+`VaultTab` gates it on `entries.forSite.length > 0` and nothing else, and
+`EntryRow`'s Copy button is always live while only Fill goes `invisible`. A
+page whose otp field the heuristic missed is exactly when someone needs to find
+their entry and copy a code by hand, so do not later tidy that condition into
+`fillTarget && entries.forSite.length > 0`.
 
 ### Discovery is best-effort; correctness is at fill time
 
@@ -824,14 +888,19 @@ and are referenced as `"typescript": "catalog:"`.
   background and from `useConfig`, and from nowhere else.
 - The content script runs with `allFrames: true`. That is a content-script
   option, not a permission — a statically declared script takes its host
-  access from `matches`, and `permissions` is still just `['storage']`.
+  access from `matches`. `permissions` is `['storage', 'activeTab']`, and the
+  `matches` patterns are **not** part of it: they never reach
+  `browser.permissions.getAll()`, and they do not unlock the privileged `tabs`
+  properties. See "The popup can only match what the browser will name".
 - **Do not call `browser.permissions.request` from `onInstalled`.** The
   starter did, asking for `<all_urls>` on Firefox, and it threw
   "permissions.request may only be called from a user input handler" on every
   install; `onInstalled` is not a user gesture. It would have failed a second
   time regardless, since a permission must appear in `optional_permissions`
   (mv2) / `optional_host_permissions` (mv3) to be requestable, and this
-  manifest declares neither. Nothing needs it: Firefox is built as mv2, where
-  the content script's `matches: ['<all_urls>']` is granted at install. A move
-  to Firefox mv3 would make host access opt-in and need a real request — from
-  a click in the popup.
+  manifest declares neither. Nothing needs it: `activeTab` is a required
+  permission, granted on the gesture that opens the popup, so it needs no
+  request, no user-input handler and no `optional_permissions` entry — and it
+  keeps working through a move to Firefox mv3, where host access becomes
+  opt-in and a host permission would need a real request from a click in the
+  popup.

@@ -17,7 +17,7 @@ export default defineConfig({
     // package, the directory and the zip artifacts; neither is the extension
     // id, which the browser derives from the signing key.
     name: 'Fava',
-    permissions: ['storage'],
+    permissions: ['storage', 'activeTab'],
     // favalib derives the vault key with argon2id from `hash-wasm`, which
     // instantiates a WebAssembly module. mv3's default page csp allows
     // script-src 'self' only, and compiling wasm needs 'wasm-unsafe-eval' on
@@ -28,7 +28,41 @@ export default defineConfig({
       extension_pages:
         "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'",
     },
-    //host_permissions: ['https://www.google.com/*'],
+    // `activeTab` is what lets the popup read `Tab.url` for the tab it was
+    // opened over, and it is read for exactly one thing: grouping the entries
+    // that claim this site above the rest of the vault.
+    //
+    // It is not optional plumbing. `tabs.query()` answers whatever the
+    // permissions are, but the browser *scrubs* `url`, `title` and
+    // `favIconUrl` off the `Tab` unless the extension holds `tabs`,
+    // `activeTab`, or host access for that url -- and a content script's
+    // `matches` is none of those. `matches` grants the script injection and
+    // its own host access; it grants the extension apis nothing. Verified on
+    // Firefox mv2 with `permissions: ['storage']`: `browser.permissions
+    // .getAll()` answers `origins: []` despite `matches: ['<all_urls>']`, and
+    // `tabs.query` returns a `Tab` with an `id` and no `url`. Without this the
+    // popup passes `null` to `LIST_ENTRIES`, `forSite` is empty on every site,
+    // and the "For this site" group silently never renders -- on both builds,
+    // not just Chrome.
+    //
+    // `activeTab` and not the alternatives:
+    // - `tabs` would answer the same question at the price of a permanent
+    //   "Read your browsing history" warning on both stores, for every tab,
+    //   forever. This manifest declares `data_collection_permissions:
+    //   { required: ['none'] }` a few lines down; that would read oddly next
+    //   to it.
+    // - `host_permissions: ['<all_urls>']` is worse -- "Read and change all
+    //   your data on all websites" -- and grants far more than reading a url.
+    //   It also diverges across the builds: granted at install on mv2, but
+    //   opt-in under Firefox mv3, so the migration the last gotcha in
+    //   AGENTS.md anticipates would switch this feature back off for every
+    //   existing user with nothing to see. `activeTab` survives that move.
+    //
+    // It carries no install warning, it is granted by the click that opens the
+    // popup, and it lapses when that tab navigates -- all fine for a value
+    // read once, in an effect, at popup open. It grants nothing on restricted
+    // pages (`about:`, `chrome://`, the add-on and extension galleries), which
+    // never had an http(s) url to match on anyway.
     // The two pages the content script iframes into a closed shadow root on
     // the page: the inline autofill menu, and the "remember this site?" prompt
     // that follows a fill. Framing them needs the page to be allowed to load

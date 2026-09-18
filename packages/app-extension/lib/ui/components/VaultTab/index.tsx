@@ -9,6 +9,14 @@ import Splash from '../Splash'
 interface VaultTabProps {
   /** The active tab's url; undefined while it is still being looked up. */
   url: string | null | undefined
+  /**
+   * Whether the browser named that url; undefined while it is being looked up.
+   *
+   * Only `false` renders anything. It means the site group is empty because
+   * nothing could be matched against, not because the vault holds nothing for
+   * this site -- a distinction the list cannot otherwise make.
+   */
+  urlNamed: boolean | undefined
   /** The field on the page, when there is one. */
   fillTarget: FillTarget | null
   onCopy: (_entry: ListedEntry) => void
@@ -25,6 +33,7 @@ const SectionHeading: FC<{ children: string }> = ({ children }) => (
 
 const VaultTab: FC<VaultTabProps> = ({
   url,
+  urlNamed,
   fillTarget,
   onCopy,
   onOpen,
@@ -96,6 +105,19 @@ const VaultTab: FC<VaultTabProps> = ({
             {searching
               ? 'No entries match that search.'
               : 'This vault has no entries yet. Add one in the Fava app, and it will sync here.'}
+          </p>
+        ) : null}
+
+        {/* Said out loud rather than left as an absent section. A withheld
+            url and a vault with nothing for this site produce the same empty
+            group, and the first is wrong everywhere while the second is
+            ordinary -- so the one the user can act on is the one that gets a
+            line. Not shown while searching, where the group is suppressed on
+            purpose and its absence means nothing. */}
+        {urlNamed === false && !searching ? (
+          <p className="border-b border-amber-100 bg-amber-50 px-3 py-1.5 text-xs text-amber-900">
+            Fava cannot see which site this tab is on, so entries are not
+            grouped by site.
           </p>
         ) : null}
 

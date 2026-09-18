@@ -1177,3 +1177,82 @@ describe('re-showing the prompt after a navigation', () => {
     expect(promptCall()).toBeUndefined()
   })
 })
+
+/**
+ * The popup's "For this site" group, from the background's side.
+ *
+ * Here because the group and the inline menu are the two halves of one
+ * question -- "what does the vault have for where the user is?" -- and they
+ * disagreed in the field: the menu offered an entry that the popup then left
+ * out of the group entirely. Both call the same favalib matcher, so a
+ * disagreement can only ever be about the url each one passes it, and these
+ * cases pin down which url `LIST_ENTRIES` actually acts on.
+ *
+ * `findEntryMetasForUrl` on the stand-in vault claims `https://github.com`
+ * and nothing else, so the url is the only variable in play.
+ */
+describe("the popup's site group", () => {
+  it('groups the entries that claim the url it was given', async () => {
+    unlockWith([entryMeta('a')])
+
+    const entries = await send(
+      {
+        type: BG_ACTION_KEYS.LIST_ENTRIES,
+        data: { query: '', url: 'https://github.com/2fa' },
+      },
+      popupSender,
+    )
+
+    expect(entries).toEqual({
+      forSite: [expect.objectContaining({ id: 'a' })],
+      all: [expect.objectContaining({ id: 'a' })],
+    })
+  })
+
+  /**
+   * The shape the popup is in when the browser withholds `Tab.url`, which it
+   * does unless the extension holds `tabs`, `activeTab` or host access.
+   *
+   * The background is not the bug: handed a url it groups correctly, handed
+   * `null` it has nothing to group by and says so. The entry is still in
+   * `all`, which is exactly what the report described -- listed, but not at
+   * the top -- so a green assertion here localises the fault to whatever
+   * decides the url, not to this handler.
+   */
+  it('has nothing to group by when the popup passes no url', async () => {
+    unlockWith([entryMeta('a')])
+
+    const entries = await send(
+      { type: BG_ACTION_KEYS.LIST_ENTRIES, data: { query: '', url: null } },
+      popupSender,
+    )
+
+    expect(entries).toEqual({
+      forSite: [],
+      all: [expect.objectContaining({ id: 'a' })],
+    })
+  })
+
+  /**
+   * A search is a deliberate narrowing, so a second list beside it that
+   * ignores the query would read as a bug. Pinned because the popup's search
+   * box takes the caret on open, which makes this easy to trip over and easy
+   * to mistake for the bug above.
+   */
+  it('suppresses the group while a query is active', async () => {
+    unlockWith([entryMeta('a')])
+
+    const entries = await send(
+      {
+        type: BG_ACTION_KEYS.LIST_ENTRIES,
+        data: { query: 'git', url: 'https://github.com/2fa' },
+      },
+      popupSender,
+    )
+
+    expect(entries).toEqual({
+      forSite: [],
+      all: [expect.objectContaining({ id: 'a' })],
+    })
+  })
+})

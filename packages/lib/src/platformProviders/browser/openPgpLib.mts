@@ -15,6 +15,10 @@ export class BrowserOpenPgpLib implements OpenPgpLib {
       this.openPgpModule = await import('openpgp')
       // enable Authenticated Encryption with Associated Data
       this.openPgpModule.config.aeadProtect = true
+      // Exports hold the vault's secrets, so use memory-hard Argon2 to resist
+      // offline password guessing. Older exports remain readable because each
+      // OpenPGP message records its own string-to-key algorithm.
+      this.openPgpModule.config.s2kType = this.openPgpModule.enums.s2k.argon2
     }
     return this.openPgpModule
   }

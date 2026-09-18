@@ -6,6 +6,7 @@ import type { QrCodeLib } from '../interfaces/QrCodeLib.mjs'
 import type { OpenPgpLib } from '../interfaces/OpenPgpLib.mjs'
 import type { UrlParser } from '../interfaces/UrlParserLib.mjs'
 import { ExportImportError } from '../FavaLibError.mjs'
+import { EXPORT_VERSION } from '../version.mjs'
 import { sanitiseInputSelector } from './entrySanitisation.mjs'
 import {
   MAX_MATCHERS_PER_ENTRY,
@@ -193,6 +194,7 @@ export const generateHtmlExport = async (
   return `
         <html>
           <head>
+            <meta name="fava-export-version" content="${EXPORT_VERSION}">
             <style>
               .container { display: flex; flex-wrap: wrap; }
               .entry { margin: 10px; text-align: center; }
@@ -211,14 +213,13 @@ export const generateHtmlExport = async (
 /**
  * Generates a text export of OTP URIs for the provided entries.
  * @param entries - An array of OTP entries.
- * @returns A string containing the OTP URIs, one per line.
+ * @returns A version comment followed by the OTP URIs, one per line.
  */
 export const generateTextExport = (entries: Entry[]) => {
-  return entries
-    .map((entry) => {
-      return generateOtpUrl(entry)
-    })
-    .join('\n')
+  return [
+    `# fava-export-version: ${EXPORT_VERSION}`,
+    ...entries.map((entry) => generateOtpUrl(entry)),
+  ].join('\n')
 }
 
 /**
@@ -235,7 +236,12 @@ export const processImportLines = async (
 ): Promise<{ lineNr: number; entryId: EntryId | null; error: unknown }[]> => {
   return Promise.all(
     lines
-      .filter((line) => line !== '')
+      // The version is informational; accept any numeric version and legacy
+      // exports without a marker. Do not send metadata to the OTP URI parser.
+      .filter(
+        (line) =>
+          line !== '' && !/^# fava-export-version: \d+$/.test(line.trim()),
+      )
       .map(async (line, lineNr) => {
         try {
           return {

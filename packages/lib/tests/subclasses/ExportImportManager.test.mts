@@ -44,6 +44,7 @@ describe('ExportImportManager', () => {
         undefined,
         true,
       )
+      expect(result.split('\n')[0]).toBe('# fava-export-version: 1')
       expect(result).toContain(
         'otpauth://totp/Test%20Issuer:Test%20TOTP?secret=TESTSECRET&issuer=Test%20Issuer&algorithm=SHA-1&digits=6&period=30',
       )
@@ -59,6 +60,7 @@ describe('ExportImportManager', () => {
         true,
       )
       expect(result).toContain('<html>')
+      expect(result).toContain('<meta name="fava-export-version" content="1">')
       expect(result).toContain('Test TOTP')
       expect(result).toContain('Another TOTP')
       expect(result).toContain('Test Issuer')
@@ -86,12 +88,30 @@ describe('ExportImportManager', () => {
         passwords: [password],
       })
 
+      expect(decrypted.data).toContain('# fava-export-version: 1\n')
       expect(decrypted.data).toContain(
         'otpauth://totp/Test%20Issuer:Test%20TOTP?secret=TESTSECRET&issuer=Test%20Issuer&algorithm=SHA-1&digits=6&period=30',
       )
       expect(decrypted.data).toContain(
         'otpauth://totp/Another%20Issuer:Another%20TOTP?secret=TESTSECRET&issuer=Another%20Issuer&algorithm=SHA-1&digits=6&period=30',
       )
+    })
+
+    it('stretches the export password with Argon2, not the default S2K', async () => {
+      // Inspect the emitted packet: a round trip would also pass with the
+      // default S2K, which has no memory hardness.
+      const result = await favaLib.exportImport.exportEntries('text', password)
+      const message = await openpgp.readMessage({ armoredMessage: result })
+
+      // OpenPGP's declarations omit the packet's runtime S2K property.
+      const s2kTypes = message.packets
+        .filter(
+          (packet) => packet instanceof openpgp.SymEncryptedSessionKeyPacket,
+        )
+        .map((packet) => (packet as { s2k?: { type?: string } }).s2k?.type)
+
+      expect(s2kTypes).not.toHaveLength(0)
+      expect(s2kTypes.every((type) => type === 'argon2')).toBe(true)
     })
 
     it('should encrypt HTML export when password is provided', async () => {
@@ -106,6 +126,9 @@ describe('ExportImportManager', () => {
       })
 
       expect(decrypted.data).toContain('<html>')
+      expect(decrypted.data).toContain(
+        '<meta name="fava-export-version" content="1">',
+      )
       expect(decrypted.data).toContain('Test TOTP')
     })
 
@@ -331,13 +354,14 @@ describe('ExportImportManager', () => {
     it('should round-trip matchers through an export', async () => {
       await clearEntries(favaLib)
       await favaLib.vault.addEntry(matcherNewTotpEntry)
-      const uri = (
+      const exported = (
         await favaLib.exportImport.exportEntries('text', undefined, true)
       ).trim()
 
       await clearEntries(favaLib)
-      const reimportedId = await favaLib.exportImport.importFromUri(uri)
-      const reimported = favaLib.vault.getEntryMeta(reimportedId)
+      const [result] = await favaLib.exportImport.importFromTextFile(exported)
+      expect(result.error).toBeNull()
+      const reimported = favaLib.vault.getEntryMeta(result.entryId!)
 
       expect(reimported.matchers).toEqual(matcherNewTotpEntry.matchers)
       expect(reimported.url).toEqual(matcherNewTotpEntry.url)
@@ -376,7 +400,9 @@ describe('ExportImportManager', () => {
         )
 
         await clearEntries(favaLib)
-        const importedId = await favaLib.exportImport.importFromUri(exported)
+        const [result] = await favaLib.exportImport.importFromTextFile(exported)
+        expect(result.error).toBeNull()
+        const importedId = result.entryId!
         expect(favaLib.vault.getEntryMeta(importedId).matchers).toEqual([
           matcher,
         ])
@@ -411,7 +437,7 @@ describe('ExportImportManager', () => {
       await favaLib.vault.addEntry(matcherNewTotpEntry)
       const uri = (
         await favaLib.exportImport.exportEntries('text', undefined, true)
-      ).trim()
+      ).split('\n')[1]
 
       const parsed = new URL(uri)
       expect(parsed.searchParams.get('secret')).toBe('TESTSECRET')
@@ -453,6 +479,18 @@ describe('ExportImportManager', () => {
         issuer: 'Another Issuer',
         type: 'TOTP',
       })
+    })
+
+    it('should treat the export version as informational', async () => {
+      const fileContents =
+        '# fava-export-version: 999\n' +
+        'otpauth://totp/Example:Account?secret=TESTSECRET&issuer=Example'
+
+      const result = await favaLib.exportImport.importFromTextFile(fileContents)
+
+      expect(result).toHaveLength(1)
+      expect(result[0].entryId).toBeTruthy()
+      expect(result[0].error).toBeNull()
     })
 
     it('should handle invalid entries in the text file', async () => {
@@ -535,6 +573,33 @@ describe('ExportImportManager', () => {
         issuer: 'Another Issuer',
         type: 'TOTP',
       })
+    })
+
+    it('should import exports encrypted with the previous iterated S2K', async () => {
+      const contents =
+        'otpauth://totp/Legacy%20Issuer:Legacy%20TOTP?secret=JBSWY3DPEHPK3PXP&issuer=Legacy%20Issuer&algorithm=SHA-1&digits=6&period=30'
+      // Reproduce the previous export settings without changing global config.
+      const encryptedContents = (await openpgp.encrypt({
+        message: await openpgp.createMessage({ text: contents }),
+        passwords: [password],
+        format: 'armored',
+        config: {
+          aeadProtect: true,
+          s2kType: openpgp.enums.s2k.iterated,
+        },
+      })) as string
+
+      const result = await favaLib.exportImport.importFromTextFile(
+        encryptedContents,
+        password,
+      )
+
+      expect(result).toHaveLength(1)
+      expect(result[0].entryId).toBeTruthy()
+      expect(result[0].error).toBeNull()
+      expect(
+        await favaLib.exportImport.exportEntries('text', undefined, true),
+      ).toContain(contents)
     })
 
     it('should throw an error when trying to decrypt with an incorrect password', async () => {

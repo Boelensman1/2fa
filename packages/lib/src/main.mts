@@ -87,6 +87,7 @@ import {
 } from './FavaLibError.mjs'
 import {
   LIB_VERSION,
+  EXPORT_VERSION,
   SESSION_VERSION,
   STORAGE_VERSION,
   PAIRING_VERSION,
@@ -114,6 +115,7 @@ export {
   SyncDeviceKeyConflictError,
   SyncDeviceRemovedError,
   LIB_VERSION,
+  EXPORT_VERSION,
   SESSION_VERSION,
   STORAGE_VERSION,
   PAIRING_VERSION,

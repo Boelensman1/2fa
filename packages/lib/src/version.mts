@@ -20,6 +20,14 @@ import type { KdfParameters } from './utils/canonical.mjs'
 export const LIB_VERSION = '0.0.23'
 
 /**
+ * The format version written into text and HTML entry exports, before any
+ * password encryption. Independent of the vault storage and library versions.
+ * Informational for now: imports ignore the marker and still accept older
+ * exports without one. OpenPGP records its own encryption parameters.
+ */
+export const EXPORT_VERSION = 1
+
+/**
  * The version of the LockedRepresentation envelope that this build writes, and
  * the highest one it is able to read. A stored vault claiming a higher number
  * was written by a newer library and is refused rather than misread.

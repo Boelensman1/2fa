@@ -175,6 +175,44 @@ const generateNonCryptographicRandomString = () => {
  */
 const SYNC_SERVER_UNAUTHORIZED_CLOSE_CODE = 4401
 
+/** How long the HTTP probe in a connection diagnosis waits for an answer. */
+const HTTP_PROBE_TIMEOUT_MS = IN_TESTING ? 200 : 5000
+
+/** What a sync server answers a request that is not a WebSocket upgrade with. */
+const HTTP_UPGRADE_REQUIRED = 426
+
+/**
+ * Turns whatever `fetch` rejected with into something worth printing.
+ *
+ * `fetch` fails with a bare "fetch failed" and hides the useful half in
+ * `cause`: the errno (ECONNREFUSED, ENOTFOUND) or the TLS reason. A browser
+ * gives neither and may be refusing the request itself, so say so rather than
+ * let "failed" be read as "nothing is listening".
+ * @param err - The value fetch rejected with.
+ * @returns A description of the failure.
+ */
+const describeFetchFailure = (err: unknown): string => {
+  // eslint-disable-next-line no-restricted-globals
+  if (!(err instanceof Error)) {
+    return String(err)
+  }
+  if (err.name === 'TimeoutError' || err.name === 'AbortError') {
+    return `no answer within ${HTTP_PROBE_TIMEOUT_MS}ms`
+  }
+  const cause: unknown = err.cause
+  const causeDetail =
+    // eslint-disable-next-line no-restricted-globals
+    cause instanceof Error
+      ? ((cause as { code?: string }).code ?? cause.message)
+      : typeof cause === 'string'
+        ? cause
+        : undefined
+  const detail = causeDetail ?? err.message
+  return detail
+    ? `${detail} (the host may be unreachable, or a browser may have blocked the probe)`
+    : 'no reason given (the host may be unreachable, or a browser may have blocked the probe)'
+}
+
 /**
  * Manages synchronization of 2FA devices and communication with the server.
  */
@@ -206,6 +244,16 @@ class SyncManager {
   private terminateTimeout?: NodeJS.Timeout
   private connectionFailedTimeout?: NodeJS.Timeout
   private shouldReconnect = true
+
+  /**
+   * What the last socket attempt was last seen doing, for the failure message.
+   *
+   * The WebSocket api gives a client almost nothing about a handshake that did
+   * not happen -- deliberately, so a page cannot use it to probe the network --
+   * so this is assembled from what we do see: the close code and reason, if any
+   * arrived, and how far through the server's gate the socket got.
+   */
+  private lastSocketFailure?: string
 
   private requestedResilver = false
   private requestedResilverTimeout?: NodeJS.Timeout
@@ -365,7 +413,7 @@ class SyncManager {
     if (this.connectionEnabled) {
       this.connectionFailedTimeout = setTimeout(() => {
         if (!this.readyEventEmitted && !this.webSocketConnected) {
-          this.log('warning', 'Failed to connect to sync backend')
+          this.log('warning', this.describeConnectionFailure())
           this.dispatchLibEvent(FavaLibEvent.Ready)
 
           this.dispatchLibEvent(
@@ -430,6 +478,107 @@ class SyncManager {
     return this.socketOpen && this.authState === 'authenticated'
   }
 
+  /**
+   * @returns How far the current socket got through the server's gate, as a
+   * clause that reads after "while".
+   */
+  private describeAuthStage(): string {
+    if (this.authState === 'authenticated') {
+      return 'connected'
+    }
+    if (this.authState === 'awaiting-accept') {
+      return "waiting for the server to accept this device's proof of the server secret"
+    }
+    return this.socketOpen
+      ? "waiting for the server's challenge"
+      : 'still opening the connection'
+  }
+
+  /**
+   * Describes, in one line and without going near the network, why this device
+   * is not talking to the sync server: which server, and what the last socket
+   * attempt was seen doing.
+   *
+   * For the HTTP half -- what that address actually answers -- see
+   * {@link diagnoseConnectionFailure}. This one is what the log event says,
+   * so it has to be available the moment the failure is noticed.
+   * @returns The one-line failure description.
+   */
+  describeConnectionFailure(): string {
+    const detail =
+      this.lastSocketFailure ?? `the socket is ${this.describeAuthStage()}`
+    return `Failed to connect to sync backend at ${this.serverUrl}: ${detail}`
+  }
+
+  /**
+   * Describes why this device is not talking to the sync server, including what
+   * a plain HTTP request to the same address answers.
+   *
+   * The WebSocket api is why the second half has to be asked for separately. A
+   * handshake that fails arrives as an `error` event with no error in it and a
+   * 1006 close with no reason -- specified that way so a page cannot use a
+   * socket to probe the network -- so "it did not connect" is genuinely all the
+   * socket knows. A fetch of the same address is not bound by that, and
+   * separates the cases a user has to tell apart: nothing listening, no such
+   * host, a certificate that is not trusted, or something listening that is not
+   * a sync server (and then its status and the start of its body).
+   * @returns A promise for the full failure description, on one line.
+   */
+  async diagnoseConnectionFailure(): Promise<string> {
+    return `${this.describeConnectionFailure()}. ${await this.probeServerUrlOverHttp()}`
+  }
+
+  /**
+   * Asks the sync server's address for an ordinary HTTP response.
+   *
+   * A sync server answers a plain GET with 426 Upgrade Required, so a 426 means
+   * the address is right and the problem is the handshake or the secret;
+   * anything else names what is there instead.
+   * @returns A promise for a description of the response, or of the failure to
+   * get one.
+   */
+  private async probeServerUrlOverHttp(): Promise<string> {
+    const fetchImpl = globalThis.fetch as typeof globalThis.fetch | undefined
+    if (!fetchImpl) {
+      return 'This runtime has no fetch, so the address was not probed over HTTP'
+    }
+
+    let httpUrl: string
+    try {
+      const url = new URL(this.serverUrl)
+      url.protocol = url.protocol === 'wss:' ? 'https:' : 'http:'
+      httpUrl = url.toString()
+    } catch {
+      return `${this.serverUrl} is not a valid URL`
+    }
+
+    try {
+      const response = await fetchImpl(httpUrl, {
+        method: 'GET',
+        // Long enough for a slow server, short enough that a diagnosis is
+        // still a diagnosis and not another hang.
+        signal: AbortSignal.timeout(HTTP_PROBE_TIMEOUT_MS),
+      })
+      const body = await response
+        .text()
+        .then((text) => text.replace(/\s+/g, ' ').trim().slice(0, 200))
+        .catch(() => '')
+      const statusText = response.statusText ? ` ${response.statusText}` : ''
+      return (
+        `GET ${httpUrl} answered HTTP ${response.status}${statusText}` +
+        (body ? `: "${body}"` : '') +
+        (response.status === HTTP_UPGRADE_REQUIRED
+          ? // What a sync server answers a plain request with, so this one is
+            // the reachable case: something is there and speaks the protocol.
+            '. The address is reachable and it is the WebSocket handshake or ' +
+            'the server secret that failed'
+          : '')
+      )
+    } catch (err) {
+      return `GET ${httpUrl} failed: ${describeFetchFailure(err)}`
+    }
+  }
+
   private sendToServer<T extends ClientMessage['type']>(
     type: T,
     data: Extract<ClientMessage, { type: T }>['data'],
@@ -455,8 +604,15 @@ class SyncManager {
     const syncManager = this
 
     ws.addEventListener('error', () => {
-      // no error information seems to be available...
-      syncManager.log('warning', `Error in websocket.`)
+      // The event carries no error worth reporting: browsers specify it away,
+      // and Node's WebSocket hands over a TypeError with an empty message. All
+      // the detail there is to have comes from asking over HTTP instead, which
+      // describeConnectionFailure does.
+      syncManager.lastSocketFailure = `the socket reported an error while ${syncManager.describeAuthStage()}`
+      syncManager.log(
+        'warning',
+        `Error in websocket to ${syncManager.serverUrl}.`,
+      )
     })
 
     ws.addEventListener('message', function message(message: MessageEvent) {
@@ -502,6 +658,17 @@ class SyncManager {
     this.ws = ws
   }
   private handleWebSocketClose(event: CloseEvent) {
+    if (this.shouldReconnect) {
+      // Only an unexpected close says anything about why this device is not
+      // connected. closeServerConnection clears shouldReconnect before it
+      // closes, and recording that would overwrite the real failure with our
+      // own hang-up.
+      this.lastSocketFailure =
+        `the socket closed with code ${event.code}` +
+        (event.reason ? ` (${event.reason})` : '') +
+        ` while ${this.describeAuthStage()}`
+    }
+
     if (event.code === SYNC_SERVER_UNAUTHORIZED_CLOSE_CODE) {
       // Terminal, where every other close is temporary. The server refused this
       // socket because it could not prove the shared secret, and reconnecting
@@ -511,8 +678,9 @@ class SyncManager {
       this.shouldReconnect = false
       this.log(
         'error',
-        'The sync server refused this connection: the server secret is ' +
-          'wrong or the server has changed it. Set the sync server again.',
+        `The sync server at ${this.serverUrl} refused this connection: the ` +
+          'server secret is wrong or the server has changed it. Set the sync ' +
+          'server again.',
       )
       this.dispatchLibEvent(FavaLibEvent.ConnectionToSyncServerStatusChanged, {
         newStatus: ConnectionStatus.FAILED,
@@ -529,7 +697,10 @@ class SyncManager {
       })
 
       // if we shouldn't reconnect, this closing is expected
-      this.log('warning', `WebSocket closed: ${event.code} ${event.reason}`)
+      this.log(
+        'warning',
+        `WebSocket to ${this.serverUrl} closed: ${event.code} ${event.reason}`,
+      )
       this.attemptReconnect()
     } else {
       this.dispatchLibEvent(FavaLibEvent.ConnectionToSyncServerStatusChanged, {

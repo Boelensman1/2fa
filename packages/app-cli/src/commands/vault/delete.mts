@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises'
 import { Option } from 'clipanion'
-import { confirm } from '@inquirer/prompts'
+import { input } from '@inquirer/prompts'
 
 import BaseCommand from '../../BaseCommand.mjs'
 
@@ -14,7 +14,7 @@ class VaultDeleteCommand extends BaseCommand {
     description: 'Delete the current vault',
     details: `
       This command deletes the current vault file.
-      You will be asked to confirm before deletion.
+      You will be asked to type "destructive" to confirm before deletion.
     `,
     examples: [['Delete the current vault', 'vault delete']],
   })
@@ -25,13 +25,18 @@ class VaultDeleteCommand extends BaseCommand {
 
   async exec() {
     if (!this.force) {
-      const shouldDelete = await confirm({
-        message:
-          'Are you sure you want to delete the vault? This action cannot be undone.',
-        default: false,
+      this.context.stderr.write(
+        'WARNING: This deletes the current vault, its backup and any temporary\n',
+      )
+      this.context.stderr.write(
+        'copy. The 2FA secrets it holds cannot be recovered afterwards.\n',
+      )
+
+      const confirmation = await input({
+        message: 'Type "destructive" to confirm deletion of the vault:',
       })
 
-      if (!shouldDelete) {
+      if (confirmation !== 'destructive') {
         this.output('Vault deletion cancelled.\n')
         return { success: false, cancelled: true }
       }

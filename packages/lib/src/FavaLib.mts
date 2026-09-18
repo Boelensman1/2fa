@@ -339,11 +339,18 @@ class FavaLib extends TypedEventTarget<FavaLibEventMapEvents> {
     })
     if (!success) {
       if (force) {
+        // No HTTP probe on this path: force means the caller has already
+        // decided, so the diagnosis would buy nothing and cost a request to a
+        // server that may well be the wrong one.
         this.log(
           'warning',
-          `Failed to connect to server at ${serverUrl}, force setting`,
+          `${newSyncManager.describeConnectionFailure()}. Force setting anyway.`,
         )
       } else {
+        // Diagnosed before the connection is closed, so the description is of
+        // the failure and not of our own hang-up.
+        const diagnosis = await newSyncManager.diagnoseConnectionFailure()
+
         // Close the new sync manager and restore the old one
         newSyncManager.closeServerConnection()
         this.mediator.unRegisterComponent('syncManager')
@@ -355,7 +362,8 @@ class FavaLib extends TypedEventTarget<FavaLibEventMapEvents> {
         }
 
         throw new SyncError(
-          `Failed to connect to server at ${serverUrl}, not setting`,
+          `${diagnosis}. The sync server was not changed -- pass force to ` +
+            'set it regardless.',
         )
       }
     }

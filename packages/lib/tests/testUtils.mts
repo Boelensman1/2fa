@@ -282,10 +282,14 @@ export const completeHandshake = async (server: WS, ws?: WsClient) => {
 }
 
 /**
- * Adds an event listener to relay warning logs
+ * Relays warning and error logs when FAVA_TEST_LOGS=1 is set for debugging.
  * @param lib - The FavaLib to add the event listener to
  */
 export const addTestLogEventListener = (lib: FavaLib) => {
+  if (process.env.FAVA_TEST_LOGS !== '1') {
+    return
+  }
+
   lib.addEventListener(FavaLibEvent.Log, (event) => {
     if (event.detail.severity !== 'info') {
       console.log(event.detail.message)

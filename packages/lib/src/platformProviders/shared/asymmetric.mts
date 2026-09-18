@@ -127,7 +127,11 @@ const ED25519_PUBLIC_BYTES = lengthOf(
   ed25519.lengths.publicKey,
   'ed25519 public',
 )
-const ED25519_SIGNATURE_BYTES = lengthOf(
+/**
+ * Exported as well as used here: it is the offset a composite signature splits
+ * at, which is what a test corrupting one half at a time needs to know.
+ */
+export const ED25519_SIGNATURE_BYTES = lengthOf(
   ed25519.lengths.signature,
   'ed25519 signature',
 )
@@ -503,7 +507,10 @@ const combineSealShares = (
  * there is no per-message ML-KEM half.
  * @returns The ephemeral keypair, base64 encoded.
  */
-const createSealEphemeral = (): { secretKey: Uint8Array; publicKey: string } => {
+const createSealEphemeral = (): {
+  secretKey: Uint8Array
+  publicKey: string
+} => {
   const { secretKey, publicKey } = x25519.keygen()
   return { secretKey, publicKey: uint8ArrayToBase64(publicKey) }
 }
@@ -622,13 +629,9 @@ export const sealTo = async <T extends string>(
     await crypto.encryptSymmetric(key, plainText, SEAL_AAD)
   ).split(':')
 
-  return [
-    prefix,
-    ephemeral.publicKey,
-    kemCipherText,
-    nonce,
-    cipherText,
-  ].join(':') as Encrypted<T>
+  return [prefix, ephemeral.publicKey, kemCipherText, nonce, cipherText].join(
+    ':',
+  ) as Encrypted<T>
 }
 
 /**

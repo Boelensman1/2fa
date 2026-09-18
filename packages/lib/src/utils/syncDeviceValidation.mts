@@ -99,7 +99,10 @@ function base64Length(bytes: number): number {
  * @returns True when the value is a usable public key.
  */
 const isPublicKey = (value: unknown, expectedBytes: number): boolean => {
-  if (typeof value !== 'string' || value.length !== base64Length(expectedBytes)) {
+  if (
+    typeof value !== 'string' ||
+    value.length !== base64Length(expectedBytes)
+  ) {
     return false
   }
   try {

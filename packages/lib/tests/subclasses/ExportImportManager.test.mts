@@ -94,6 +94,35 @@ describe('ExportImportManager', () => {
       )
     })
 
+    it('stretches the export password with Argon2, not the default S2K', async () => {
+      // OpenPGP's default string-to-key is an iterated SHA-256 loop with no
+      // memory hardness. An export holds exactly the secrets the vault does and
+      // is the copy most likely to end up somewhere an attacker can grind it
+      // offline, so it gets the same class of KDF the vault has used since
+      // storage version 2.
+      //
+      // Asserted on the packet rather than on config, because config is a
+      // mutable global on a lazily imported module: a provider that forgot to
+      // set it would still round-trip perfectly and every other test here would
+      // stay green.
+      const result = await favaLib.exportImport.exportEntries('text', password)
+      const message = await openpgp.readMessage({ armoredMessage: result })
+
+      // openpgp's type declarations do not surface the S2K on the packet even
+      // though the runtime object carries it. Narrowed with a cast rather than
+      // an expect-error directive, which would also swallow a genuine type
+      // error later. (Spelling that directive out in prose here would BE one:
+      // TypeScript reads it from any comment, and it would then be unused.)
+      const s2kTypes = message.packets
+        .filter(
+          (packet) => packet instanceof openpgp.SymEncryptedSessionKeyPacket,
+        )
+        .map((packet) => (packet as { s2k?: { type?: string } }).s2k?.type)
+
+      expect(s2kTypes).not.toHaveLength(0)
+      expect(s2kTypes.every((type) => type === 'argon2')).toBe(true)
+    })
+
     it('should encrypt HTML export when password is provided', async () => {
       const result = await favaLib.exportImport.exportEntries('html', password)
 

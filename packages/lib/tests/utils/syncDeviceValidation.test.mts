@@ -8,8 +8,6 @@ import {
 
 import {
   MAX_REMOVED_DEVICES,
-  PUBLIC_KEY_LENGTH,
-  SIGNING_PUBLIC_KEY_LENGTH,
   parseDevicePublicKeys,
   validateRemovedDevices,
   validateSyncDevice,
@@ -29,10 +27,18 @@ import {
 const key = (bytes: number, fill = 1) =>
   uint8ArrayToBase64(new Uint8Array(bytes).fill(fill))
 
-/** A key agreement public key of the right length. */
+/**
+ * Builds a key agreement public key of the right length.
+ * @param fill - The byte to repeat.
+ * @returns The base64 key.
+ */
 const encryptionKey = (fill = 1) => key(PUBLIC_KEY_BYTES, fill)
 
-/** A signing public key of the right length. */
+/**
+ * Builds a signing public key of the right length.
+ * @param fill - The byte to repeat.
+ * @returns The base64 key.
+ */
 const signingKey = (fill = 2) => key(SIGNING_PUBLIC_KEY_BYTES, fill)
 
 const validDevice = {
@@ -136,11 +142,11 @@ describe('validateSyncDevice', () => {
   it.each([
     ['one character short', (n: number) => key(n).slice(0, -1)],
     ['one character long', (n: number) => key(n) + 'A'],
-    ['a PEM', () => '-----BEGIN PUBLIC KEY-----\nAAAA\n-----END PUBLIC KEY-----'],
     [
-      'right length, not base64',
-      (n: number) => '!'.repeat(key(n).length),
+      'a PEM',
+      () => '-----BEGIN PUBLIC KEY-----\nAAAA\n-----END PUBLIC KEY-----',
     ],
+    ['right length, not base64', (n: number) => '!'.repeat(key(n).length)],
   ])('rejects a key that is %s', (_label, build) => {
     expect(
       validateSyncDevice(deviceWith({ publicKey: build(PUBLIC_KEY_BYTES) })),
@@ -194,7 +200,10 @@ describe('parseDevicePublicKeys', () => {
   it.each([
     ['not JSON', 'not json at all'],
     ['JSON that is not an object', '"a string"'],
-    ['a pair with one key missing', JSON.stringify({ publicKey: encryptionKey() })],
+    [
+      'a pair with one key missing',
+      JSON.stringify({ publicKey: encryptionKey() }),
+    ],
     [
       'a pair with an unusable key',
       JSON.stringify({ publicKey: encryptionKey(), signingPublicKey: 'short' }),

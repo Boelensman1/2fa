@@ -14,10 +14,16 @@ import {
   type SymmetricKey,
   type EncryptedSecretKeys,
   type EncryptedVaultStateString,
+  type Signature,
 } from '../src/main.mjs'
 import type { VaultStateString } from '../src/interfaces/Vault.mjs'
 import { buildVaultAad } from '../src/utils/canonical.mjs'
 import { nodeProviders } from '../src/platformProviders/node/index.mjs'
+import {
+  createEncryptionKeyPair,
+  createSigningKeyPair,
+  ED25519_SIGNATURE_BYTES,
+} from '../src/platformProviders/shared/asymmetric.mjs'
 import {
   createFavaLibForTests,
   deviceType,
@@ -329,6 +335,101 @@ describe('stored envelope integrity', () => {
       await expect(
         cryptoLib.decryptSymmetric(key, v1Shaped, ''),
       ).rejects.toThrow('Could not decrypt data')
+    })
+  })
+
+  describe('the hybrid seal', () => {
+    const message = 'sealed plaintext' as VaultStateString
+
+    /**
+     * Builds a fresh recipient keypair, so no test depends on another's.
+     * @returns The composite key agreement keypair.
+     */
+    const recipient = () => createEncryptionKeyPair()
+
+    it('refuses a four-field seal, which is what a pre-quantum peer sends', async () => {
+      // The field count is the whole gate. A seal from before the ML-KEM leg
+      // has no ciphertext field, and there is no fallback that would open it --
+      // so it has to fail here, on shape, rather than reaching a primitive that
+      // would name itself in the error.
+      const { privateKey, publicKey: recipientKey } = recipient()
+      const parts = (await cryptoLib.encrypt(recipientKey, message)).split(':')
+      expect(parts).toHaveLength(5)
+
+      const withoutKemCipherText = [
+        parts[0],
+        parts[1],
+        parts[3],
+        parts[4],
+      ].join(':') as EncryptedVaultStateString
+
+      await expect(
+        cryptoLib.decrypt(privateKey, withoutKemCipherText),
+      ).rejects.toThrow('Could not decrypt data')
+    })
+
+    it.each([
+      ['the ephemeral public key', 1],
+      ['the ML-KEM ciphertext', 2],
+    ])(
+      'rejects a flipped byte in %s, with the same error as everything else',
+      async (_label, index) => {
+        // ML-KEM decapsulation does not fail on a ciphertext that is not its
+        // own -- implicit rejection hands back an unrelated shared secret -- so
+        // a tampered ciphertext has to surface at the GCM tag, indistinguishably
+        // from a tampered anything else. That indistinguishability is the point:
+        // a seal that said which half was wrong would be an oracle.
+        const { privateKey, publicKey: recipientKey } = recipient()
+        const parts = (await cryptoLib.encrypt(recipientKey, message)).split(
+          ':',
+        )
+        const bytes = base64ToUint8Array(parts[index])
+        bytes[0] ^= 0xff
+        parts[index] = uint8ArrayToBase64(bytes)
+
+        await expect(
+          cryptoLib.decrypt(
+            privateKey,
+            parts.join(':') as EncryptedVaultStateString,
+          ),
+        ).rejects.toThrow('Could not decrypt data')
+      },
+    )
+  })
+
+  describe('the composite signature', () => {
+    const message = 'a canonical message'
+
+    it('verifies when both halves are intact', async () => {
+      const { signingSecretKey, signingPublicKey } = createSigningKeyPair()
+      const signature = await cryptoLib.sign(signingSecretKey, message)
+
+      expect(await cryptoLib.verify(signingPublicKey, message, signature)).toBe(
+        true,
+      )
+    })
+
+    // Both directions, because an implementation that ORs the two halves
+    // instead of ANDing them passes whichever direction you happen to test
+    // first. The whole value of carrying two signatures is that an attacker has
+    // to forge both, and an OR would make the pair exactly as strong as its
+    // weaker half.
+    it.each([
+      ['the Ed25519 half', 0],
+      ['the ML-DSA half', ED25519_SIGNATURE_BYTES],
+    ])('is refused when only %s is corrupted', async (_label, offset) => {
+      const { signingSecretKey, signingPublicKey } = createSigningKeyPair()
+      const signature = await cryptoLib.sign(signingSecretKey, message)
+      const bytes = base64ToUint8Array(signature)
+      bytes[offset] ^= 0xff
+
+      expect(
+        await cryptoLib.verify(
+          signingPublicKey,
+          message,
+          uint8ArrayToBase64(bytes) as Signature,
+        ),
+      ).toBe(false)
     })
   })
 })

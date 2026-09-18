@@ -807,7 +807,7 @@ class SyncManager {
           round2Result: jsonToUint8Array(unconvertedPass2Result.round2Result),
         } as unknown as Pass2Result
 
-        void this.finishAddDeviceFlowKeyExchangeInitiator(
+        this.finishAddDeviceFlowKeyExchangeInitiator(
           pass2Result,
           data.responderDeviceId,
         )
@@ -1163,7 +1163,21 @@ class SyncManager {
     })
   }
 
-  private async finishAddDeviceFlowKeyExchangeInitiator(
+  /**
+   * Completes the initiator's JPAKE passes and sends its pairing KEM key.
+   *
+   * Synchronous, where its responder counterpart is not. It used to derive the
+   * sync key here and await argon2id doing it; now half the key material is
+   * still in flight -- the responder's ML-KEM ciphertext arrives with the
+   * handshake payload -- so there is nothing left to await. Being synchronous
+   * means a throw reaches `handleServerMessage`'s caller, which logs a
+   * SyncError as itself rather than letting it become an unhandled rejection.
+   * @param pass2Result - The responder's JPAKE pass 2.
+   * @param responderDeviceId - The device joining the vault.
+   * @throws {SyncNoServerConnectionError} If there is no server connection.
+   * @throws {SyncInWrongStateError} If no initiator flow is waiting for this.
+   */
+  private finishAddDeviceFlowKeyExchangeInitiator(
     pass2Result: Pass2Result,
     responderDeviceId: DeviceId,
   ) {
@@ -1251,8 +1265,7 @@ class SyncManager {
 
     this.activeAddDeviceFlow.jpak.receivePass3Results(pass3Result)
 
-    const { kemCipherText, sharedSecret } =
-      pairingKemEncapsulate(kemPublicKey)
+    const { kemCipherText, sharedSecret } = pairingKemEncapsulate(kemPublicKey)
     const { key: jpakeSharedKey } =
       this.activeAddDeviceFlow.jpak.deriveSharedKey()
     const syncKey = await this.cryptoLib.createSyncKey(

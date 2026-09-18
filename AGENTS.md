@@ -83,10 +83,19 @@ reference them from a package as `"<dep>": "catalog:"` rather than pinning twice
 | --- | --- | --- |
 | `server` | `make -C packages/server dev` | 8080 (ws) |
 | `browser` | `make -C packages/app-browser dev` | 3266 (http, previewed) |
+| `keyring` | a session D-Bus + `gnome-keyring-daemon` | none |
 
 Manage them with `milly service status`, `milly service logs <name>`, and
 `milly service restart <name>` rather than starting or killing them by hand.
 Logs are at `$HOME/.cache/milly/2fa/dev-services/<name>.log`.
+
+`keyring` exists because `favacli` stores the vault password through keytar,
+which on Linux is a Secret Service over D-Bus -- and a container has no desktop
+session to provide one. Without it every command that opens a vault fails with
+"Cannot autolaunch D-Bus without X11 $DISPLAY". `DBUS_SESSION_BUS_ADDRESS` is
+set for every shell and dev service, so nothing needs configuring. The keyring
+itself lives in `$HOME/.local/share/keyrings` and survives restarts; delete that
+directory to reset it if the unlock password ever stops matching.
 
 ## Database and server config
 

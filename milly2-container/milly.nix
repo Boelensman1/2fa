@@ -42,6 +42,63 @@ let
         database: "fava_test"
   '';
 
+  # favacli stores the vault password in the OS keychain through keytar, which
+  # on Linux is a Secret Service over D-Bus. The base image has no desktop
+  # session, so there is neither a session bus nor a keyring daemon, and every
+  # favacli command that touches a vault -- `setup`, `vault create`, and
+  # anything that loads one -- dies with "Cannot autolaunch D-Bus without X11
+  # $DISPLAY". The `keyring` dev service below supplies both.
+  #
+  # The password must not be empty. `gnome-keyring-daemon --unlock` with an
+  # empty one starts perfectly happily and then creates no login collection at
+  # all, and the failure only surfaces later, in the client, as "Object does not
+  # exist at path /org/freedesktop/secrets/collection/login".
+  #
+  # In the repository on purpose and useless on purpose, like devSharedSecret:
+  # it unlocks a keyring inside one dev container, holding dev vault passwords.
+  devKeyringPassword = "dev-only-keyring-password-not-for-real-use";
+
+  # Fixed, because the address has to be known before the daemon that serves it
+  # starts: environment.variables below hands it to every shell and dev service,
+  # and this script binds it. $HOME is expanded by the shell that sources
+  # /etc/set-environment, which is why this is not an absolute path.
+  keyringDir = "$HOME/.cache/fava-keyring";
+
+  # Two daemons, one service: a private session bus at the fixed address above,
+  # and gnome-keyring serving org.freedesktop.secrets on it. The keyring is the
+  # main process so the service lives and dies with it; the bus is cleaned up by
+  # the trap.
+  keyringCommand = pkgs.writeShellScript "fava-keyring" ''
+    set -eu
+    mkdir -p "${keyringDir}"
+
+    # Exported here as well as in environment.variables, not instead of it: this
+    # is the process that has to bind the address, and inheriting it from the
+    # login shell would make the service that provides the bus depend on
+    # something outside it. gnome-keyring otherwise tries to autolaunch a bus of
+    # its own and fails with the very error this service exists to prevent.
+    export DBUS_SESSION_BUS_ADDRESS="unix:path=${keyringDir}/bus"
+
+    # A restart finds the old socket still on disk, which stops dbus-daemon
+    # binding the address, and possibly the old dbus-daemon still holding it,
+    # which would serve a bus whose keyring has gone. Clear both first.
+    ${pkgs.procps}/bin/pkill -f "dbus-daemon --session --address=unix:path=${keyringDir}/bus" || true
+    rm -f "${keyringDir}/bus"
+
+    ${pkgs.dbus}/bin/dbus-daemon --session \
+      --address="unix:path=${keyringDir}/bus" \
+      --fork --print-pid > "${keyringDir}/dbus.pid"
+    trap 'kill "$(cat "${keyringDir}/dbus.pid")" 2>/dev/null || true' EXIT TERM INT
+
+    # --unlock takes the password on stdin and creates the login keyring on the
+    # first run, under $HOME/.local/share/keyrings, so vault passwords survive a
+    # restart. If that keyring was ever created with a different password the
+    # unlock fails and this service restart-loops: delete the directory to reset.
+    printf '%s' '${devKeyringPassword}' |
+      ${pkgs.gnome-keyring}/bin/gnome-keyring-daemon \
+        --unlock --components=secrets --foreground
+  '';
+
   # pnpm blocks dependency lifecycle scripts by default, and canvas and keytar
   # are listed in pnpm-workspace.yaml's allowBuilds, which is what lets theirs
   # run. Neither .npmrc has a say: pnpm 11 takes ignore-scripts and node-linker
@@ -112,6 +169,7 @@ in
       postgresql_17 # psql/createdb for setup.command
       zip # packages/app-extension: the firefox source-upload zip target
       chromium # browser E2E tests use this instead of Playwright's download
+      gnome-keyring # keytar's Secret Service; see the keyring dev service
     ];
 
     node.enable = true;
@@ -165,6 +223,12 @@ in
         ports = [ 8080 ]; # packages/server/src/server.mts: process.env.PORT ?? 8080
         restartOnLogin = true;
       };
+      # No ports and no restartOnLogin: nothing connects to it over TCP, and a
+      # restart would drop the unlocked keyring for every favacli process still
+      # running. It re-unlocks from disk anyway, but there is nothing to gain.
+      keyring = {
+        command = "${keyringCommand}";
+      };
       browser = {
         # VITE_DEVSERVERSECRET only prefills the sync-server form. It is compiled
         # into the bundle, which is exactly why it must never be set for a build
@@ -192,6 +256,11 @@ in
     LD_LIBRARY_PATH = libraryPath;
     PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH = lib.getExe pkgs.chromium;
     PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1";
+
+    # Points at the bus the keyring dev service binds. $HOME is left for the
+    # shell to expand -- /etc/set-environment is sourced, not parsed, and NixOS
+    # writes several of its own variables the same way.
+    DBUS_SESSION_BUS_ADDRESS = "unix:path=${keyringDir}/bus";
   };
 
   milly.metadata."preview.port" = "3266";
@@ -207,6 +276,15 @@ in
       `$HOME/.cache/milly/2fa/dev-services/server.log`
     - `browser` — vite dev server on http port 3266, log
       `$HOME/.cache/milly/2fa/dev-services/browser.log`
+    - `keyring` — a session D-Bus plus gnome-keyring, no port
+
+    favacli keeps the vault password in the OS keychain via keytar, which on
+    Linux needs a Secret Service. The `keyring` service provides one and
+    `DBUS_SESSION_BUS_ADDRESS` already points at it, so `favacli setup`,
+    `vault create` and every command that opens a vault work as they are. If one
+    reports "Cannot autolaunch D-Bus without X11 $DISPLAY", that service is
+    down; if it reports no collection at `/org/freedesktop/secrets/collection/login`,
+    delete `$HOME/.local/share/keyrings` and restart it.
 
     PostgreSQL runs locally with trust auth over loopback: database `fava`, test
     database `fava_test`, user `fava`, no password. The server's connection

@@ -1,15 +1,15 @@
 import BaseCommand from '../../BaseCommand.mjs'
 
-class GetInfoCommand extends BaseCommand {
-  static override paths = [['sync', 'get-info']]
+class StatusCommand extends BaseCommand {
+  static override paths = [['sync', 'status']]
   override requiresSyncConnection = true
   requireFavaLib = true
 
   static usage = BaseCommand.Usage({
     category: 'Sync',
-    description: 'Get sync info for the current device',
+    description: 'Show sync status for the current device',
     details: `This command returns the friendly name and sync server URL for the current device in your vault sync configuration.`,
-    examples: [['Get sync info', 'sync get-info']],
+    examples: [['Show sync status', 'sync status']],
   })
 
   exec() {
@@ -36,4 +36,4 @@ class GetInfoCommand extends BaseCommand {
   }
 }
 
-export default GetInfoCommand
+export default StatusCommand

@@ -27,7 +27,7 @@ environment. No `sync setServerUrl` command is needed:
 ```sh
 export FAVACLI_SYNC_SERVER_URL=wss://sync.example.com/sync
 export FAVACLI_SYNC_SERVER_SECRET_FILE=/run/secrets/fava-sync
-favacli sync get-info
+favacli sync status
 ```
 
 `FAVACLI_SYNC_SERVER_SECRET` can supply the secret directly instead of a file.
@@ -41,7 +41,7 @@ connecting. Existing paired devices and queued changes are preserved, including
 when rotating a secret or moving the same sync service to another URL. Normal
 sync intervals and `--no-sync` still apply. The effective URL and secret are
 included in subsequent encrypted vault saves; removing the environment settings
-returns to the last saved values. The secret is never printed by `sync get-info`
+returns to the last saved values. The secret is never printed by `sync status`
 or included in a vault sent to a peer.
 
 Create or restore your local vault and its keychain password as usual. Runtime

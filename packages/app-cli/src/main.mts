@@ -18,7 +18,7 @@ import SyncListDevices from './commands/sync/listDevices.mjs'
 import SyncRemoveDeviceCommand from './commands/sync/removeDevice.mjs'
 import SyncSetFriendlyNameCommand from './commands/sync/setFriendlyName.mjs'
 import ExportTextCommand from './commands/export/text.mjs'
-import SyncGetInfoCommand from './commands/sync/getInfo.mjs'
+import SyncStatusCommand from './commands/sync/status.mjs'
 import VersionCommand from './commands/version.mjs'
 import binaryVersion from './utils/binaryVersion.mjs'
 
@@ -54,7 +54,7 @@ cli.register(SyncListDevices)
 cli.register(SyncRemoveDeviceCommand)
 cli.register(ExportTextCommand)
 cli.register(SyncSetFriendlyNameCommand)
-cli.register(SyncGetInfoCommand)
+cli.register(SyncStatusCommand)
 cli.register(VersionCommand)
 
 cli.register(Builtins.HelpCommand)

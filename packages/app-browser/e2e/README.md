@@ -5,6 +5,13 @@ a fresh browser context with isolated localStorage. The storage-version tests
 load the frozen v1 fixture, which has no sync server configured, so they do not
 connect to the sync backend or modify its database.
 
+The import tests use the v2 vault fixture without sync and exercise real
+encryption through the web app. `fixtures/export-legacy.txt.pgp` contains one
+test entry encrypted with OpenPGP's previous iterated S2K and AEAD settings,
+without an export-version marker. Its password is `old` with one space on
+each side, deliberately weak to check that import accepts existing export
+passwords without trimming or applying current strength requirements.
+
 The pairing tests do open a sync socket -- the app refuses a pairing code
 before reading it when there is no server connection, so there is no way to
 reach the checks without one. They still write nothing: every payload they

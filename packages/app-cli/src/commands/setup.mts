@@ -16,6 +16,7 @@ import type {
 import NodePlatformProvider from 'favalib/platformProviders/node'
 
 import BaseCommand from '../BaseCommand.mjs'
+import CliError from '../CliError.mjs'
 import createVaultSaveFunction from '../utils/vaultSaveFunction.mjs'
 import { readServerSecret } from '../utils/syncConfig.mjs'
 
@@ -124,7 +125,7 @@ class SetupCommand extends BaseCommand {
       }
     }
 
-    throw new Error(
+    throw new CliError(
       `No usable password after ${MAX_PASSWORD_ATTEMPTS} attempts. Nothing was created.`,
     )
   }
@@ -142,7 +143,7 @@ class SetupCommand extends BaseCommand {
     ).trim()
 
     if (!serverUrl) {
-      throw new Error('A server address is required to set up sync.')
+      throw new CliError('A server address is required to set up sync.')
     }
 
     // Same precedence as `sync setServerUrl`, and for the same reason: a
@@ -156,7 +157,7 @@ class SetupCommand extends BaseCommand {
       })) as ServerSecret)
 
     if (!secret) {
-      throw new Error('A server secret is required')
+      throw new CliError('A server secret is required')
     }
 
     // No `force`. setSyncServerUrl only resolves once the server has accepted
@@ -174,6 +175,8 @@ class SetupCommand extends BaseCommand {
    */
   private async importExistingVault(): Promise<boolean> {
     if (!this.favaLib.sync) {
+      // Not a CliError: setSyncServerUrl resolved, so a missing sync manager
+      // here is a bug in this command's ordering, and the stack is the point.
       throw new Error('No server url set')
     }
 
@@ -196,7 +199,7 @@ class SetupCommand extends BaseCommand {
     ).trim()
 
     if (!connectionString) {
-      throw new Error('A connection string is required to import a vault.')
+      throw new CliError('A connection string is required to import a vault.')
     }
 
     // Registered before responding: the import can finish before the call
@@ -220,7 +223,7 @@ class SetupCommand extends BaseCommand {
 
   async exec() {
     if (this.lockedRepresentationString) {
-      throw new Error(
+      throw new CliError(
         `A vault already exists at "${this.settings.vaultLocation}", and setup ` +
           `will not replace it. To configure sync on it, run ` +
           `"favacli sync setServerUrl <url>" and then "favacli sync connect". ` +

@@ -274,6 +274,25 @@ describe('unlock and lock', () => {
     expect(store.has('session:unlockedSession')).toBe(false)
   })
 
+  it('drops what the popup was typing on lock', async () => {
+    // A lock is the user saying stop holding my things, and the drafts hold
+    // the sync server secret and a pairing code.
+    const { favaLib } = makeFavaLib()
+    loadFavaLibFromLockedRepesentation.mockResolvedValue(favaLib)
+    const db = new Db()
+    await db.upsertMetaKV('lockedRepresentation', 'blob')
+    const container = new VaultContainer(db)
+    await container.unlock('pw' as never)
+    store.set('session:draft:syncServer', 'secret-in-progress')
+    store.set('session:draft:pair', 'half-a-connection-code')
+
+    await container.lock()
+
+    expect(
+      [...store.keys()].filter((key) => key.startsWith('session:draft:')),
+    ).toEqual([])
+  })
+
   it('re-exports the session after a password change', async () => {
     // The blob is bound to a key GENERATION, and changePassword moves it.
     // Keeping the pre-rotation one would make favalib refuse it at the next

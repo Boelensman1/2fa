@@ -1,10 +1,11 @@
 import type { FC } from 'react'
-import { useState } from 'react'
 
+import { closeSyncServerEditor, settingsEditingServerDraft } from '@/lib/drafts'
 import { version } from '@/lib/parameters'
 import type { VaultSummary } from '@/lib/types'
-import { useConfig, useGlobalState } from '../../hooks'
+import { useConfig, useDraft, useGlobalState } from '../../hooks'
 import Button from '../Button'
+import Splash from '../Splash'
 import SyncServerForm from '../SyncServerForm'
 
 interface SettingsTabProps {
@@ -23,7 +24,19 @@ const SettingsTab: FC<SettingsTabProps> = ({
 }) => {
   const { config, saveConfig } = useConfig()
   const globalState = useGlobalState()
-  const [editingServer, setEditingServer] = useState(false)
+  // Drafted, so that going off to copy a server address and coming back lands
+  // on the form again rather than on the vault tab.
+  const [editingServer, setEditingServer, { ready }] = useDraft(
+    settingsEditingServerDraft,
+    false,
+  )
+
+  // Leaving the form is the end of what was typed into it, secret included --
+  // `AuthenticatedApp` does the same when the tab is switched away.
+  const closeServerEditor = () => {
+    setEditingServer(false)
+    void closeSyncServerEditor()
+  }
 
   const confirmReset = () => {
     if (
@@ -35,6 +48,8 @@ const SettingsTab: FC<SettingsTabProps> = ({
       onReset()
     }
   }
+
+  if (!ready) return <Splash />
 
   return (
     <div className="flex h-full flex-col overflow-y-auto">
@@ -96,10 +111,12 @@ const SettingsTab: FC<SettingsTabProps> = ({
             <SyncServerForm
               currentUrl={summary.syncServerUrl}
               onConfigured={() => {
-                setEditingServer(false)
+                // The form has already dropped its own draft; this closes the
+                // editor and forgets that it was open.
+                closeServerEditor()
                 onVaultChanged()
               }}
-              onCancel={() => setEditingServer(false)}
+              onCancel={closeServerEditor}
             />
           ) : (
             <Button variant="secondary" onClick={() => setEditingServer(true)}>

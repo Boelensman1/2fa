@@ -115,6 +115,59 @@ re-exports rather than dropping — favalib would refuse the pre-rotation blob
 against the vault that change wrote, which surfaces as the vault locking itself
 at the next eviction for no visible reason.
 
+### What the popup was typing survives the popup closing
+
+A browser action popup is destroyed the moment it loses focus, so every
+`useState` in it goes too. The sync setup forces exactly that trip: it asks for
+a server address **and** the shared secret, two long strings that almost always
+live somewhere else, and going to copy either one closed the popup and emptied
+the form.
+
+`lib/drafts.ts` keeps five things across it, read and written through
+`lib/ui/hooks/useDraft.tsx`:
+
+| draft                   | what it holds                           | written by          |
+| ----------------------- | --------------------------------------- | ------------------- |
+| `syncServer`            | the address and the secret              | `SyncServerForm`    |
+| `pair`                  | the connection code and the device name | `PairScreen`        |
+| `popupTab`              | which tab was open                      | `AuthenticatedApp`  |
+| `settingsEditingServer` | whether the server form was open        | `SettingsTab`       |
+| `createMode`            | which half of the first-run screen      | `CreateVaultScreen` |
+
+Four rules hold it together.
+
+- **`session:` only.** A draft holds a server secret and a live pairing code.
+  `browser.storage.session` is memory-backed, wiped when the browser closes and
+  unreadable from content scripts -- the same area, and the same contract, as
+  the unlocked session blob above. `local:` would put both on disk, outliving
+  the browser that was meant to forget them.
+- **No master password**, on either screen that asks for one. The reasoning is
+  `rememberSession`'s: the password opens every key generation of the vault and
+  is very often the user's password elsewhere, which is why even the eviction
+  path stores the derived blob instead. A half-typed one surviving popup opens
+  would undo that.
+- **A draft dies when its form is left**, not only when it is submitted.
+  `SyncServerForm` drops its own on connect and on cancel; `SettingsTab` and
+  `AuthenticatedApp` call `closeSyncServerEditor()` when the editor is closed or
+  the tab is switched away, which drops the draft and the "it was open" flag
+  together. `VaultContainer.lock()` calls `clearDrafts()` -- a lock is the user
+  saying stop holding my things, and `reset()` comes through it.
+- **A screen with a drafted text field renders `<Splash />` until the read
+  lands.** It is a memory lookup, so a frame at most, but a field rendered
+  before it could take a keystroke that hydration then overwrites -- which would
+  be this feature causing the bug it exists to fix. `CreateVaultScreen` is the
+  exception and gates nothing: only its mode toggle is drafted, there is no
+  typing to lose, and a spinner in front of first-run onboarding is worse.
+
+Writes are **not debounced**. The popup can be torn down between any two
+keystrokes, and that is the case being fixed; `storage.session` has no
+write-rate quota (that is `storage.sync`).
+
+Three things are deliberately _not_ drafted: `VaultTab`'s search query, because
+a stale one hides the entry the user came for; and `AuthenticatedApp`'s
+`confirming` and `remembering`, which are frozen snapshots of a live fill and
+must not outlive it.
+
 ## `lib/detect/` — the otp field heuristic
 
 Finds the second-factor input on a page. Self-contained on purpose: nothing in
@@ -476,7 +529,12 @@ first and delegates installs to the repo root.
 - `make lint` — `prettier --check`, `eslint`, `tsc --noEmit`. The feedback loop
   to use for checking your work.
 - `make test` / `make test-watch` — vitest, in a `happy-dom` environment
-  (`vitest.config.ts`). Tests live in `tests/`.
+  (`vitest.config.ts`). Tests live in `tests/`. `tests/ui/*.test.tsx` render the
+  real components with React's own `act` and `react-dom/client` — there is no
+  `@testing-library/react` in the workspace, and the container quarantines
+  newly published npm releases for 7 days, so adding one is not a free choice.
+  That is also why `vitest.config.ts` repeats the `@/` alias wxt generates for
+  the build.
 - `make build` — alias for `make dist/chrome`; `wxt build` into `.output/`.
 - `make dist/firefox` / `make dist/chrome` — per-browser builds.
 - `make dev` (= `dev-firefox`) / `make dev-chrome` — WXT dev server, writing to

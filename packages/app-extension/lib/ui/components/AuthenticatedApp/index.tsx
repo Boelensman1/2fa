@@ -2,6 +2,7 @@ import type { FC } from 'react'
 import { useCallback, useRef, useState } from 'react'
 
 import { bgActions } from '@/lib/state'
+import { closeSyncServerEditor, popupTabDraft } from '@/lib/drafts'
 import Logger from '@/lib/classes/Logger'
 import type {
   FillTarget,
@@ -9,12 +10,13 @@ import type {
   SiteOffer,
   VaultSummary,
 } from '@/lib/types'
-import { useActiveTab, useFillTarget } from '../../hooks'
+import { useActiveTab, useDraft, useFillTarget } from '../../hooks'
 import { describeFillFailure } from '../../fillMessages'
 import EntryDetail from '../EntryDetail'
 import FillConfirm from '../FillConfirm'
 import RememberSite from '../RememberSite'
 import SettingsTab from '../SettingsTab'
+import Splash from '../Splash'
 import TabBar, { type TabId } from '../TabBar'
 import Toast from '../Toast'
 import VaultTab from '../VaultTab'
@@ -33,7 +35,14 @@ const AuthenticatedApp: FC<AuthenticatedAppProps> = ({
   summary,
   onVaultChanged,
 }) => {
-  const [tab, setTab] = useState<TabId>('vault')
+  /**
+   * Which tab was open, kept across the popup closing.
+   *
+   * `selected`, `confirming` and `remembering` below are deliberately not:
+   * the latter two are frozen snapshots of a live fill and must not outlive
+   * it, and a restored detail view would hide the list the popup is for.
+   */
+  const [tab, setTab, { ready }] = useDraft<TabId>(popupTabDraft, 'vault')
   const [selected, setSelected] = useState<ListedEntry | null>(null)
   /**
    * Set when a fill needs the user to look at the frame it is going into.
@@ -212,6 +221,18 @@ const AuthenticatedApp: FC<AuthenticatedAppProps> = ({
     setTimeout(() => window.close(), TOAST_MS)
   }, [])
 
+  /**
+   * Switching tabs is leaving the sync server form, not stepping out of it.
+   *
+   * So what was typed there goes, secret and all. Coming back to Settings then
+   * shows the summary again rather than a half-filled form -- `SettingsTab`
+   * re-reads the same two drafts when it mounts.
+   */
+  const changeTab = (next: TabId) => {
+    if (tab === 'settings' && next !== 'settings') void closeSyncServerEditor()
+    setTab(next)
+  }
+
   const lock = () => {
     void bgActions.lockVault().then(onVaultChanged)
   }
@@ -223,7 +244,9 @@ const AuthenticatedApp: FC<AuthenticatedAppProps> = ({
   return (
     <div className="flex h-[32rem] flex-col bg-white">
       <div className="min-h-0 flex-1">
-        {remembering ? (
+        {!ready ? (
+          <Splash />
+        ) : remembering ? (
           <RememberSite
             entry={remembering.entry}
             offer={remembering.offer}
@@ -273,8 +296,8 @@ const AuthenticatedApp: FC<AuthenticatedAppProps> = ({
       {/* Hidden behind the detail view and the two fill questions: all of them
           are drill-downs from the vault tab, not third destinations, so a
           highlighted tab there would lie. */}
-      {selected || confirming || remembering ? null : (
-        <TabBar active={tab} onChange={setTab} />
+      {!ready || selected || confirming || remembering ? null : (
+        <TabBar active={tab} onChange={changeTab} />
       )}
     </div>
   )

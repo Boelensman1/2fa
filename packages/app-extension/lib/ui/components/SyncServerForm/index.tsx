@@ -2,9 +2,12 @@ import type { FC, FormEvent } from 'react'
 import { useState } from 'react'
 
 import { bgActions } from '@/lib/state'
+import { syncServerDraft } from '@/lib/drafts'
 import { syncServerSecretPrefill, syncServerUrlPrefill } from '@/lib/parameters'
+import { useDraft } from '../../hooks'
 import Button from '../Button'
 import PasswordField from '../PasswordField'
+import Splash from '../Splash'
 import TextField from '../TextField'
 
 interface SyncServerFormProps {
@@ -26,6 +29,12 @@ interface SyncServerFormProps {
  * The secret is not in the bundle and must not be. An extension bundle is as
  * readable as a served page -- unpacking a `.crx` is a `unzip` -- so a
  * compiled-in secret is one every installer holds.
+ *
+ * Both fields are drafted (`lib/drafts.ts`), because this is the screen the
+ * popup's disappearing act hurts most: two long strings that live somewhere
+ * else, and going to fetch either one closes the popup. The draft is dropped
+ * the moment the form is left -- here on connect and on cancel, and by
+ * `SettingsTab`/`AuthenticatedApp` when the editor is closed another way.
  * @param props - The component props.
  * @param props.currentUrl - The configured server, if there is one.
  * @param props.onConfigured - Called once the server has accepted the secret.
@@ -37,17 +46,21 @@ const SyncServerForm: FC<SyncServerFormProps> = ({
   onConfigured,
   onCancel,
 }) => {
-  const [serverUrl, setServerUrl] = useState(currentUrl ?? syncServerUrlPrefill)
   // Never prefilled from what is stored: the vault holds the secret, but
   // showing it back would put it on screen in a popup for no gain -- proving
-  // it again means retyping it, which is the same as any other credential.
-  const [serverSecret, setServerSecret] = useState(syncServerSecretPrefill)
+  // it again means retyping it, which is the same as any other credential. A
+  // draft is not that; it is what the user typed a moment ago and has not
+  // finished with.
+  const [draft, setDraft, { ready, clear }] = useDraft(syncServerDraft, {
+    url: currentUrl ?? syncServerUrlPrefill,
+    secret: syncServerSecretPrefill,
+  })
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
   const connect = async () => {
-    const url = serverUrl.trim()
-    const secret = serverSecret.trim()
+    const url = draft.url.trim()
+    const secret = draft.secret.trim()
     if (!url || !secret) {
       setError('Both the server address and the secret are required.')
       return
@@ -61,6 +74,9 @@ const SyncServerForm: FC<SyncServerFormProps> = ({
     setBusy(false)
 
     if (result?.ok) {
+      // Used, and therefore done with: the server that accepted it has it
+      // stored in the vault, and nothing here needs it again.
+      clear()
       onConfigured()
       return
     }
@@ -72,12 +88,19 @@ const SyncServerForm: FC<SyncServerFormProps> = ({
     void connect()
   }
 
+  const cancel = () => {
+    clear()
+    onCancel?.()
+  }
+
+  if (!ready) return <Splash />
+
   return (
     <form onSubmit={onSubmit} className="flex flex-col gap-3">
       <TextField
         label="Server address"
-        value={serverUrl}
-        onChange={(event) => setServerUrl(event.target.value)}
+        value={draft.url}
+        onChange={(event) => setDraft({ ...draft, url: event.target.value })}
         placeholder="wss://sync.example.com"
         disabled={busy}
         spellCheck={false}
@@ -87,8 +110,8 @@ const SyncServerForm: FC<SyncServerFormProps> = ({
 
       <PasswordField
         label="Server secret"
-        value={serverSecret}
-        onChange={setServerSecret}
+        value={draft.secret}
+        onChange={(secret) => setDraft({ ...draft, secret })}
         autoComplete="off"
         disabled={busy}
       />
@@ -102,7 +125,7 @@ const SyncServerForm: FC<SyncServerFormProps> = ({
       {onCancel ? (
         <button
           type="button"
-          onClick={onCancel}
+          onClick={cancel}
           disabled={busy}
           className="text-xs text-gray-500 underline hover:text-gray-800"
         >

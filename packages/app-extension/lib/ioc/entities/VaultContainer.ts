@@ -14,6 +14,7 @@ import {
 
 import IOC_TYPES from '../types'
 import Logger from '../../classes/Logger'
+import { clearDrafts } from '../../drafts'
 import creationUtils from '../../vault/creationUtils'
 import type {
   EntryList,
@@ -369,6 +370,10 @@ class VaultContainer {
     this.favaLib = null
     this.pairing = false
     await this.db.deleteSessionValue(SESSION_KEY)
+    // What the popup was in the middle of typing goes too: a lock is the user
+    // saying stop holding my things, and the drafts hold the sync server
+    // secret and a pairing code. `reset()` comes through here as well.
+    await clearDrafts()
   }
 
   /** Forgets the vault entirely. Unrecoverable without another device. */

@@ -3,7 +3,9 @@ import { useEffect, useState } from 'react'
 import type { Password } from 'favalib'
 
 import { bgActions } from '@/lib/state'
+import { createModeDraft } from '@/lib/drafts'
 import type { PasswordStrength } from '@/lib/types'
+import { useDraft } from '../../hooks'
 import Button from '../Button'
 import PasswordField from '../PasswordField'
 import PasswordStrengthMeter, { MINIMUM_SCORE } from '../PasswordStrengthMeter'
@@ -24,9 +26,18 @@ interface CreateVaultScreenProps {
  *
  * `connect` leads, because a second device is the common case: someone
  * installing this already has entries in the pwa or the cli.
+ *
+ * Only the choice between the two is drafted. The passwords are not, and that
+ * is the rule rather than an omission -- see `lib/drafts.ts`. This screen also
+ * does not wait on the draft read the way the sync and pairing forms do: there
+ * is no typed text here to lose, so a toggle that corrects itself a frame later
+ * beats a spinner in front of first-run onboarding.
  */
 const CreateVaultScreen: FC<CreateVaultScreenProps> = ({ onCreated }) => {
-  const [mode, setMode] = useState<Mode>('connect')
+  const [mode, setMode, { clear: clearMode }] = useDraft<Mode>(
+    createModeDraft,
+    'connect',
+  )
   const [password, setPassword] = useState('')
   const [confirmation, setConfirmation] = useState('')
   const [strength, setStrength] = useState<PasswordStrength | null>(null)
@@ -72,6 +83,7 @@ const CreateVaultScreen: FC<CreateVaultScreenProps> = ({ onCreated }) => {
     if (result?.ok) {
       setPassword('')
       setConfirmation('')
+      clearMode()
       onCreated()
       return
     }

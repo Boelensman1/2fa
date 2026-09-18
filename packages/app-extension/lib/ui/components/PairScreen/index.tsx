@@ -2,7 +2,10 @@ import type { FC, FormEvent } from 'react'
 import { useState } from 'react'
 
 import { bgActions } from '@/lib/state'
+import { pairDraft } from '@/lib/drafts'
+import { useDraft } from '../../hooks'
 import Button from '../Button'
+import Splash from '../Splash'
 import SyncServerForm from '../SyncServerForm'
 import TextField from '../TextField'
 
@@ -23,6 +26,11 @@ interface PairScreenProps {
  * `document` and `FileReader`, none of which exist in the service worker where
  * this extension's vault lives. The text code carries exactly the same
  * payload, so nothing is lost but a convenience.
+ *
+ * The code comes off another device, so getting it means leaving the popup --
+ * which destroys it. Both fields are drafted for that (`lib/drafts.ts`), and
+ * dropped once the pairing is through. Cancelling resets the vault, and
+ * `VaultContainer.lock()` clears every draft on the way.
  */
 const PairScreen: FC<PairScreenProps> = ({
   onPaired,
@@ -30,8 +38,10 @@ const PairScreen: FC<PairScreenProps> = ({
   syncConnected,
   onSyncServerChanged,
 }) => {
-  const [connectionString, setConnectionString] = useState('')
-  const [deviceName, setDeviceName] = useState('')
+  const [draft, setDraft, { ready, clear }] = useDraft(pairDraft, {
+    connectionString: '',
+    deviceName: '',
+  })
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -39,12 +49,13 @@ const PairScreen: FC<PairScreenProps> = ({
     setBusy(true)
     setError(null)
     const result = await bgActions.pairDevice(
-      connectionString.trim(),
-      deviceName.trim() || undefined,
+      draft.connectionString.trim(),
+      draft.deviceName.trim() || undefined,
     )
     setBusy(false)
 
     if (result?.ok) {
+      clear()
       onPaired()
       return
     }
@@ -61,6 +72,10 @@ const PairScreen: FC<PairScreenProps> = ({
       return
     void bgActions.resetVault().then(onPaired)
   }
+
+  // Nothing may render before the draft read lands: a field that takes a
+  // keystroke in that gap has it overwritten by hydration.
+  if (!ready) return <Splash />
 
   // Pairing is a conversation over the sync server, so there is nothing to do
   // here until one is configured. It is a step rather than a build-time
@@ -112,8 +127,10 @@ const PairScreen: FC<PairScreenProps> = ({
 
       <TextField
         label="Device name (optional)"
-        value={deviceName}
-        onChange={(event) => setDeviceName(event.target.value)}
+        value={draft.deviceName}
+        onChange={(event) =>
+          setDraft({ ...draft, deviceName: event.target.value })
+        }
         placeholder="Work laptop"
         disabled={busy}
       />
@@ -127,8 +144,10 @@ const PairScreen: FC<PairScreenProps> = ({
         </label>
         <textarea
           id="connection-code"
-          value={connectionString}
-          onChange={(event) => setConnectionString(event.target.value)}
+          value={draft.connectionString}
+          onChange={(event) =>
+            setDraft({ ...draft, connectionString: event.target.value })
+          }
           rows={4}
           disabled={busy}
           className="w-full resize-none rounded-md border border-gray-300 px-3 py-2 font-mono text-xs break-all focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:outline-none disabled:bg-gray-100"
@@ -139,7 +158,7 @@ const PairScreen: FC<PairScreenProps> = ({
 
       <Button
         type="submit"
-        disabled={busy || connectionString.trim().length === 0}
+        disabled={busy || draft.connectionString.trim().length === 0}
       >
         {busy ? 'Connecting…' : 'Connect'}
       </Button>

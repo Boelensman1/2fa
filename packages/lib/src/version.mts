@@ -17,7 +17,7 @@ import type { KdfParameters } from './utils/canonical.mjs'
  * tell which build last wrote it. It must never decide whether a vault opens --
  * that is what STORAGE_VERSION is for.
  */
-export const LIB_VERSION = '0.0.22'
+export const LIB_VERSION = '0.0.23'
 
 /**
  * The version of the LockedRepresentation envelope that this build writes, and

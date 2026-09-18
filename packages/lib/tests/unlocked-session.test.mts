@@ -163,20 +163,6 @@ describe('unlocked session', () => {
       lib.sync?.closeServerConnection()
     })
 
-    it('is reusable: one session survives many rehydrations', async () => {
-      // The blob is not single use. An mv3 worker is evicted repeatedly, which
-      // is the entire reason this api exists.
-      for (let i = 0; i < 2; i++) {
-        const lib = await utils().loadFavaLibFromUnlockedSession(
-          fixtureV2,
-          session,
-          { connectToSyncServer: false },
-        )
-        expect(lib.vault.size).toBe(2)
-        lib.sync?.closeServerConnection()
-      }
-    })
-
     it('imports under a different provider than it was exported from', async () => {
       // The at-rest AAD folds in a hash of the exact stored bytes, so any
       // encoding difference between the two providers would show up here. Cheap

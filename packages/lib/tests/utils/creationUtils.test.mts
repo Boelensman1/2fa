@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs'
 import { describe, it, expect, beforeAll, vi } from 'vitest'
 import {
   FavaLib,
@@ -10,7 +9,6 @@ import {
   LockedRepresentation,
   LockedRepresentationString,
   StorageVersionError,
-  UnsupportedStorageVersionError,
   InitializationError,
   type PublicKey,
   type SigningPublicKey,
@@ -24,10 +22,7 @@ import {
   buildEnvelopeMacMessage,
   buildVaultAad,
 } from '../../src/utils/canonical.mjs'
-import {
-  MAX_REMOVED_DEVICES,
-  MAX_SYNC_DEVICES,
-} from '../../src/utils/syncDeviceValidation.mjs'
+import { MAX_SYNC_DEVICES } from '../../src/utils/syncDeviceValidation.mjs'
 import {
   createFavaLibForTests,
   newTotpEntry,
@@ -38,12 +33,6 @@ import {
   testServerSecret,
 } from '../testUtils.mjs'
 import { nodeProviders } from '../../src/platformProviders/node/index.mjs'
-
-const v1Fixture = readFileSync(
-  new URL('../fixtures/vault-v1.json', import.meta.url),
-  'utf8',
-) as LockedRepresentationString
-const V1_FIXTURE_PASSWORD = 'fixture!Vault7#Frozen$v1' as Password
 
 describe('creationUtils', () => {
   let creationUtils: ReturnType<typeof getFavaLibVaultCreationUtils>
@@ -76,15 +65,6 @@ describe('creationUtils', () => {
   })
 
   // Your existing tests
-  it('should throw an error on invalid password', async () => {
-    await expect(
-      creationUtils.loadFavaLibFromLockedRepesentation(
-        lockedRepresentation,
-        'not-the-password' as Password,
-      ),
-    ).rejects.toThrow('Invalid password')
-  })
-
   describe('storageVersion guard', () => {
     const withStorageVersion = (value: unknown): LockedRepresentationString => {
       const parsed = JSON.parse(lockedRepresentation) as Record<string, unknown>
@@ -92,22 +72,17 @@ describe('creationUtils', () => {
       return JSON.stringify(parsed) as LockedRepresentationString
     }
 
-    it('refuses a vault written by a newer library', async () => {
-      await expect(
+    it('refuses a vault written by a newer library, and says why', async () => {
+      const rejects = expect(
         creationUtils.loadFavaLibFromLockedRepesentation(
           withStorageVersion(99),
           password,
         ),
-      ).rejects.toThrow(StorageVersionError)
-    })
-
-    it('says what is wrong and tells the user not to reset', async () => {
-      await expect(
-        creationUtils.loadFavaLibFromLockedRepesentation(
-          withStorageVersion(99),
-          password,
-        ),
-      ).rejects.toThrow(/storage version 99.*only supports up to 2/s)
+      ).rejects
+      await rejects.toThrow(StorageVersionError)
+      // Naming the version, and not telling them to reset a vault that a newer
+      // build can still open.
+      await rejects.toThrow(/storage version 99.*only supports up to 2/s)
     })
 
     it('refuses before attempting any decryption', async () => {
@@ -139,41 +114,6 @@ describe('creationUtils', () => {
           password,
         ),
       ).rejects.toThrow(StorageVersionError)
-    })
-
-    it('refuses a vault written before the current storage version', async () => {
-      await expect(
-        creationUtils.loadFavaLibFromLockedRepesentation(
-          withStorageVersion(1),
-          password,
-        ),
-      ).rejects.toThrow(UnsupportedStorageVersionError)
-    })
-
-    it('refuses an absent storageVersion rather than assuming one', async () => {
-      // A REAL v1 blob with the field removed, not a current one: absent means
-      // "written before the field existed", and a v2 envelope with the field
-      // stripped is a different thing entirely. tests/fixtures/vault-v1.json
-      // is the only genuine v1 vault in the repo.
-      //
-      // The old behaviour was to assume version 1 and migrate. Both halves are
-      // gone: there is no migration, and a blob that declines to say what it
-      // is gets no benefit of the doubt.
-      const parsed = JSON.parse(v1Fixture) as Record<string, unknown>
-      delete parsed.storageVersion
-
-      const v1Utils = getFavaLibVaultCreationUtils(
-        nodeProviders,
-        deviceType,
-        passwordExtraDict,
-      )
-      await expect(
-        v1Utils.loadFavaLibFromLockedRepesentation(
-          JSON.stringify(parsed) as LockedRepresentationString,
-          V1_FIXTURE_PASSWORD,
-          { connectToSyncServer: false },
-        ),
-      ).rejects.toThrow(UnsupportedStorageVersionError)
     })
 
     it('does not let libVersion gate a load', async () => {
@@ -568,39 +508,20 @@ describe('creationUtils', () => {
       favaLib.sync?.closeServerConnection()
     })
 
-    it.each([
-      [
-        'a record that is not an object',
-        (state: VaultState) => {
-          state.sync.removedDevices = 'old-phone' as never
-        },
-      ],
-      [
-        'a removal time that is not a number',
-        (state: VaultState) => {
-          state.sync.removedDevices = {
-            'old-phone': 'yesterday',
-          } as unknown as VaultState['sync']['removedDevices']
-        },
-      ],
-      [
-        'more tombstones than the cap',
-        (state: VaultState) => {
-          state.sync.removedDevices = Object.fromEntries(
-            Array.from({ length: MAX_REMOVED_DEVICES + 1 }, (_, i) => [
-              `gone-${i}`,
-              i,
-            ]),
-          )
-        },
-      ],
-    ])('refuses %s in the removed-device record', async (_label, mutate) => {
-      // Refused rather than reset, the same call the replay record gets and
-      // for the same reason: a vault that has quietly forgotten what it
-      // revoked works perfectly and accepts a device the user removed.
-      await expect(load(await reseal(mutate))).rejects.toThrow(
-        /record of removed devices is unusable/,
-      )
+    it('refuses an unusable removed-device record', async () => {
+      // One representative case. Which shapes are unusable is settled directly
+      // in utils/syncDeviceValidation.test.mts; what the load path adds is that
+      // it consults that validator at all -- and refuses rather than resetting,
+      // the same call the replay record gets and for the same reason: a vault
+      // that has quietly forgotten what it revoked works perfectly and accepts
+      // a device the user removed.
+      await expect(
+        load(
+          await reseal((state: VaultState) => {
+            state.sync.removedDevices = 'old-phone' as never
+          }),
+        ),
+      ).rejects.toThrow(/record of removed devices is unusable/)
     })
 
     it('refuses a vault that both lists and tombstones a device', async () => {

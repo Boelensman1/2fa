@@ -503,22 +503,6 @@ describe('PersistentStorageManager', () => {
     expect(isValid).toBe(true)
   })
 
-  it('should validate correct password', async () => {
-    const isValid = await persistentStorageManager.validatePassword(
-      salt,
-      password,
-    )
-    expect(isValid).toBe(true)
-  })
-
-  it('should invalidate incorrect password', async () => {
-    const isValid = await persistentStorageManager.validatePassword(
-      salt,
-      'wrongpassword!' as Password,
-    )
-    expect(isValid).toBe(false)
-  })
-
   it('should not allow two save functions to run concurrently', async () => {
     let saveCallCount = 0
     let activeSaveCalls = 0

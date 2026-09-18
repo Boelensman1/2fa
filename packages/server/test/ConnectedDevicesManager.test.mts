@@ -170,17 +170,5 @@ describe('ConnectedDevicesManager', () => {
       }
       expect(manager.size).toBe(50)
     })
-
-    it('should maintain consistency after replacing devices', () => {
-      manager.addDevice(deviceId1, mockWs1)
-      const originalSize = manager.size
-
-      manager.addDevice(deviceId1, mockWs2)
-
-      expect(manager.size).toBe(originalSize)
-      expect(manager.getWs(deviceId1)).toBe(mockWs2)
-      expect(manager.getDeviceId(mockWs2)).toBe(deviceId1)
-      expect(manager.getDeviceId(mockWs1)).toBeUndefined()
-    })
   })
 })

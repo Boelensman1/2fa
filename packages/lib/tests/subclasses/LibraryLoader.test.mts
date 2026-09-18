@@ -55,10 +55,6 @@ describe('LibraryLoader', () => {
     libraryLoader = new LibraryLoader(platformProviders)
   })
 
-  it('should create a LibraryLoader instance', () => {
-    expect(libraryLoader).toBeInstanceOf(LibraryLoader)
-  })
-
   it('should throw an error if PlatformProviders is not provided', () => {
     expect(
       () => new LibraryLoader(null as unknown as PlatformProviders),
@@ -70,19 +66,6 @@ describe('LibraryLoader', () => {
 
   it('should return the CryptoLib instance', () => {
     expect(libraryLoader.getCryptoLib()).toBe(cryptoLib)
-  })
-
-  it('should load OpenPGP library', () => {
-    const openPgpLib = libraryLoader.getOpenPGPLib()
-
-    expect(openPgpLib).toBeDefined()
-    expect(platformProviders.OpenPgpLib).toHaveBeenCalled()
-  })
-
-  it('should load QR Generator library', () => {
-    const qrGeneratorLib = libraryLoader.getQrGeneratorLib()
-    expect(qrGeneratorLib).toBeDefined()
-    expect(platformProviders.QrCodeLib).toHaveBeenCalled()
   })
 
   it('should load JsQR library', async () => {

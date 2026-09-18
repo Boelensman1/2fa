@@ -19,11 +19,12 @@ describe('DeleteEntryCommand', () => {
     getComponent: () => mockVaultManager,
   } as unknown as FavaLibMediator
 
-  it('should create a DeleteEntryCommand instance', () => {
-    const command = new DeleteEntryCommand({ entryId: totpEntry.id })
-    expect(command).toBeInstanceOf(DeleteEntryCommand)
-    expect(command.type).toBe('DeleteEntry')
-    expect(command.data).toEqual({ entryId: totpEntry.id })
+  // That the constructor assigns its arguments is BaseCommand's, and is
+  // pinned in Command/BaseCommand.test.ts. The wire type is this class's own.
+  it('serialises as DeleteEntry', () => {
+    expect(new DeleteEntryCommand({ entryId: totpEntry.id }).type).toBe(
+      'DeleteEntry',
+    )
   })
 
   it('should execute the command', async () => {

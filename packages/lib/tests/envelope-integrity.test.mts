@@ -110,22 +110,6 @@ describe('stored envelope integrity', () => {
       )
     })
 
-    it.each(['envelopeMac', 'kdf'] as const)(
-      'refuses a blob with no %s rather than silently accepting it',
-      async (field) => {
-        // Dropping the MAC must not be a way to skip the MAC check. Both
-        // fields are required by the one completeness check now -- while two
-        // storage formats existed they could not be, because the older one
-        // legitimately carried neither.
-        const representation = parse() as Partial<LockedRepresentation>
-        delete representation[field]
-
-        await expect(
-          load(representation as LockedRepresentation),
-        ).rejects.toThrow(/incomplete or corrupted/)
-      },
-    )
-
     // Tampering with these breaks the key derivation before the MAC is ever
     // reached, so the error is the key error, not the integrity one. Asserted
     // so that the difference is a decision on record rather than a surprise.

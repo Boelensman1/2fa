@@ -81,7 +81,14 @@ describe('fields that must be found', () => {
   it('finds a field identified only by its placeholder', () => {
     const handle = only(scan('placeholder-six-digits'))
 
-    expect(handle.field.confidence).toBeTruthy()
+    // `toBeTruthy` here asserted nothing: detectOtpFields already drops every
+    // field whose confidence is null, so only() passing had settled it. The
+    // placeholder is folded into the label signal rather than earning a code
+    // of its own.
+    expect(handle.field.confidence).toBe('likely')
+    expect(handle.field.reasons.map((reason) => reason.code)).toContain(
+      'labelMatchesOtp',
+    )
   })
 
   it('finds a field identified only by the prompt above it', () => {

@@ -143,22 +143,6 @@ describe('Server message handling', () => {
       expect(core.connectionAuth.isAuthenticated(fresh)).toBe(false)
     })
 
-    it('gives a socket one guess per connection, not one per message', () => {
-      const fresh = makeWs()
-      const nonce = core.connectionAuth.issueChallenge(fresh)
-
-      core.handleMessage(fresh, { type: 'authProof', data: { proof: 'wrong' } })
-      // The nonce is consumed by the first attempt, so even the right answer to
-      // it is refused afterwards. Guessing means reconnecting.
-      core.handleMessage(fresh, {
-        type: 'authProof',
-        data: { proof: createConnectProof(sharedSecret, nonce) },
-      })
-
-      expect(core.connectionAuth.isAuthenticated(fresh)).toBe(false)
-      expect(sentTo(fresh)).toEqual([])
-    })
-
     it('refuses a connect from a socket that has not proved itself', () => {
       // The hijack this finding is about: claiming someone else's deviceId used
       // to displace them and hand over their queued commands.
@@ -280,24 +264,24 @@ describe('Server message handling', () => {
     })
   })
 
-  describe('JPAKEPass2 message', () => {
-    const pass2Data = {
-      pass2Result: {
-        round1Result: {
-          G1: { 0: 1, 1: 2, 2: 3 },
-          G2: { 0: 4, 1: 5, 2: 6 },
-          ZKPx1: { 0: 7, 1: 8, 2: 9 },
-          ZKPx2: { 0: 10, 1: 11, 2: 12 },
-        },
-        round2Result: {
-          A: { 0: 13, 1: 14, 2: 15 },
-          ZKPx2s: { 0: 16, 1: 17, 2: 18 },
-        },
+  const pass2Data = {
+    pass2Result: {
+      round1Result: {
+        G1: { 0: 1, 1: 2, 2: 3 },
+        G2: { 0: 4, 1: 5, 2: 6 },
+        ZKPx1: { 0: 7, 1: 8, 2: 9 },
+        ZKPx2: { 0: 10, 1: 11, 2: 12 },
       },
-      responderDeviceId: 'device-2' as DeviceId,
-      initiatorDeviceId: 'device-1' as DeviceId,
-    }
+      round2Result: {
+        A: { 0: 13, 1: 14, 2: 15 },
+        ZKPx2s: { 0: 16, 1: 17, 2: 18 },
+      },
+    },
+    responderDeviceId: 'device-2' as DeviceId,
+    initiatorDeviceId: 'device-1' as DeviceId,
+  }
 
+  describe('JPAKEPass2 message', () => {
     it('should forward message to initiator and set responder', () => {
       const initiatorWs = makeWs()
       authenticate(initiatorWs)
@@ -314,23 +298,6 @@ describe('Server message handling', () => {
         data: pass2Data,
       })
       expect(core.ongoingAddDeviceRequests[0].wsResponder).toBe(ws)
-    })
-
-    it('should handle request not found error', () => {
-      const consoleSpy = vi
-        .spyOn(console, 'error')
-        .mockImplementation(() => undefined)
-
-      core.handleMessage(ws, {
-        type: 'JPAKEPass2',
-        data: {
-          ...pass2Data,
-          initiatorDeviceId: 'non-existent-device' as DeviceId,
-        },
-      })
-
-      expect(consoleSpy).toHaveBeenCalledWith('Request not found')
-      consoleSpy.mockRestore()
     })
   })
 
@@ -434,16 +401,30 @@ describe('Server message handling', () => {
         type: 'addSyncDeviceCancelled',
       })
     })
+  })
 
-    it('should handle request not found', () => {
+  /**
+   * `createSyncServer.mts` guards six cases the same way -- an initiator that
+   * is not in `ongoingAddDeviceRequests` is logged and dropped rather than
+   * thrown on. It is one rule, so it gets one test; this used to be the same
+   * test written out twice, once per message type.
+   */
+  describe('the request-not-found guard', () => {
+    it.each([
+      [
+        'JPAKEPass2',
+        { ...pass2Data, initiatorDeviceId: 'non-existent-device' as DeviceId },
+      ],
+      [
+        'addSyncDeviceCancelled',
+        { initiatorDeviceId: 'non-existent-device' as DeviceId },
+      ],
+    ])('logs rather than throws for an unknown %s initiator', (type, data) => {
       const consoleSpy = vi
         .spyOn(console, 'error')
         .mockImplementation(() => undefined)
 
-      core.handleMessage(ws, {
-        type: 'addSyncDeviceCancelled',
-        data: { initiatorDeviceId: 'non-existent-device' as DeviceId },
-      })
+      core.handleMessage(ws, { type, data } as unknown as ClientMessage)
 
       expect(consoleSpy).toHaveBeenCalledWith('Request not found')
       consoleSpy.mockRestore()

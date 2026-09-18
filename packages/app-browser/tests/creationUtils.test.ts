@@ -85,8 +85,10 @@ describe('browser vault loading', () => {
     //
     // Nothing is written on a successful load either: the load path has no
     // reason to save, now that there is no migration to persist.
+    // The entry count is asserted through these same browserProviders in
+    // packages/lib/tests/fixtures.test.mts; the device id stays because it is
+    // what proves the right vault opened before the no-write check below.
     expect(lib.meta.deviceId).toBe('822d43ef-ab39-4a9e-a106-2e96eb3fdb82')
-    expect(lib.vault.listEntriesMetas()).toHaveLength(2)
     expect(setItem).not.toHaveBeenCalled()
     expect(localStorage.getItem(storageKey)).toBe(v2Fixture)
   })

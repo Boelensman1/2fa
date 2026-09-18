@@ -42,11 +42,12 @@ describe('RemoveSyncDeviceCommand', () => {
 
   const commandData: RemoveSyncDeviceData = { deviceId: mockDeviceId }
 
-  it('should create a RemoveSyncDeviceCommand instance', () => {
-    const command = new RemoveSyncDeviceCommand(commandData)
-    expect(command).toBeInstanceOf(RemoveSyncDeviceCommand)
-    expect(command.type).toBe('RemoveSyncDevice')
-    expect(command.data).toEqual(commandData)
+  // That the constructor assigns its arguments is BaseCommand's, and is
+  // pinned in Command/BaseCommand.test.ts. The wire type is this class's own.
+  it('serialises as RemoveSyncDevice', () => {
+    expect(new RemoveSyncDeviceCommand(commandData).type).toBe(
+      'RemoveSyncDevice',
+    )
   })
 
   it('should remove the matching device on execute', async () => {

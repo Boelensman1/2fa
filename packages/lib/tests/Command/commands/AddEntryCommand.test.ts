@@ -19,11 +19,10 @@ describe('AddEntryCommand', () => {
     getComponent: () => mockVaultManager,
   } as unknown as FavaLibMediator
 
-  it('should create an AddEntryCommand instance', () => {
-    const command = new AddEntryCommand(totpEntry)
-    expect(command).toBeInstanceOf(AddEntryCommand)
-    expect(command.type).toBe('AddEntry')
-    expect(command.data).toEqual(totpEntry)
+  // That the constructor assigns its arguments is BaseCommand's, and is
+  // pinned in Command/BaseCommand.test.ts. The wire type is this class's own.
+  it('serialises as AddEntry', () => {
+    expect(new AddEntryCommand(totpEntry).type).toBe('AddEntry')
   })
 
   it('should execute the command', async () => {
@@ -50,24 +49,14 @@ describe('AddEntryCommand', () => {
     expect(invalidCommand.validate()).toBe(false)
   })
 
-  it('should throw an error when executing with invalid data', async () => {
+  it('should throw a named error when executing with invalid data', async () => {
     const invalidCommand = new AddEntryCommand({
       ...totpEntry,
       id: undefined as unknown as EntryId,
     })
-    await expect(invalidCommand.execute(mockFavaLibMediator)).rejects.toThrow(
-      InvalidCommandError,
-    )
-  })
-
-  it('should say why the command was invalid', async () => {
-    const invalidCommand = new AddEntryCommand({
-      ...totpEntry,
-      id: undefined as unknown as EntryId,
-    })
-    await expect(invalidCommand.execute(mockFavaLibMediator)).rejects.toThrow(
-      /entry has no id/,
-    )
+    const rejects = expect(invalidCommand.execute(mockFavaLibMediator)).rejects
+    await rejects.toThrow(InvalidCommandError)
+    await rejects.toThrow(/entry has no id/)
   })
 
   it('should reject a locally-created entry carrying a bad matcher', () => {

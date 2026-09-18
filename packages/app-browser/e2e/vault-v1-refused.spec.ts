@@ -46,20 +46,20 @@ test('refuses a v1 vault at login and leaves it untouched', async ({
     localStorage.getItem('lockedRepresentation'),
   )
   expect(stored).toBe(v1Fixture)
-})
 
-test('still refuses it after a reload', async ({ page }) => {
-  // A refusal that did not write anything must be reproducible. If the first
-  // attempt had migrated the blob, this second one would sail through.
+  // And again, in this same context. A refusal that wrote nothing has to be
+  // reproducible: had the first attempt migrated the blob, this second one
+  // would sail through. This used to be a separate test, which proved nothing
+  // -- playwright gives every test a fresh context and beforeEach re-seeds it,
+  // so there was no first attempt for it to follow.
   await page.reload()
   await page.getByLabel('Password', { exact: true }).fill(password)
   await page.getByRole('button', { name: 'Log In', exact: true }).click()
 
   await expect(page.getByText(/older storage format/)).toBeVisible()
-  const stored = await page.evaluate(() =>
-    localStorage.getItem('lockedRepresentation'),
-  )
-  expect(stored).toBe(v1Fixture)
+  expect(
+    await page.evaluate(() => localStorage.getItem('lockedRepresentation')),
+  ).toBe(v1Fixture)
 })
 
 test('reports a truncated vault as a recoverable error, not a JSON crash', async ({

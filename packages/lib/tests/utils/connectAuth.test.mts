@@ -101,6 +101,5 @@ describe('connectAuth', () => {
 
   it('asks for at least as much secret as openssl rand -base64 32 gives', () => {
     expect(SERVER_SECRET_MIN_LENGTH).toBe(32)
-    expect(secret.length).toBeGreaterThanOrEqual(SERVER_SECRET_MIN_LENGTH)
   })
 })

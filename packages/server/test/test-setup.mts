@@ -33,9 +33,3 @@ export const cleanupTestDatabase = async () => {
   }
   await knex('unExecutedSyncCommands').del()
 }
-
-/**
- * Gets the current test Knex instance
- * @returns The current Knex instance or undefined if not initialized
- */
-export const getTestKnex = () => knex

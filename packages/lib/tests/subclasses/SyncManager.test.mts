@@ -216,16 +216,6 @@ describe('SyncManager', () => {
     receiverFavaLib.sync?.closeServerConnection()
   })
 
-  it('should initialize server connection', () => {
-    expect(senderFavaLib.sync?.webSocketConnected).toBe(true)
-    expect(receiverFavaLib.sync?.webSocketConnected).toBe(true)
-  })
-
-  it('should not be in add device flow initially', () => {
-    expect(senderFavaLib.sync?.inAddDeviceFlow).toBe(false)
-    expect(receiverFavaLib.sync?.inAddDeviceFlow).toBe(false)
-  })
-
   it('should throw an error when initiating add device flow without server connection', async () => {
     const temporaryServerUrl = `${serverBaseUrl}:${serverPort + 1}`
     const temporaryServer = new WS(temporaryServerUrl)
@@ -486,42 +476,6 @@ describe('SyncManager', () => {
       receiverSyncDevices[0].fingerprint,
     )
   })
-
-  it(
-    'should work with a really big vault',
-    async () => {
-      const wsInstancesMap = new Map([
-        [senderFavaLib.meta.deviceId, senderWsInstance],
-        [receiverFavaLib.meta.deviceId, receiverWsInstance],
-      ])
-
-      // this part actually takes the most time
-      for (let i = 0; i < 1000; i += 1) {
-        await senderFavaLib.vault.addEntry({
-          name: 'name'.repeat(10),
-          type: 'TOTP',
-          issuer: 'issuer'.repeat(10),
-          payload: {
-            digits: 8,
-            period: 30,
-            secret: 'secretsecret',
-            algorithm: 'SHA-1',
-          },
-        })
-      }
-
-      await connectDevices({
-        senderFavaLib,
-        receiverFavaLib,
-        server,
-        wsInstancesMap,
-      })
-
-      expect(senderFavaLib.sync?.getSyncDevices()).toHaveLength(1)
-      expect(receiverFavaLib.sync?.getSyncDevices()).toHaveLength(1)
-    },
-    60 * 1000,
-  )
 
   it('should sync commands between connected devices', async () => {
     const wsInstancesMap = new Map([
@@ -1060,9 +1014,10 @@ describe('SyncManager', () => {
   })
 
   describe('replay protection', () => {
-    // The server re-sends everything it has not been told was executed, so the
-    // same id arriving twice is routine; what was missing is that the record of
-    // what had been applied lived only in memory.
+    // Redelivery, the persisted record and the post-restart refusal are all
+    // covered against a real reload in sync-command-delivery.test.mts. What is
+    // only reachable from here is a floor arriving through the constructor's
+    // `syncState` argument rather than through the delivery path.
     beforeEach(async () => {
       await registerSenderAsPeer()
     })
@@ -1073,95 +1028,6 @@ describe('SyncManager', () => {
       lib.sync!.sendToServer = send
       return send
     }
-
-    it('applies a redelivered command only once', async () => {
-      const command = await encryptCommandFor(
-        'replay-once',
-        'replay-once' as EntryId,
-      )
-      await receiverFavaLib.sync!.receiveCommands([command])
-      const before = receiverFavaLib.vault.size
-
-      await receiverFavaLib.sync!.receiveCommands([command])
-      expect(receiverFavaLib.vault.size).toBe(before)
-    })
-
-    it('records what it applied, so the record can be persisted', async () => {
-      const command = await encryptCommandFor(
-        'replay-recorded',
-        'replay-recorded' as EntryId,
-      )
-      await receiverFavaLib.sync!.receiveCommands([command])
-
-      expect(receiverFavaLib.sync!.getProcessedCommands()?.commands).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            id: 'replay-recorded',
-            from: 'senderDeviceId',
-          }),
-        ]),
-      )
-    })
-
-    it('refuses a command it applied before a restart', async () => {
-      // A restart used to empty the dedup set, and the server redelivers on
-      // every reconnect, so this is the case the in-memory set never covered.
-      const restarted = new FavaLib(
-        'restarted' as DeviceType,
-        platformProviders,
-        ['test'],
-        { privateKey, signingSecretKey },
-        symmetricKey,
-        encryptedSecretKeys,
-        encryptedSymmetricKey,
-        salt,
-        macKey,
-        kdf,
-        { publicKey, signingPublicKey },
-        { deviceId: 'receiverDeviceId' as DeviceId },
-        [],
-        undefined,
-        {
-          serverUrl,
-          serverSecret: testServerSecret,
-          devices: [
-            {
-              deviceId: 'senderDeviceId' as DeviceId,
-              publicKey,
-              signingPublicKey,
-              deviceInfo: { deviceType: 'sender' as DeviceType },
-            },
-          ],
-          commandSendQueue: [],
-          processedCommands: {
-            commands: [
-              {
-                id: 'replay-restarted',
-                from: 'senderDeviceId' as DeviceId,
-                timestamp: Date.now(),
-              },
-            ],
-            floors: {},
-          },
-        },
-        false,
-      )
-
-      const command = await encryptCommandFor(
-        'replay-restarted',
-        'replay-restarted' as EntryId,
-      )
-      const acknowledge = captureAcknowledgments(restarted)
-      await restarted.sync!.receiveCommands([command])
-
-      expect(() =>
-        restarted.vault.getEntryMeta('replay-restarted' as EntryId),
-      ).toThrow()
-      expect(acknowledge).toHaveBeenCalledWith('syncCommandsExecuted', {
-        commandIds: ['replay-restarted'],
-      })
-      restarted.sync?.closeServerConnection()
-    })
 
     it("refuses a command older than its sender's floor", async () => {
       // The record is bounded, so forgetting an id must not make it acceptable
@@ -1496,15 +1362,12 @@ describe('SyncManager', () => {
       deviceInfo: { deviceType: 'test' as DeviceType },
     })
 
-    it.each([
-      ['no publicKey', { publicKey: undefined }],
-      ['a publicKey that is not base64', { publicKey: '!'.repeat(44) }],
-      ['a publicKey of the wrong length', { publicKey: 'AAAA' }],
-      ['no signingPublicKey', { signingPublicKey: undefined }],
-      ['a signingPublicKey of the wrong length', { signingPublicKey: 'AAAA' }],
-      ['no deviceId', { deviceId: undefined }],
-      ['a non-object deviceInfo', { deviceInfo: 'cli' }],
-    ])('refuses to add a device with %s', async (_label, overrides) => {
+    // One representative case. The seven-way shape matrix lives in
+    // utils/syncDeviceValidation.test.mts, which tests the validator directly;
+    // what this adds is that addSyncDevice reaches it and leaves the device
+    // list alone when it refuses.
+    it('refuses to add a device that fails the shape gate', async () => {
+      const overrides = { publicKey: 'AAAA' }
       const before = receiverFavaLib.sync?.getSyncDevices().length
 
       await expect(

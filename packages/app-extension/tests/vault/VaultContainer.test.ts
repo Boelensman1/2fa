@@ -79,8 +79,6 @@ interface FakeFavaLib {
   saveFunction?: (_blob: string) => Promise<void> | void
   listeners: Record<string, (() => void)[]>
   emit: (_event: string) => void
-  closed: boolean
-  respondToAddDeviceFlow: ReturnType<typeof vi.fn>
   /** What `exportUnlockedSession` hands back; a new generation returns a new one. */
   session: string
 }
@@ -91,8 +89,6 @@ const makeFavaLib = (overrides: Partial<FakeFavaLib> = {}) => {
     searched: [] as EntryMeta[],
     forUrl: [] as EntryMetaForUrl[],
     listeners: {} as Record<string, (() => void)[]>,
-    closed: false,
-    respondToAddDeviceFlow: vi.fn(() => Promise.resolve()),
     session: 'unlocked-session',
     ...overrides,
   }
@@ -115,10 +111,8 @@ const makeFavaLib = (overrides: Partial<FakeFavaLib> = {}) => {
     sync: {
       serverUrl: 'ws://localhost:8080',
       webSocketConnected: true,
-      closeServerConnection: () => {
-        fake.closed = true
-      },
-      respondToAddDeviceFlow: fake.respondToAddDeviceFlow,
+      closeServerConnection: () => undefined,
+      respondToAddDeviceFlow: vi.fn(() => Promise.resolve()),
     },
     vault: {
       get size() {

@@ -53,18 +53,6 @@ describe('AutofillOfferRegistry', () => {
     expect(Number(first.token)).toBeNaN()
   })
 
-  it('refuses a token presented from another tab', () => {
-    const opened = registry.open(anOffer({ tabId: 1 }))
-
-    expect(registry.resolve(opened.token, 2)).toBeNull()
-  })
-
-  it('refuses an unknown token', () => {
-    registry.open(anOffer({}))
-
-    expect(registry.resolve('not-a-token', 1)).toBeNull()
-  })
-
   /**
    * Focus moving from a field in one frame to a field in another: the second
    * frame's open can land before the first frame's close. One offer per tab

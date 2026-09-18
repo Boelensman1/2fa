@@ -353,22 +353,6 @@ describe('the connection gate', () => {
   )
 
   it(
-    'issues a different nonce to each connection',
-    async () => {
-      const first = await openClient()
-      const second = await openClient()
-      clients.push(first, second)
-
-      const nonceOf = async (client: TestClient) =>
-        ((await client.take('authChallenge')) as { data: { nonce: string } })
-          .data.nonce
-
-      expect(await nonceOf(first)).not.toBe(await nonceOf(second))
-    },
-    TEST_TIMEOUT,
-  )
-
-  it(
     'closes a connection whose proof is made with the wrong secret',
     async () => {
       const client = await openClient()

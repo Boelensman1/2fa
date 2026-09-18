@@ -88,14 +88,6 @@ describe('pickFillTarget', () => {
   })
 
   /**
-   * `forTab` includes them, because a report with no fields is still how
-   * `overrideMissed` reaches the debug pane.
-   */
-  it('ignores frames that reported no fields', () => {
-    expect(pickFillTarget([report({ fields: [] })])).toBeNull()
-  })
-
-  /**
    * The disclosure is this feature's only real control, so a frame whose
    * origin cannot be named to the user is not offered at all. The empty string
    * is what `REPORT_OTP_FIELDS` stores when the browser supplied no url.

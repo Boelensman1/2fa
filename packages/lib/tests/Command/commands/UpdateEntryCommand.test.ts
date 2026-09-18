@@ -26,11 +26,10 @@ describe('UpdateEntryCommand', () => {
     updatedEntry: { ...totpEntry, name: 'Updated TOTP' },
   }
 
-  it('should create an UpdateEntryCommand instance', () => {
-    const command = new UpdateEntryCommand(updateData)
-    expect(command).toBeInstanceOf(UpdateEntryCommand)
-    expect(command.type).toBe('UpdateEntry')
-    expect(command.data).toEqual(updateData)
+  // That the constructor assigns its arguments is BaseCommand's, and is
+  // pinned in Command/BaseCommand.test.ts. The wire type is this class's own.
+  it('serialises as UpdateEntry', () => {
+    expect(new UpdateEntryCommand(updateData).type).toBe('UpdateEntry')
   })
 
   it('should execute the command', async () => {

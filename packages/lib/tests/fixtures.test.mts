@@ -14,7 +14,6 @@ import {
 } from '../src/main.mjs'
 import { nodeProviders } from '../src/platformProviders/node/index.mjs'
 import { browserProviders } from '../src/platformProviders/browser/index.mjs'
-import type { UnlockedSessionString } from '../src/interfaces/Vault.mjs'
 
 // See tests/fixtures/README.md. This vault is frozen: written by favalib 0.0.21
 // at commit e88f50b, never to be regenerated. Storage version 1 is no longer
@@ -118,19 +117,6 @@ describe('stored format fixtures', () => {
         utils.loadFavaLibFromLockedRepesentation(
           JSON.stringify(parsed) as LockedRepresentationString,
           FIXTURE_PASSWORD,
-          { connectToSyncServer: false },
-        ),
-      ).rejects.toThrow(UnsupportedStorageVersionError)
-      expect(written).toEqual([])
-    })
-
-    it('is refused by the unlocked-session path too', async () => {
-      const { utils, written } = utilsRecordingSaves()
-
-      await expect(
-        utils.loadFavaLibFromUnlockedSession(
-          fixture,
-          '{}' as UnlockedSessionString,
           { connectToSyncServer: false },
         ),
       ).rejects.toThrow(UnsupportedStorageVersionError)

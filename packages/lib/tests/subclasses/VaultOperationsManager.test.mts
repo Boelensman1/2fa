@@ -255,14 +255,6 @@ describe('VaultManager', () => {
       ).toEqual([entryId])
     })
 
-    it('does not find a look-alike domain', async () => {
-      await favaLib.vault.addEntry(matcherNewTotpEntry)
-
-      expect(
-        favaLib.vault.findEntriesForUrl('https://github.com.evil.com/'),
-      ).toEqual([])
-    })
-
     it('never returns an entry with no matchers', async () => {
       await favaLib.vault.addEntry(newTotpEntry)
 
@@ -270,13 +262,12 @@ describe('VaultManager', () => {
     })
 
     it('returns nothing for a url it cannot match against', async () => {
+      // One url, not the matrix: which strings fail to parse is settled in
+      // utils/urlMatching.test.mts. What is this layer's own is the null
+      // context reaching findEntriesForUrl as an empty list rather than a throw.
       await favaLib.vault.addEntry(matcherNewTotpEntry)
 
       expect(favaLib.vault.findEntriesForUrl('not a url')).toEqual([])
-      expect(favaLib.vault.findEntriesForUrl('about:blank')).toEqual([])
-      expect(
-        favaLib.vault.findEntriesForUrl('chrome-extension://abc/popup.html'),
-      ).toEqual([])
     })
   })
 

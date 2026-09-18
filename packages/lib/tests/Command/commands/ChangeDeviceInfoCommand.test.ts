@@ -74,11 +74,12 @@ describe('ChangeDeviceInfoCommand', () => {
     },
   }
 
-  it('should create a ChangeDeviceInfoCommand instance', () => {
-    const command = new ChangeDeviceInfoCommand(commandData)
-    expect(command).toBeInstanceOf(ChangeDeviceInfoCommand)
-    expect(command.type).toBe('ChangeDeviceInfo')
-    expect(command.data).toEqual(commandData)
+  // That the constructor assigns its arguments is BaseCommand's, and is
+  // pinned in Command/BaseCommand.test.ts. The wire type is this class's own.
+  it('serialises as ChangeDeviceInfo', () => {
+    expect(new ChangeDeviceInfoCommand(commandData).type).toBe(
+      'ChangeDeviceInfo',
+    )
   })
 
   it('should execute the command for local device', async () => {

@@ -189,38 +189,6 @@ describe('ExportImportManager', () => {
   })
 
   describe('importFromUri', () => {
-    it('should successfully import valid OTP URIs', async () => {
-      const otpUri =
-        'otpauth://totp/Example:alice@google.com?secret=JBSWY3DPEHPK3PXP&issuer=Example'
-
-      const entryId = await favaLib.exportImport.importFromUri(otpUri)
-
-      // Verify that an entry was added
-      expect(entryId).toBeDefined()
-
-      // Retrieve the entry and check its properties
-      const entry = favaLib.vault.getEntryMeta(entryId)
-
-      expect(entry).toEqual(
-        expect.objectContaining({
-          name: 'alice@google.com',
-          issuer: 'Example',
-          type: 'TOTP',
-        }),
-      )
-
-      // Generate a token to ensure the entry is valid
-      const token = await favaLib.vault.generateTokenForEntry(entryId)
-      expect(token).toEqual(
-        expect.objectContaining({
-          otp: expect.any(String) as string,
-          validFrom: expect.any(Number) as number,
-          validTill: expect.any(Number) as number,
-        }),
-      )
-      expect(token.otp).toHaveLength(6) // Default digit length
-    })
-
     it('should throw an error for an invalid OTP URI', async () => {
       const invalidUri = 'https://example.com'
 

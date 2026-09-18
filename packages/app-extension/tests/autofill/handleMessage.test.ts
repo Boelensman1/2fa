@@ -539,26 +539,6 @@ describe('who may send what', () => {
       all: [expect.objectContaining({ id: 'a' })],
     })
   })
-
-  /** The over-eager-gate counterpart: the tab contexts that must keep working. */
-  it('still answers a content script reporting fields', async () => {
-    unlockWith([entryMeta('a', { inputSelector: '#code' })])
-
-    const response = await send(
-      {
-        type: BG_ACTION_KEYS.REPORT_OTP_FIELDS,
-        data: {
-          fields: [],
-          overrideMissed: false,
-          scannedAt: 0,
-          usedInputSelectors: [],
-        },
-      },
-      contentSender,
-    )
-
-    expect(response).toEqual({ inputSelectors: ['#code'] })
-  })
 })
 
 /** The frame holding the field, and the page it is embedded in. */

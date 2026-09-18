@@ -158,40 +158,6 @@ describe('Crypto Provider Comparison', () => {
   const nodeTest = runTests(nodeCrypto, 'NodeCryptoLib')
   const browserTest = runTests(browserCrypto, 'BrowserCryptoLib')
 
-  describe('NodeCryptoLib', () => {
-    test('Keys are properly set after test', () => {
-      const {
-        encryptedSecretKeys,
-        encryptedSymmetricKey,
-        publicKey,
-        privateKey,
-        symmetricKey,
-      } = nodeTest.getKeys()
-      expect(encryptedSecretKeys).toBeTruthy()
-      expect(encryptedSymmetricKey).toBeTruthy()
-      expect(publicKey).toBeTruthy()
-      expect(privateKey).toBeTruthy()
-      expect(symmetricKey).toBeTruthy()
-    })
-  })
-
-  describe('BrowserCryptoLib', () => {
-    test('Keys are properly set after test', () => {
-      const {
-        encryptedSecretKeys,
-        encryptedSymmetricKey,
-        publicKey,
-        privateKey,
-        symmetricKey,
-      } = browserTest.getKeys()
-      expect(encryptedSecretKeys).toBeTruthy()
-      expect(encryptedSymmetricKey).toBeTruthy()
-      expect(publicKey).toBeTruthy()
-      expect(privateKey).toBeTruthy()
-      expect(symmetricKey).toBeTruthy()
-    })
-  })
-
   describe('Cross-provider compatibility', () => {
     test('Node can decrypt Browser-encrypted keys', async () => {
       const {

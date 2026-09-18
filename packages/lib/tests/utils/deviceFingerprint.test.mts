@@ -32,14 +32,6 @@ describe('deviceFingerprint', () => {
     expect(deviceFingerprint(device)).toBe('F94E-B724-E102-3FB2-514C-1743')
   })
 
-  it('reads as six groups of four uppercase hex', () => {
-    expect(deviceFingerprint(device)).toMatch(/^[0-9A-F]{4}(-[0-9A-F]{4}){5}$/)
-  })
-
-  it('is deterministic', () => {
-    expect(deviceFingerprint(device)).toBe(deviceFingerprint({ ...device }))
-  })
-
   it('changes when the two keys are swapped', () => {
     // The sealing key and the signing key are both 44 characters of base64 over
     // 32 raw bytes, so nothing about their contents tells them apart -- only

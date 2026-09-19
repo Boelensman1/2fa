@@ -12,6 +12,10 @@
       "types": "./build/interfaces/BrandedTypes.d.mts",
       "import": "./build/interfaces/BrandedTypes.mjs"
     },
+    "./matchers": {
+      "types": "./build/utils/matcherValidation.d.mts",
+      "import": "./build/utils/matcherValidation.mjs"
+    },
     "./protocol/ClientMessage": {
       "types": "./build/interfaces/protocol/ClientMessage.d.mts",
       "import": "./build/interfaces/protocol/ClientMessage.mjs"

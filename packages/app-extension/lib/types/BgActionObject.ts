@@ -1,6 +1,7 @@
 import type { DetectedOtpField } from '../detect'
 
 import type { EntryId, Password } from 'favalib'
+import type { EntryUpdates } from './VaultState'
 
 import type { BG_ACTION_KEYS } from '../state'
 import type { Config, FillTarget, LogEntryPayload } from './'
@@ -191,6 +192,16 @@ export interface GetTokenActionObject {
   data: { entryId: EntryId }
 }
 
+export interface GetEditableEntryActionObject {
+  type: typeof BG_ACTION_KEYS.GET_EDITABLE_ENTRY
+  data: { entryId: EntryId }
+}
+
+export interface UpdateEntryActionObject {
+  type: typeof BG_ACTION_KEYS.UPDATE_ENTRY
+  data: { entryId: EntryId; updates: EntryUpdates }
+}
+
 /**
  * The popup asking whether the tab it is open over has a field worth filling.
  *
@@ -295,4 +306,6 @@ export type BgActionObject =
   | GetRememberOfferActionObject
   | AnswerRememberOfferActionObject
   | GetTokenActionObject
+  | GetEditableEntryActionObject
+  | UpdateEntryActionObject
   | GetPasswordStrengthActionObject

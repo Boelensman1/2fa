@@ -1,6 +1,9 @@
 import type { UrlMatcher, UrlMatcherType } from '../interfaces/Entry.mjs'
 import { URL_MATCHER_TYPES } from '../interfaces/Entry.mjs'
 
+// A lightweight entry point for editors; importing it never loads vault code.
+export { URL_MATCHER_TYPES }
+
 /** The most matchers a single entry may carry. */
 export const MAX_MATCHERS_PER_ENTRY = 16
 

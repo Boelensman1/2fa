@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import type { Draft } from '@/lib/drafts'
 
@@ -12,6 +12,7 @@ interface DraftControls {
    * overwrites, and that is the one bug this whole feature would be.
    */
   ready: boolean
+  /** Discards stored and displayed values, returning to the original seed. */
   clear: () => void
 }
 
@@ -32,6 +33,7 @@ const useDraft = <T,>(
 ): [T, (_next: T) => void, DraftControls] => {
   const [value, setValue] = useState<T>(initial)
   const [ready, setReady] = useState(false)
+  const seed = useRef(initial)
 
   // `initial` is deliberately not a dependency: it seeds the first render and
   // nothing else. `currentUrl` in `SyncServerForm` comes off a polled summary,
@@ -60,7 +62,10 @@ const useDraft = <T,>(
     [draft],
   )
 
-  const clear = useCallback(() => void draft.clear(), [draft])
+  const clear = useCallback(() => {
+    setValue(seed.current)
+    void draft.clear()
+  }, [draft])
 
   return [value, update, { ready, clear }]
 }

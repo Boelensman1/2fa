@@ -43,6 +43,11 @@ import type {
   UnlockVaultActionObject,
   VaultActionResult,
   VaultSummary,
+  EditableEntry,
+  EntryUpdates,
+  UpdateEntryResult,
+  GetEditableEntryActionObject,
+  UpdateEntryActionObject,
 } from '../types'
 
 export const BG_ACTION_KEYS = {
@@ -70,6 +75,8 @@ export const BG_ACTION_KEYS = {
   RESET_VAULT: 'RESET_VAULT' as const,
   LIST_ENTRIES: 'LIST_ENTRIES' as const,
   GET_TOKEN: 'GET_TOKEN' as const,
+  GET_EDITABLE_ENTRY: 'GET_EDITABLE_ENTRY' as const,
+  UPDATE_ENTRY: 'UPDATE_ENTRY' as const,
   GET_PASSWORD_STRENGTH: 'GET_PASSWORD_STRENGTH' as const,
 
   GET_FILL_TARGET: 'GET_FILL_TARGET' as const,
@@ -213,6 +220,19 @@ const actions = {
     send<GetTokenActionObject, string>({
       type: BG_ACTION_KEYS.GET_TOKEN,
       data: { entryId },
+    }),
+  getEditableEntry: (entryId: EntryId): Promise<EditableEntry | null> =>
+    send<GetEditableEntryActionObject, EditableEntry>({
+      type: BG_ACTION_KEYS.GET_EDITABLE_ENTRY,
+      data: { entryId },
+    }),
+  updateEntry: (
+    entryId: EntryId,
+    updates: EntryUpdates,
+  ): Promise<UpdateEntryResult | null> =>
+    send<UpdateEntryActionObject, UpdateEntryResult>({
+      type: BG_ACTION_KEYS.UPDATE_ENTRY,
+      data: { entryId, updates },
     }),
   getPasswordStrength: (password: Password): Promise<PasswordStrength | null> =>
     send<GetPasswordStrengthActionObject, PasswordStrength>({

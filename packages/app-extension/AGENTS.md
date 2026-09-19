@@ -180,16 +180,17 @@ a server address **and** the shared secret, two long strings that almost always
 live somewhere else, and going to copy either one closed the popup and emptied
 the form.
 
-`lib/drafts.ts` keeps five things across it, read and written through
+`lib/drafts.ts` keeps six things across it, read and written through
 `lib/ui/hooks/useDraft.tsx`:
 
-| draft                   | what it holds                           | written by          |
-| ----------------------- | --------------------------------------- | ------------------- |
-| `syncServer`            | the address and the secret              | `SyncServerForm`    |
-| `pair`                  | the connection code and the device name | `PairScreen`        |
-| `popupTab`              | which tab was open                      | `AuthenticatedApp`  |
-| `settingsEditingServer` | whether the server form was open        | `SettingsTab`       |
-| `createMode`            | which half of the first-run screen      | `CreateVaultScreen` |
+| draft                   | what it holds                              | written by                         |
+| ----------------------- | ------------------------------------------ | ---------------------------------- |
+| `syncServer`            | the address and the secret                 | `SyncServerForm`                   |
+| `pair`                  | the connection code and the device name    | `PairScreen`                       |
+| `popupTab`              | which tab was open                         | `AuthenticatedApp`                 |
+| `settingsEditingServer` | whether the server form was open           | `SettingsTab`                      |
+| `createMode`            | which half of the first-run screen         | `CreateVaultScreen`                |
+| `entryEdit`             | the entry ID and unfinished metadata edits | `EntryEditor` / `AuthenticatedApp` |
 
 Four rules hold it together.
 
@@ -230,6 +231,34 @@ There used to be a third, `remembering`, and it is worth knowing where it went:
 because no draft could have fixed it. The popup was asking at the one moment the
 user was certain to leave — they click the page to press Enter — so restoring it
 on the next open would have been asking again after the moment had passed.
+
+## Editing entries
+
+The details screen’s **Edit entry** opens a metadata editor: issuer, account
+name, display website, ordered site matchers, and OTP field selector. The secret
+and TOTP settings stay in the background. `GET_EDITABLE_ENTRY` reads fresh
+metadata and `UPDATE_ENTRY` writes only those five fields; both are popup-only
+and remain outside `actionsReachableFromATab`. The background explicitly picks
+allowed fields before calling favalib’s `updateEntry`, which validates, saves,
+and syncs the change.
+
+`favalib/matchers` exposes the shared matcher options and validation without
+loading vault or crypto code into the popup. Both issuer and account name are
+required by the library. Blank optional fields become null; blank matcher rows
+are omitted. Website is display-only, never an implicit matcher.
+
+The `entryEdit` session draft identifies the editor to reopen as well as keeping
+its raw form values. Hydration finishes before the form accepts input, and
+reopening fetches current metadata without overwriting the draft. Back/Cancel,
+lock/reset, and successful saves discard it. Save cleanup happens in the
+background too, because the popup may disappear during the write. An entry
+deleted on another device is never recreated; an unavailable entry or failed
+request offers a retry and a way back.
+
+A successful edit invalidates autofill offers and broadcasts `entriesChanged`
+without metadata. Each frame closes its stale menu and runs the existing
+scan/report flow, fetching selectors for its own browser-supplied URL. No
+selector is added to a broadcast.
 
 ## `lib/detect/` — the otp field heuristic
 
@@ -652,10 +681,10 @@ The page url is frozen on the offer rather than re-read when the answer arrives,
 because plenty of sites submit themselves the moment the code is complete: by
 then, frame 0 is reporting the page _after_ login.
 
-This is the package's only write into the vault. `VaultContainer.addSiteToEntry`
-is the only mutator there is, and `updateEntry` replaces the matcher list
-rather than merging into it, so the append happens there; the encrypted save
-and the sync push both fall out of that one call.
+`VaultContainer.addSiteToEntry` appends the suggestion, while the popup editor
+replaces the metadata the user edited. Both use favalib’s `updateEntry`, which
+replaces the matcher list rather than merging into it; the encrypted save and
+sync push both fall out of that call.
 
 #### The offer outlives the page, and the worker
 

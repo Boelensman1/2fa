@@ -23,6 +23,8 @@ import type {
   PasswordStrength,
   VaultStatus,
   VaultSummary,
+  EditableEntry,
+  EntryUpdates,
 } from '../../types/VaultState'
 import type { SiteOffer } from '../../types/Autofill'
 import type Db from './Db'
@@ -100,6 +102,15 @@ const toListedEntry = (entry: EntryMeta | EntryMetaForUrl): ListedEntry => ({
   url: entry.url,
   matchers: entry.matchers,
   matchedBy: 'matchedBy' in entry ? entry.matchedBy : null,
+})
+
+const toEditableEntry = (entry: EntryMeta): EditableEntry => ({
+  id: entry.id,
+  issuer: entry.issuer,
+  name: entry.name,
+  url: entry.url,
+  matchers: entry.matchers,
+  inputSelector: entry.inputSelector,
 })
 
 /**
@@ -456,11 +467,42 @@ class VaultContainer {
     }
   }
 
+  /** Reads fresh metadata when opening or restoring the popup editor. */
+  getEditableEntry(entryId: EntryId): EditableEntry | null {
+    if (!this.isUnlocked) return null
+    try {
+      const meta = this.favaLib?.vault.getEntryMeta(entryId)
+      return meta ? toEditableEntry(meta) : null
+    } catch {
+      return null
+    }
+  }
+
+  /** Saves metadata through the same encrypted storage and sync path as peers. */
+  async updateEntry(
+    entryId: EntryId,
+    updates: EntryUpdates,
+  ): Promise<EditableEntry> {
+    const favaLib = this.favaLib
+    if (!favaLib || this.pairing) throw new Error('The vault is locked')
+
+    // Select fields explicitly: a runtime message is not constrained by its
+    // TypeScript type and must never be able to replace a secret or timestamp.
+    const updated = await favaLib.vault.updateEntry(entryId, {
+      issuer: updates.issuer,
+      name: updates.name,
+      url: updates.url,
+      matchers: updates.matchers.map(({ type, value }) => ({ type, value })),
+      inputSelector: updates.inputSelector,
+    })
+    return toEditableEntry(updated)
+  }
+
   /**
    * Records what a fill taught us: one more matcher, and the site url when the
    * entry had none.
    *
-   * The only write this package makes into the vault. `updateEntry` replaces
+   * Like the popup editor, this delegates to favalib. `updateEntry` replaces
    * the matcher list rather than merging into it, so the append is done here;
    * the encrypted save and the sync push both fall out of that one call.
    *

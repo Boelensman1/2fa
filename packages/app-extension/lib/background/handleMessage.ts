@@ -3,6 +3,7 @@ import type { Browser } from 'wxt/browser'
 import { BG_ACTION_KEYS, Logger, bindDependencies, IOC_TYPES } from '../'
 import { ctActions } from '../state'
 import { notifyConnectors } from '../util'
+import { entryEditDraft } from '../drafts'
 
 import type {
   AutofillOfferRegistry,
@@ -19,6 +20,7 @@ import type {
   StateManager,
   VaultActionResult,
   VaultContainer,
+  UpdateEntryResult,
 } from '../types'
 import type { EntryId } from 'favalib'
 
@@ -375,6 +377,38 @@ async function unboundHandleMessage(
 
     case BG_ACTION_KEYS.GET_TOKEN: {
       return vaultContainer.generateToken(action.data.entryId)
+    }
+
+    case BG_ACTION_KEYS.GET_EDITABLE_ENTRY: {
+      return vaultContainer.getEditableEntry(action.data.entryId)
+    }
+
+    case BG_ACTION_KEYS.UPDATE_ENTRY: {
+      let result: UpdateEntryResult
+      try {
+        const entry = await vaultContainer.updateEntry(
+          action.data.entryId,
+          action.data.updates,
+        )
+        result = { ok: true, error: null, entry }
+      } catch (error) {
+        return {
+          ok: false,
+          error: describeVaultError(error),
+          entry: null,
+        } satisfies UpdateEntryResult
+      }
+
+      // The popup may have closed while saving. Finish draft cleanup here,
+      // before answering, so reopening cannot restore an already saved edit.
+      await entryEditDraft.clear()
+      autofillOfferRegistry.forgetAll()
+      // A page that cannot be reached must not turn a completed save into an
+      // error. Each frame fetches its own selectors on its next report.
+      void notifyConnectors('entriesChanged').catch(() => {
+        log.warn('Could not notify pages about the edited entry')
+      })
+      return result
     }
 
     case BG_ACTION_KEYS.GET_FILL_TARGET: {

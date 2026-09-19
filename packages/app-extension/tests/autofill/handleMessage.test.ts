@@ -13,13 +13,14 @@ import type { EntryId, EntryMetaForUrl } from 'favalib'
  * would look exactly like "autofill is a bit flaky".
  */
 const sendMessage = vi.fn()
+const queryTabs = vi.fn(() => Promise.resolve([] as { id: number }[]))
 
 vi.mock('wxt/browser', () => ({
   browser: {
     runtime: { sendMessage: vi.fn(), getURL: (path: string) => path },
     tabs: {
       sendMessage: (...args: unknown[]) => sendMessage(...args) as unknown,
-      query: () => Promise.resolve([]),
+      query: () => queryTabs(),
       onRemoved: { addListener: vi.fn() },
     },
   },
@@ -80,7 +81,7 @@ const entryMeta = (
 /** A spy, so a test can assert that no code was minted at all. */
 const generateTokenForEntry = vi.fn<() => Promise<{ otp: string }>>()
 
-/** The only write this package makes into the vault. */
+/** Writes from the remember prompt and the popup editor share this path. */
 const updateEntry = vi.fn<(id: string, updates: unknown) => Promise<unknown>>()
 
 /** Stands in for an unlocked favalib, since only the selection is under test. */
@@ -100,9 +101,12 @@ const fakeVault = (entries: EntryMetaForUrl[], otp = '123456') => ({
       if (!found) throw new Error(`no entry ${id}`)
       return found
     },
-    updateEntry: (id: string, updates: unknown) => {
-      updateEntry.mockResolvedValue(undefined)
-      return updateEntry(id, updates)
+    updateEntry: async (id: string, updates: unknown) => {
+      const found = entries.find((entry) => entry.id === id)
+      if (!found) throw new Error(`no entry ${id}`)
+      await updateEntry(id, updates)
+      Object.assign(found, updates)
+      return found
     },
     generateTokenForEntry: () => {
       generateTokenForEntry.mockResolvedValue({ otp })
@@ -189,6 +193,7 @@ beforeEach(async () => {
   sendMessage.mockReset()
   generateTokenForEntry.mockReset()
   updateEntry.mockReset()
+  queryTabs.mockReset().mockResolvedValue([])
   // The fill path sends three different ct actions and reads every answer, so
   // a single canned reply will not do. `SHOW_REMEMBER_PROMPT` answering `true`
   // is a frame saying it put the prompt up; `null` is how the background learns
@@ -1254,5 +1259,161 @@ describe("the popup's site group", () => {
       forSite: [],
       all: [expect.objectContaining({ id: 'a' })],
     })
+  })
+})
+
+/** The real handler and VaultContainer, with just favalib's vault replaced. */
+describe('popup entry editing', () => {
+  const updates = {
+    issuer: 'Updated issuer',
+    name: 'updated@example.com',
+    url: null,
+    matchers: [{ type: 'Host', value: 'example.com' }],
+    inputSelector: '#new-code',
+  }
+  const getAction = {
+    type: BG_ACTION_KEYS.GET_EDITABLE_ENTRY,
+    data: { entryId: 'a' },
+  }
+  const updateAction = {
+    type: BG_ACTION_KEYS.UPDATE_ENTRY,
+    data: { entryId: 'a', updates },
+  }
+
+  it('returns only editable metadata to the popup', async () => {
+    const entry = {
+      ...entryMeta('a'),
+      payload: { secret: 'never-return-this' },
+    }
+    unlockWith([entry])
+    expect(await send(getAction, {})).toEqual({
+      id: 'a',
+      issuer: entry.issuer,
+      name: entry.name,
+      url: null,
+      matchers: entry.matchers,
+      inputSelector: null,
+    })
+    expect(generateTokenForEntry).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    contentSender,
+    menuSender,
+    { tab: { id: 7 }, url: 'remember.html' },
+  ])('refuses reads and writes from tab contexts: %j', async (sender) => {
+    unlockWith([entryMeta('a')])
+    expect(await send(getAction, sender)).toBeNull()
+    expect(await send(updateAction, sender)).toBeNull()
+    expect(updateEntry).not.toHaveBeenCalled()
+  })
+
+  it('selects metadata fields and preserves the TOTP payload and creation time', async () => {
+    const payload = {
+      secret: 'secret',
+      digits: 6,
+      period: 30,
+      algorithm: 'SHA-1',
+    }
+    const entry = { ...entryMeta('a'), payload }
+    unlockWith([entry])
+    const result = await send(
+      {
+        ...updateAction,
+        data: {
+          entryId: 'a',
+          updates: {
+            ...updates,
+            payload: { secret: 'injected' },
+            id: 'another',
+            addedAt: 123,
+            type: 'HOTP',
+            updatedAt: 1,
+          },
+        },
+      },
+      {},
+    )
+    expect(result).toEqual({
+      ok: true,
+      error: null,
+      entry: { id: 'a', ...updates },
+    })
+    expect(updateEntry).toHaveBeenCalledWith('a', updates)
+    expect(entry.id).toBe('a')
+    expect(entry.type).toBe('TOTP')
+    expect(entry.addedAt).toBe(0)
+    expect(entry.payload).toBe(payload)
+  })
+
+  it('clears the draft after saving without requiring a popup callback', async () => {
+    unlockWith([entryMeta('a')])
+    store.set('session:draft:entryEdit', 'draft')
+    expect(await send(updateAction, {})).toMatchObject({ ok: true })
+    expect(store.has('session:draft:entryEdit')).toBe(false)
+  })
+
+  it('retains the draft when the library rejects the update', async () => {
+    unlockWith([entryMeta('a')])
+    store.set('session:draft:entryEdit', 'draft')
+    updateEntry.mockRejectedValueOnce(
+      new Error('Cannot update entry: invalid matcher'),
+    )
+    expect(await send(updateAction, {})).toEqual({
+      ok: false,
+      error: 'Cannot update entry: invalid matcher',
+      entry: null,
+    })
+    expect(store.has('session:draft:entryEdit')).toBe(true)
+  })
+
+  it('reports locked and deleted entries without creating replacements', async () => {
+    expect(await send(getAction, {})).toBeNull()
+    expect(await send(updateAction, {})).toEqual({
+      ok: false,
+      error: 'The vault is locked',
+      entry: null,
+    })
+    unlockWith([])
+    expect(await send(getAction, {})).toBeNull()
+    expect(await send(updateAction, {})).toEqual({
+      ok: false,
+      error: 'no entry a',
+      entry: null,
+    })
+    expect(updateEntry).not.toHaveBeenCalled()
+  })
+
+  it('invalidates open offers and notifies frames without sending metadata', async () => {
+    unlockWith([entryMeta('a')])
+    const offer = await openMenu()
+    queryTabs.mockResolvedValueOnce([{ id: 7 }])
+    expect(await send(updateAction, {})).toMatchObject({ ok: true })
+    expect(
+      await send(
+        { type: BG_ACTION_KEYS.GET_MENU_ENTRIES, data: { token: offer.token } },
+        menuSender,
+      ),
+    ).toBeNull()
+    expect(sendMessage).toHaveBeenCalledWith(
+      7,
+      {
+        type: CT_ACTION_KEYS.EVENT_NOTIFICATION,
+        data: { event: 'entriesChanged' },
+      },
+      undefined,
+    )
+    expect(
+      vaultContainer.inputSelectorsForUrl('https://github.com/login'),
+    ).toEqual(['#new-code'])
+    expect(
+      vaultContainer.inputSelectorsForUrl('https://other.example/login'),
+    ).toEqual([])
+  })
+
+  it('keeps a successful save successful when page notification fails', async () => {
+    unlockWith([entryMeta('a')])
+    queryTabs.mockRejectedValueOnce(new Error('tabs unavailable'))
+    expect(await send(updateAction, {})).toMatchObject({ ok: true })
   })
 })

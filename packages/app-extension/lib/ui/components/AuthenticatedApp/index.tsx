@@ -2,12 +2,22 @@ import type { FC } from 'react'
 import { useCallback, useRef, useState } from 'react'
 
 import { bgActions } from '@/lib/state'
-import { closeSyncServerEditor, popupTabDraft } from '@/lib/drafts'
+import {
+  closeSyncServerEditor,
+  popupTabDraft,
+  entryEditDraft,
+} from '@/lib/drafts'
 import Logger from '@/lib/classes/Logger'
-import type { FillTarget, ListedEntry, VaultSummary } from '@/lib/types'
+import type {
+  EditableEntry,
+  FillTarget,
+  ListedEntry,
+  VaultSummary,
+} from '@/lib/types'
 import { useActiveTab, useDraft, useFillTarget } from '../../hooks'
 import { describeFillFailure } from '../../fillMessages'
 import EntryDetail from '../EntryDetail'
+import EntryEditor from '../EntryEditor'
 import FillConfirm from '../FillConfirm'
 import SettingsTab from '../SettingsTab'
 import Splash from '../Splash'
@@ -39,6 +49,12 @@ const AuthenticatedApp: FC<AuthenticatedAppProps> = ({
    */
   const [tab, setTab, { ready }] = useDraft<TabId>(popupTabDraft, 'vault')
   const [selected, setSelected] = useState<ListedEntry | null>(null)
+  const [editDraft, setEditDraft, { ready: editReady, clear: clearEditDraft }] =
+    useDraft(entryEditDraft, null)
+  const [openingEditor, setOpeningEditor] = useState<
+    EditableEntry['id'] | null
+  >(null)
+  const editingId = editDraft?.entryId ?? openingEditor
   /**
    * Set when a fill needs the user to look at the frame it is going into.
    *
@@ -186,11 +202,30 @@ const AuthenticatedApp: FC<AuthenticatedAppProps> = ({
     void bgActions.resetVault().then(onVaultChanged)
   }
 
+  const closeEditor = (entry: EditableEntry | null) => {
+    clearEditDraft()
+    setOpeningEditor(null)
+    setSelected(entry ? { ...entry, matchedBy: null } : null)
+  }
+
   return (
     <div className="flex h-[32rem] flex-col bg-white">
       <div className="min-h-0 flex-1">
-        {!ready ? (
+        {!ready || !editReady ? (
           <Splash />
+        ) : editingId ? (
+          <EntryEditor
+            key={editingId}
+            entryId={editingId}
+            draft={editDraft}
+            onDraftChange={setEditDraft}
+            onCancel={closeEditor}
+            onSaved={(entry) => {
+              closeEditor(entry)
+              showToast('Entry saved')
+              onVaultChanged()
+            }}
+          />
         ) : confirming ? (
           <FillConfirm
             entry={confirming.entry}
@@ -207,6 +242,7 @@ const AuthenticatedApp: FC<AuthenticatedAppProps> = ({
             onFill={fillTarget ? onFill : null}
             fillHost={fillTarget?.host ?? null}
             onBack={() => setSelected(null)}
+            onEdit={() => setOpeningEditor(selected.id)}
           />
         ) : tab === 'vault' ? (
           <VaultTab
@@ -233,7 +269,7 @@ const AuthenticatedApp: FC<AuthenticatedAppProps> = ({
       {/* Hidden behind the detail view and the fill confirmation: both are
           drill-downs from the vault tab, not third destinations, so a
           highlighted tab there would lie. */}
-      {!ready || selected || confirming ? null : (
+      {!ready || !editReady || editingId || selected || confirming ? null : (
         <TabBar active={tab} onChange={changeTab} />
       )}
     </div>

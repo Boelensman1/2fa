@@ -279,6 +279,7 @@ describe('unlock and lock', () => {
     await container.unlock('pw' as never)
     store.set('session:draft:syncServer', 'secret-in-progress')
     store.set('session:draft:pair', 'half-a-connection-code')
+    store.set('session:draft:entryEdit', 'entry-edit-in-progress')
 
     await container.lock()
 
@@ -351,8 +352,10 @@ describe('unlock and lock', () => {
     const db = new Db()
     await db.upsertMetaKV('lockedRepresentation', 'blob')
     await db.upsertMetaKV('config', '{"debug":true}')
+    store.set('session:draft:entryEdit', 'entry-edit-in-progress')
 
     await new VaultContainer(db).reset()
+    expect(store.has('session:draft:entryEdit')).toBe(false)
 
     expect(store.has('local:meta:lockedRepresentation')).toBe(false)
     // db.reset() is storage.clear('local') and would take this with it.

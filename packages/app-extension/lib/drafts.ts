@@ -3,6 +3,7 @@ import type { StorageItemKey } from 'wxt/utils/storage'
 
 import Logger from './classes/Logger'
 import type { TabId } from './ui/components/TabBar'
+import type { EntryId, UrlMatcher } from 'favalib'
 
 const log = new Logger('drafts')
 
@@ -38,6 +39,20 @@ export interface SyncServerDraft {
 export interface PairDraft {
   connectionString: string
   deviceName: string
+}
+
+/** Raw form values, including blank matcher rows not yet ready to save. */
+export interface EntryEditValues {
+  issuer: string
+  name: string
+  url: string
+  matchers: UrlMatcher[]
+  inputSelector: string
+}
+
+export interface EntryEditDraft {
+  entryId: EntryId
+  values: EntryEditValues
 }
 
 /** One draft: read it, write it through, drop it. Never throws. */
@@ -122,6 +137,9 @@ export const settingsEditingServerDraft = defineDraft<boolean>(
 /** Which half of the first-run screen was selected. */
 export const createModeDraft = defineDraft<'connect' | 'create'>('createMode')
 
+/** Also identifies the editor to restore when the popup opens again. */
+export const entryEditDraft = defineDraft<EntryEditDraft | null>('entryEdit')
+
 // Typed by what this list is for, rather than as `Draft<unknown>`: `write`
 // makes `Draft<T>` invariant in T, so every entry would need a cast.
 const allDrafts: { clear: () => Promise<void> }[] = [
@@ -130,6 +148,7 @@ const allDrafts: { clear: () => Promise<void> }[] = [
   popupTabDraft,
   settingsEditingServerDraft,
   createModeDraft,
+  entryEditDraft,
 ]
 
 /**

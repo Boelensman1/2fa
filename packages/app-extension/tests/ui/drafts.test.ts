@@ -30,6 +30,7 @@ vi.mock('wxt/utils/storage', () => ({
 
 const {
   clearDrafts,
+  entryEditDraft,
   closeSyncServerEditor,
   createModeDraft,
   pairDraft,
@@ -69,10 +70,21 @@ describe('drafts', () => {
     popupTabDraft.write('settings')
     settingsEditingServerDraft.write(true)
     createModeDraft.write('create')
+    entryEditDraft.write({
+      entryId: 'a' as never,
+      values: {
+        issuer: 'Draft',
+        name: 'Account',
+        url: '',
+        inputSelector: '',
+        matchers: [],
+      },
+    })
     await settled()
 
     expect([...store.keys()].sort()).toEqual([
       'session:draft:createMode',
+      'session:draft:entryEdit',
       'session:draft:pair',
       'session:draft:popupTab',
       'session:draft:settingsEditingServer',
@@ -109,6 +121,16 @@ describe('drafts', () => {
     popupTabDraft.write('settings')
     settingsEditingServerDraft.write(true)
     createModeDraft.write('create')
+    entryEditDraft.write({
+      entryId: 'a' as never,
+      values: {
+        issuer: 'Draft',
+        name: 'Account',
+        url: '',
+        inputSelector: '',
+        matchers: [],
+      },
+    })
     await settled()
 
     await clearDrafts()

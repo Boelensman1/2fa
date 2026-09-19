@@ -1,4 +1,4 @@
-import type { EntryId, UrlMatcher } from 'favalib'
+import type { EntryId, EntryMeta, UrlMatcher } from 'favalib'
 
 /**
  * Where the vault is, from the popup's point of view.
@@ -49,6 +49,18 @@ export interface EntryList {
   forSite: ListedEntry[]
   all: ListedEntry[]
 }
+
+/** The only entry fields the popup may write. No TOTP payload crosses here. */
+export type EntryUpdates = Pick<
+  EntryMeta,
+  'issuer' | 'name' | 'url' | 'matchers' | 'inputSelector'
+>
+
+export type EditableEntry = EntryUpdates & { id: EntryId }
+
+export type UpdateEntryResult =
+  | { ok: true; error: null; entry: EditableEntry }
+  | { ok: false; error: string; entry: null }
 
 /**
  * zxcvbn's verdict on a candidate master password.

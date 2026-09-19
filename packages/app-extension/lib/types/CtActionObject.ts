@@ -8,10 +8,10 @@ import type { FillResult } from './Autofill'
  *
  * `vaultStateChanged` exists for exactly one job: taking down whatever this
  * frame has on screen -- an open menu, an unanswered remember prompt -- when
- * the vault locks. Everything else about an offer is fetched on demand, so
- * there is no cached state anywhere that needs invalidating.
+ * the vault locks. `entriesChanged` closes stale autofill menus and asks each
+ * frame to report again for fresh selectors. Neither event carries vault data.
  */
-export type CTEvent = 'configUpdated' | 'vaultStateChanged'
+export type CTEvent = 'configUpdated' | 'vaultStateChanged' | 'entriesChanged'
 export interface EventNotificationCTActionObject {
   type: typeof CT_ACTION_KEYS.EVENT_NOTIFICATION
   data: { event: CTEvent }

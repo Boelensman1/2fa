@@ -11,6 +11,7 @@ interface EntryDetailProps {
   /** The host the code would be typed into. */
   fillHost: string | null
   onBack: () => void
+  onEdit: () => void
 }
 
 const Field: FC<{ label: string; children: ReactNode }> = ({
@@ -39,6 +40,7 @@ const EntryDetail: FC<EntryDetailProps> = ({
   onFill,
   fillHost,
   onBack,
+  onEdit,
 }) => (
   <div className="flex h-full flex-col">
     <header className="flex items-center gap-2 border-b border-gray-200 bg-white px-2 py-2">
@@ -101,6 +103,9 @@ const EntryDetail: FC<EntryDetailProps> = ({
     </dl>
 
     <div className="space-y-2 border-t border-gray-200 p-3">
+      <Button variant="secondary" onClick={onEdit}>
+        Edit entry
+      </Button>
       {onFill ? (
         <Button onClick={() => onFill(entry)}>Fill into {fillHost}</Button>
       ) : null}

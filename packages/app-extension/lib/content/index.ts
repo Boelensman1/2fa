@@ -253,6 +253,12 @@ export const handleMessage = async (
     }
 
     case CT_ACTION_KEYS.EVENT_NOTIFICATION: {
+      if (msg.data.event === 'entriesChanged') {
+        menu?.close()
+        // Reuse the explicit scan: an unchanged field set must still report
+        // to fetch selectors for this frame's browser-supplied URL.
+        await handleMessage({ type: CT_ACTION_KEYS.DETECT_OTP_FIELDS })
+      }
       if (msg.data.event === 'vaultStateChanged') {
         menu?.close()
         // The pending offers went with the lock, so there is nothing to tell

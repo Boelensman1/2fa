@@ -14,7 +14,9 @@ const ItemList = () => {
   onCleanup(() => clearInterval(timer))
 
   const filteredEntries = createMemo(() => {
-    if (!searchTerm()) return state.entries
+    // Track vault updates even while searching: favalib's results are snapshots.
+    const entries = state.entries
+    if (!searchTerm()) return entries
     return state.favaLib!.vault.searchEntriesMetas(searchTerm())
   })
 

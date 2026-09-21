@@ -2,9 +2,12 @@ import fs from 'node:fs/promises'
 
 import { Option } from 'clipanion'
 import * as t from 'typanion'
-import keytar from 'keytar'
 
 import BaseCommand from '../../BaseCommand.mjs'
+import {
+  getKeychainPassword,
+  setKeychainPassword,
+} from '../../utils/keychain.mjs'
 import { password as passwordInput, input } from '@inquirer/prompts'
 
 class ExportTextCommand extends BaseCommand {
@@ -54,10 +57,10 @@ class ExportTextCommand extends BaseCommand {
     // Get password based on source
     let password: string | undefined | null = undefined
 
-    // If password source is "stored", try to get from keytar without prompting
+    // If password source is "stored", try the keychain without prompting
     if (this.passwordSource === 'stored') {
       try {
-        password = await keytar.getPassword('favacli', 'export-password')
+        password = await getKeychainPassword('export-password')
         if (!password) {
           this.context.stderr.write(
             'No stored password found. Please enter a password to store.\n',
@@ -67,7 +70,7 @@ class ExportTextCommand extends BaseCommand {
           })
 
           // Store the password for future use
-          await keytar.setPassword('favacli', 'export-password', password)
+          await setKeychainPassword('export-password', password)
           this.context.stdout.write('Password stored.\n')
         }
       } catch (error) {

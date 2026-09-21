@@ -9,7 +9,7 @@ browser PWA and a browser extension, in one pnpm workspace.
 | --- | --- | --- |
 | `packages/lib` | `favalib` | Vault/crypto core; `@noble/curves` (X25519 + Ed25519), openpgp, jpake, canvas, qrcode. Also owns the shared branded types (`favalib/types`) and the sync wire protocol (`favalib/protocol/*`) |
 | `packages/server` | `favaserver` | WebSocket sync server; `ws` + knex/objection on PostgreSQL |
-| `packages/app-cli` | `favacli` | Clipanion CLI; stores secrets with keytar |
+| `packages/app-cli` | `favacli` | Clipanion CLI; keeps secrets in the OS keychain through `@napi-rs/keyring` |
 | `packages/app-browser` | `favabrowser` | SolidJS + Vite PWA |
 | `packages/app-extension` | `favabrowserext` | WXT + React MV3 browser extension |
 
@@ -51,6 +51,29 @@ the same reason, anything appearing in `packages/lib/build/**/*.d.mts` has to
 be a real entry in favalib's `dependencies` — that is why `type-fest` is a
 dependency rather than a devDependency, even though no runtime code uses it.
 
+Nothing in a published package may assume a native dependency was built.
+`favacli` reached the OS keychain through `keytar`, whose binary an install
+script downloads — and an installer that skips a dependency's install scripts
+(pnpm 10 and later unless the build is approved, npm or yarn under
+`ignore-scripts`) installs keytar and leaves it unloadable. Five command modules
+imported it at the top and `main.mts` imports every command module, so that one
+missing binary took down the whole CLI — `favacli version` included — with a
+node stack trace naming a path inside `node_modules`. The keychain is now
+`@napi-rs/keyring`, which ships a prebuilt binary per platform as an optional
+dependency and so runs no install script at all, and `app-cli`'s
+`utils/keychain.mts` still imports it on first use and turns a failed import
+into one sentence saying what to do — the way favalib loads `canvas`, on the
+qr-reading path only. Keep both: reach for the keychain through that module,
+never for the binding directly.
+
+That swap costs two things. On Linux the entry is pinned to the Secret Service,
+because the library's own default falls back to the kernel keyring, where a
+stored vault password does not survive a reboot. And the two libraries key their
+secret-service attributes differently, so entries keytar wrote are invisible to
+this one: on Linux, an upgrade from a keytar-era favacli needs
+`favacli vault restore-password` once. macOS generic passwords are keyed by
+service and account in both, so they are expected to carry over — unverified.
+
 Do not give a `../<pkg>/build` rule an empty prerequisite list: make would then
 only ever run it when the directory is absent, and a stale build survives. It
 fails quietly — `tsc` and eslint resolve the outdated `.d.mts` files and the
@@ -89,9 +112,9 @@ Manage them with `milly service status`, `milly service logs <name>`, and
 `milly service restart <name>` rather than starting or killing them by hand.
 Logs are at `$HOME/.cache/milly/2fa/dev-services/<name>.log`.
 
-`keyring` exists because `favacli` stores the vault password through keytar,
-which on Linux is a Secret Service over D-Bus -- and a container has no desktop
-session to provide one. Without it every command that opens a vault fails with
+`keyring` exists because `favacli` stores the vault password through
+`@napi-rs/keyring`, which on Linux is a Secret Service over D-Bus -- and a
+container has no desktop session to provide one. Without it every command that opens a vault fails with
 "Cannot autolaunch D-Bus without X11 $DISPLAY". `DBUS_SESSION_BUS_ADDRESS` is
 set for every shell and dev service, so nothing needs configuring. The keyring
 itself lives in `$HOME/.local/share/keyrings` and survives restarts; delete that
@@ -131,10 +154,12 @@ They run with `fileParallelism: false` because they share that one database.
   enables `nix-ld`.
 - The image quarantines newly published npm releases for 7 days
   (`minimumReleaseAge`), so a brand-new dependency version may not install.
-- `canvas` and `keytar` are native. The repo `.npmrc` sets `ignore-scripts=false`
-  so their install scripts run, and `milly2-container/milly.nix` supplies the
-  toolchain plus `PKG_CONFIG_PATH` / `LD_LIBRARY_PATH` for them. Outside the
-  container, use `nix develop`, whose devShell does the same.
+- `canvas` is native and its install script has to run: the repo `.npmrc` sets
+  `ignore-scripts=false`, and `milly2-container/milly.nix` supplies the toolchain
+  plus `PKG_CONFIG_PATH` / `LD_LIBRARY_PATH` for it. Outside the container, use
+  `nix develop`, whose devShell does the same. `@napi-rs/keyring` needs none of
+  that -- its binary is an ordinary npm package -- but its prebuilt `.node` does
+  need `libgcc_s` on the loader path.
 - `packages/app-browser/vite.config.mts` shells out to `git rev-parse`, so the
   build needs real git history.
 

@@ -29,7 +29,7 @@
             inherit (finalAttrs) pname version src;
             pnpm = pkgs.pnpm_11;
             fetcherVersion = 4;
-            hash = "sha256-ayLZp6Uw8ah6yo46uu6nsSoRW42t6+K36HnoluF4k8o=";
+            hash = "sha256-wNiJ+7Ynk+vIiUhD8uMSNaorB7PNdX+M1Cx2sSZR54w=";
           };
 
           # The installPhase allowlist below resolves each dependency at
@@ -51,24 +51,18 @@
           ];
 
           buildInputs = pkgs.lib.optionals pkgs.stdenv.isLinux [
-            pkgs.libsecret
             pkgs.glib
             pkgs.libuuid
           ];
 
           preBuild = ''
-            # Newer clang rejects the `static_cast<napi_typedarray_type>(-1)`
-            # sentinel in keytar's bundled node-addon-api v3. keytar never
-            # touches typed-array code, so swap the sentinel for a valid
-            # (unused) enum value just to get the header through the compiler.
-            find node_modules -path '*node_modules/node-addon-api/napi.h' -print0 \
-              | xargs -0 sed -i.bak 's|static_cast<napi_typedarray_type>(-1)|napi_int8_array|g'
-
             # The build sandbox has no network. Point node-gyp at the Node
             # headers shipped with the nixpkgs Node so it never fetches them
-            # from nodejs.org, and force a from-source build so keytar's
-            # prebuild-install doesn't try to download a prebuilt binary from
-            # GitHub. keytar/bufferutil then compile fully offline.
+            # from nodejs.org, and force a from-source build so a prebuild
+            # fetcher never tries to download a binary from GitHub. bufferutil
+            # then compiles fully offline. The keychain binding needs none of
+            # this: @napi-rs/keyring ships its binary as a per-platform npm
+            # package, which is already in the fetched pnpm store.
             export npm_config_nodedir=${pkgs.nodejs_24}
             export npm_config_build_from_source=true
 
@@ -83,11 +77,11 @@
             # This stays on npm rather than `pnpm rebuild`: after the
             # --ignore-scripts install that pnpmConfigHook performs, pnpm 11
             # leaves nothing for rebuild to act on, and `pnpm rebuild [-r]
-            # keytar bufferutil` is a silent no-op here -- it exits 0, builds
-            # nothing, and the artifact then fails at runtime on
-            # "Cannot find module '../build/Release/keytar.node'". npm rebuild
-            # just walks node_modules and compiles what it is told to.
-            npm rebuild --no-save keytar bufferutil
+            # bufferutil` is a silent no-op here -- it exits 0, builds nothing,
+            # and the artifact then fails at runtime on a missing
+            # build/Release/*.node. npm rebuild just walks node_modules and
+            # compiles what it is told to.
+            npm rebuild --no-save bufferutil
 
             ( cd packages/lib && pnpm exec tsc --project tsconfig.build.json )
           '';
@@ -143,17 +137,21 @@
               esac
             done <<< "$allowlist"
 
-            # Run favacli with the Node it was built against (and, on Linux,
-            # with libsecret/glib/libuuid on the loader path). A bare `env
-            # node` shebang would instead use whatever Node is on the user's
-            # PATH, whose glibc may be older than the one keytar's native deps
-            # (libsecret -> libgpg-error) were linked against.
+            # Run favacli with the Node it was built against, and on Linux
+            # with the libraries its native dependencies load on the loader
+            # path. A bare `env node` shebang would instead use whatever Node
+            # is on the user's PATH, whose glibc may be older than the one
+            # these were linked against. @napi-rs/keyring's prebuilt binary is
+            # why libgcc_s (stdenv.cc.cc.lib) is here: nothing patchelfs it, a
+            # dlopened .node carries no rpath of its own, and NixOS has no
+            # /usr/lib to fall back on. It reaches the keychain over D-Bus, so
+            # no libsecret is needed.
             mkdir -p "$out/bin"
             makeWrapper ${pkgs.nodejs_24}/bin/node "$out/bin/favacli" \
               --add-flags "$root/build/main.mjs" ${
                 pkgs.lib.optionalString pkgs.stdenv.isLinux
                   "--prefix LD_LIBRARY_PATH : ${pkgs.lib.makeLibraryPath [
-                    pkgs.libsecret
+                    pkgs.stdenv.cc.cc.lib
                     pkgs.glib
                     pkgs.libuuid
                   ]}"
@@ -186,15 +184,15 @@
           ] ++ pkgs.lib.optionals pkgs.stdenv.isLinux [
             chromium
             libuuid
-            libsecret
             glib
           ];
           # On Darwin the default stdenv now bundles the Apple SDK (Foundation
           # et al.), so the old `darwin.apple_sdk.frameworks.*` inputs — removed
           # from nixpkgs as legacy stubs — are no longer needed here.
 
-          # canvas/keytar load these natively at runtime, so they must be on
-          # the loader path inside `nix develop` (e.g. for `make test`).
+          # canvas and the prebuilt keychain binding load these natively at
+          # runtime, so they must be on the loader path inside `nix develop`
+          # (e.g. for `make test`).
           env = pkgs.lib.optionalAttrs pkgs.stdenv.isLinux {
             # Use the Nix-built browser: Playwright's downloaded Linux binaries
             # expect a conventional distribution's loader and shared libraries.
@@ -202,9 +200,8 @@
             PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1";
             LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [
               pkgs.libuuid
-              pkgs.libsecret
               pkgs.glib
-              pkgs.stdenv.cc.cc.lib # keytar's prebuilt needs libstdc++.so.6
+              pkgs.stdenv.cc.cc.lib # prebuilt .node files need libstdc++/libgcc_s
             ];
           };
         };

@@ -1,5 +1,37 @@
 # favacli
 
+## Installing
+
+```sh
+npm install -g favacli     # or pnpm add -g favacli, or yarn global add favacli
+```
+
+No build step and no install script: favacli reaches the OS keychain through
+[@napi-rs/keyring](https://www.npmjs.com/package/@napi-rs/keyring), which ships
+a prebuilt binary for each platform as an optional dependency. Installing with
+optional dependencies omitted (`npm install --omit=optional` and its
+equivalents) leaves nothing to load, and every command that opens the keychain
+then says so.
+
+On Linux the keychain is a Secret Service over D-Bus: a desktop session usually
+provides one, and a headless machine needs gnome-keyring or KWallet running.
+favacli asks for that store by name rather than falling back to the kernel
+keyring, where a stored password would not survive a reboot.
+
+### Upgrading from 0.1.3 or earlier
+
+Those versions stored the vault password through `keytar`, which keys its Linux
+keychain entries differently. On Linux the password already on this device will
+not be found; store it again with:
+
+```sh
+favacli vault restore-password
+```
+
+Your vault file is untouched. On macOS both libraries key their entries by
+service and account, so the stored password should be found as it is; run the
+command above if a favacli command reports that it is not.
+
 ## Getting started
 
 ```sh

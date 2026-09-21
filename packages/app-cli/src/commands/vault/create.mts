@@ -1,7 +1,6 @@
-import keytar from 'keytar'
-
 import BaseCommand from '../../BaseCommand.mjs'
 import createVaultSaveFunction from '../../utils/vaultSaveFunction.mjs'
+import { setKeychainPassword } from '../../utils/keychain.mjs'
 
 import { DeviceType, getFavaLibVaultCreationUtils, Password } from 'favalib'
 import NodePlatformProvider from 'favalib/platformProviders/node'
@@ -51,7 +50,7 @@ class VaultCreateCommand extends BaseCommand {
 
     await Promise.all([
       favaLib.storage.forceSave(),
-      keytar.setPassword('favacli', 'vault-password', password),
+      setKeychainPassword('vault-password', password),
     ])
     return { success: true }
   }

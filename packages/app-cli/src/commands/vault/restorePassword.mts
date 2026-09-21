@@ -1,6 +1,5 @@
-import keytar from 'keytar'
-
 import BaseCommand from '../../BaseCommand.mjs'
+import { setKeychainPassword } from '../../utils/keychain.mjs'
 
 import {
   DeviceType,
@@ -86,7 +85,7 @@ class VaultRestorePasswordCommand extends BaseCommand {
       throw err
     }
 
-    await keytar.setPassword('favacli', 'vault-password', password)
+    await setKeychainPassword('vault-password', password)
 
     // Loading may have opened a sync connection; close it so the process exits.
     if (favaLib.sync) {

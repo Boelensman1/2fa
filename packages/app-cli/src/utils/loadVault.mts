@@ -1,5 +1,3 @@
-import keytar from 'keytar'
-
 import {
   DeviceType,
   getFavaLibVaultCreationUtils,
@@ -13,6 +11,8 @@ import {
 import NodePlatformProvider from 'favalib/platformProviders/node'
 import { Settings } from './init.mjs'
 import createVaultSaveFunction from './vaultSaveFunction.mjs'
+import { getKeychainPassword } from './keychain.mjs'
+import CliError from '../CliError.mjs'
 
 /**
  * How a command surfaces one favalib log event.
@@ -45,8 +45,14 @@ const loadVault = async (
 
   let storedPassword: string | null
   try {
-    storedPassword = await keytar.getPassword('favacli', 'vault-password')
+    storedPassword = await getKeychainPassword('vault-password')
   } catch (err) {
+    // A keychain that could not be loaded at all has already diagnosed itself,
+    // and it is not the diagnosis below: "make sure the keychain service is
+    // running" is no help when the module that would talk to it is missing.
+    if (err instanceof CliError) {
+      throw err
+    }
     throw new Error(
       `Failed to read the vault password from the system keychain: ${
         err instanceof Error ? err.message : String(err)

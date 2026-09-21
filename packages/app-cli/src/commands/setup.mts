@@ -1,4 +1,3 @@
-import keytar from 'keytar'
 import { Option } from 'clipanion'
 import { confirm, input, password as passwordInput } from '@inquirer/prompts'
 
@@ -19,6 +18,7 @@ import BaseCommand from '../BaseCommand.mjs'
 import CliError from '../CliError.mjs'
 import createVaultSaveFunction from '../utils/vaultSaveFunction.mjs'
 import { readServerSecret } from '../utils/syncConfig.mjs'
+import { setKeychainPassword } from '../utils/keychain.mjs'
 
 // A guided flow asks again rather than throwing, but not forever: a
 // non-interactive stdin would otherwise spin here instead of failing.
@@ -255,7 +255,7 @@ class SetupCommand extends BaseCommand {
       // pick up, not a process that exits having written nothing.
       await Promise.all([
         favaLib.storage.forceSave(),
-        keytar.setPassword('favacli', 'vault-password', password),
+        setKeychainPassword('vault-password', password),
       ])
 
       // From here on BaseCommand owns the teardown: flushing the send queue

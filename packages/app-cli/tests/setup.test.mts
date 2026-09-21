@@ -11,7 +11,7 @@ const mocks = vi.hoisted(() => ({
   password: vi.fn(),
   input: vi.fn(),
   confirm: vi.fn(),
-  setPassword: vi.fn(),
+  setKeychainPassword: vi.fn(),
   getPasswordStrength: vi.fn(),
   createNewFavaLibVault: vi.fn(),
   getFavaLibVaultCreationUtils: vi.fn(),
@@ -27,8 +27,9 @@ vi.mock('@inquirer/prompts', () => ({
   input: mocks.input,
   confirm: mocks.confirm,
 }))
-vi.mock('keytar', () => ({
-  default: { setPassword: mocks.setPassword, getPassword: vi.fn() },
+vi.mock('../src/utils/keychain.mjs', () => ({
+  setKeychainPassword: mocks.setKeychainPassword,
+  getKeychainPassword: vi.fn(),
 }))
 vi.mock('favalib', () => ({
   getFavaLibVaultCreationUtils: mocks.getFavaLibVaultCreationUtils,
@@ -133,7 +134,7 @@ describe('setup', () => {
     await expect(run()).rejects.toThrow('A vault already exists')
 
     expect(mocks.createNewFavaLibVault).not.toHaveBeenCalled()
-    expect(mocks.setPassword).not.toHaveBeenCalled()
+    expect(mocks.setKeychainPassword).not.toHaveBeenCalled()
     expect(mocks.password).not.toHaveBeenCalled()
   })
 
@@ -145,8 +146,7 @@ describe('setup', () => {
 
     expect(mocks.createNewFavaLibVault).toHaveBeenCalledWith(STRONG)
     expect(favaLib.storage.forceSave).toHaveBeenCalled()
-    expect(mocks.setPassword).toHaveBeenCalledWith(
-      'favacli',
+    expect(mocks.setKeychainPassword).toHaveBeenCalledWith(
       'vault-password',
       STRONG,
     )

@@ -42,12 +42,14 @@ let
         database: "fava_test"
   '';
 
-  # favacli stores the vault password in the OS keychain through keytar, which
-  # on Linux is a Secret Service over D-Bus. The base image has no desktop
-  # session, so there is neither a session bus nor a keyring daemon, and every
-  # favacli command that touches a vault -- `setup`, `vault create`, and
-  # anything that loads one -- dies with "Cannot autolaunch D-Bus without X11
-  # $DISPLAY". The `keyring` dev service below supplies both.
+  # favacli stores the vault password in the OS keychain through
+  # @napi-rs/keyring, which on Linux is a Secret Service over D-Bus -- and
+  # app-cli pins it to that store rather than let it fall back to the kernel
+  # keyring, whose entries do not survive a reboot. The base image has no
+  # desktop session, so there is neither a session bus nor a keyring daemon,
+  # and every favacli command that touches a vault -- `setup`, `vault create`,
+  # and anything that loads one -- dies with "Cannot autolaunch D-Bus without
+  # X11 $DISPLAY". The `keyring` dev service below supplies both.
   #
   # The password must not be empty. `gnome-keyring-daemon --unlock` with an
   # empty one starts perfectly happily and then creates no login collection at
@@ -99,9 +101,9 @@ let
         --unlock --components=secrets --foreground
   '';
 
-  # pnpm blocks dependency lifecycle scripts by default, and canvas and keytar
-  # are listed in pnpm-workspace.yaml's allowBuilds, which is what lets theirs
-  # run. Neither .npmrc has a say: pnpm 11 takes ignore-scripts and node-linker
+  # pnpm blocks dependency lifecycle scripts by default, and canvas is listed in
+  # pnpm-workspace.yaml's allowBuilds, which is what lets its script run. Neither
+  # .npmrc has a say: pnpm 11 takes ignore-scripts and node-linker
   # only from pnpm-workspace.yaml (and ~/.config/pnpm/rc), reading .npmrc for
   # registry and auth alone, so the repo's ignore-scripts=false and the base
   # image's ~/.npmrc ignore-scripts=true are both inert here. The scripts either
@@ -118,25 +120,22 @@ let
     giflib
     librsvg
     pixman
-    # keytar
     libuuid
-    libsecret
     glib
   ];
 
   # What the addons have to find at *load* time, which is deliberately far less
-  # than buildLibs. Both currently install as prebuilt binaries, and canvas's
-  # prebuilt ships its own cairo/pango/freetype/fontconfig/librsvg/... beside
-  # canvas.node with an $ORIGIN rpath. LD_LIBRARY_PATH outranks that rpath, so
-  # putting nixpkgs' cairo here makes it shadow the bundled one and canvas then
-  # dies on `undefined symbol: FT_Get_Transform` against the bundled freetype.
-  # Only what the prebuilts do not bundle belongs here:
+  # than buildLibs. Both arrive as prebuilt binaries, and canvas's prebuilt
+  # ships its own cairo/pango/freetype/fontconfig/librsvg/... beside canvas.node
+  # with an $ORIGIN rpath. LD_LIBRARY_PATH outranks that rpath, so putting
+  # nixpkgs' cairo here makes it shadow the bundled one and canvas then dies on
+  # `undefined symbol: FT_Get_Transform` against the bundled freetype. Only what
+  # the prebuilts do not bundle belongs here:
   #   canvas -> libuuid.so.1, needed by its bundled fontconfig and librsvg
-  #   keytar -> libsecret, glib/gio/gobject, libstdc++
+  #   @napi-rs/keyring -> libgcc_s.so.1; it reaches the Secret Service over
+  #   D-Bus, so it needs no libsecret and no glib
   runtimeLibs = with pkgs; [
     libuuid
-    libsecret
-    glib
     stdenv.cc.cc.lib
   ];
 
@@ -169,7 +168,7 @@ in
       postgresql_17 # psql/createdb for setup.command
       zip # packages/app-extension: the firefox source-upload zip target
       chromium # browser E2E tests use this instead of Playwright's download
-      gnome-keyring # keytar's Secret Service; see the keyring dev service
+      gnome-keyring # the Secret Service favacli uses; see the keyring service
     ];
 
     node.enable = true;
@@ -278,8 +277,8 @@ in
       `$HOME/.cache/milly/2fa/dev-services/browser.log`
     - `keyring` — a session D-Bus plus gnome-keyring, no port
 
-    favacli keeps the vault password in the OS keychain via keytar, which on
-    Linux needs a Secret Service. The `keyring` service provides one and
+    favacli keeps the vault password in the OS keychain via @napi-rs/keyring,
+    which on Linux needs a Secret Service. The `keyring` service provides one and
     `DBUS_SESSION_BUS_ADDRESS` already points at it, so `favacli setup`,
     `vault create` and every command that opens a vault work as they are. If one
     reports "Cannot autolaunch D-Bus without X11 $DISPLAY", that service is

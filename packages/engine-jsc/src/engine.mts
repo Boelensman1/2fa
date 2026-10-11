@@ -217,14 +217,17 @@ export class FavaEngine {
       browserProviders,
       this.#config.deviceType as DeviceType,
       extra.length ? (extra as [string, ...string[]]) : ['phone'],
-      (locked) => {
-        getHost().save(locked)
-      },
     )
   }
 
   #adopt(favaLib: FavaLib) {
     this.#drop()
+    favaLib.storage.setSaveFunction((locked) => {
+      if (this.#favaLib !== favaLib) {
+        throw new EngineUsageError('The vault is no longer unlocked')
+      }
+      getHost().save(locked)
+    })
     for (const type of Object.values(FavaLibEvent)) {
       favaLib.addEventListener(type, (event) => {
         // Only forward events from the vault the engine currently holds; a
@@ -246,7 +249,7 @@ export class FavaEngine {
     const generation = ++this.#generation
     const favaLib = await load()
     if (generation !== this.#generation) {
-      favaLib.sync?.closeServerConnection()
+      favaLib.closeServerConnection()
       throw new EngineUsageError('A later lock or unlock superseded this one')
     }
     this.#adopt(favaLib)
@@ -256,7 +259,7 @@ export class FavaEngine {
   #drop() {
     const favaLib = this.#favaLib
     this.#favaLib = null
-    favaLib?.sync?.closeServerConnection()
+    favaLib?.closeServerConnection()
   }
 
   /**
@@ -470,8 +473,17 @@ export class FavaEngine {
      * @param secret - The server's shared secret.
      * @returns Resolves when done.
      */
-    setSyncServer: (url: string, secret: string) =>
-      this.#lib().setSyncServerUrl(url, secret as ServerSecret),
+    setSyncServer: async (url: string, secret: string) => {
+      const favaLib = this.#lib()
+      try {
+        await favaLib.setSyncServerUrl(url, secret as ServerSecret)
+      } catch (error) {
+        if (this.#favaLib !== favaLib) {
+          throw new EngineUsageError('The vault is no longer unlocked')
+        }
+        throw error
+      }
+    },
 
     /**
      * Starts pairing as the device that already has the vault.

@@ -23,7 +23,7 @@ clean:
 	rm -rf build $(SWIFT_RESOURCE)
 
 lint: $(INSTALL_DEPS)
-	pnpm exec prettier --check --ignore-path=../../.gitignore .
+	pnpm exec prettier --check --ignore-path=../../.gitignore --ignore-path=.gitignore .
 	pnpm exec tsc --noEmit
 	pnpm exec eslint
 

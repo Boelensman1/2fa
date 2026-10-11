@@ -28,7 +28,7 @@ let vaultURL = FileManager.default
 
 let engine = try await FavaEngine.start(
     configuration: .init(deviceType: "favaios"),
-    onSave: { locked in try? Data(locked.utf8).write(to: vaultURL, options: .atomic) }
+    onSave: { locked in try Data(locked.utf8).write(to: vaultURL, options: .atomic) }
 )
 let sessions = UnlockedSessionStore(accessGroup: "TEAMID.example.fava.shared")
 
@@ -69,8 +69,9 @@ the chosen entry's `token?.otp`. No password, no argon2, no network.
 
 - Every engine call runs on the engine's own thread, in order. Keep one engine
   per process.
-- `onSave` is called on that thread. Write the file there; don't block on the
-  main thread from it.
+- `onSave` is called on that thread. Finish the atomic write before returning
+  and throw if it fails, so the operation rejects and a password change rolls
+  back. Don't block on the main thread from it.
 - Errors are `FavaEngineError`. Branch on `kind` (`authentication`, `usage`, ...),
   not on `message`.
 - `CArgon2` is the Argon2 reference implementation, vendored unmodified (see its

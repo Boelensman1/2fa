@@ -10,9 +10,20 @@ final class FavaEngineTests: XCTestCase {
     private let saves = Saves()
 
     private final class Saves: @unchecked Sendable {
+        enum Failure: Error { case diskFull }
         private let lock = NSLock()
         private var all: [String] = []
-        func append(_ save: String) { lock.withLock { all.append(save) } }
+        private var failNext = false
+        func failNextSave() { lock.withLock { failNext = true } }
+        func append(_ save: String) throws {
+            try lock.withLock {
+                if failNext {
+                    failNext = false
+                    throw Failure.diskFull
+                }
+                all.append(save)
+            }
+        }
         var last: String? { lock.withLock { all.last } }
         var count: Int { lock.withLock { all.count } }
     }
@@ -20,7 +31,7 @@ final class FavaEngineTests: XCTestCase {
     private func startEngine() async throws -> FavaEngine {
         try await FavaEngine.start(
             configuration: .init(deviceType: "favaenginejsc-tests"),
-            onSave: { [saves] in saves.append($0) }
+            onSave: { [saves] in try saves.append($0) }
         )
     }
 
@@ -57,6 +68,47 @@ final class FavaEngineTests: XCTestCase {
         } catch let error as FavaEngineError {
             XCTAssertNotEqual(error.kind, "internal")
         }
+    }
+
+    func testRejectsCreationWhenTheNativeSaveFails() async throws {
+        let engine = try await startEngine()
+        defer { engine.shutdown() }
+        saves.failNextSave()
+        do {
+            try await engine.createVault(password: password)
+            XCTFail("creation succeeded without persisting the vault")
+        } catch let error as FavaEngineError {
+            XCTAssertTrue(error.message.contains("diskFull"))
+        }
+        XCTAssertEqual(saves.count, 0)
+    }
+
+    func testRollsBackAPasswordChangeWhenTheNativeSaveFails() async throws {
+        let engine = try await startEngine()
+        defer { engine.shutdown() }
+        try await engine.createVault(password: password)
+        let session = try await engine.exportUnlockedSession()
+        let saved = try XCTUnwrap(saves.last)
+        saves.failNextSave()
+        do {
+            try await engine.changePassword(from: password, to: password + "-new")
+            XCTFail("password change succeeded without persisting the vault")
+        } catch let error as FavaEngineError {
+            XCTAssertTrue(error.message.contains("diskFull"))
+        }
+        let sessionAfterFailure = try await engine.exportUnlockedSession()
+        XCTAssertEqual(sessionAfterFailure, session)
+        XCTAssertEqual(saves.last, saved)
+
+        // A later successful save must still use the original password.
+        _ = try await engine.addEntry(rfcEntry)
+        try await engine.lock()
+        try await engine.unlock(
+            lockedRepresentation: XCTUnwrap(saves.last), password: password,
+            connectToSyncServer: false
+        )
+        let entries = try await engine.entries()
+        XCTAssertEqual(entries.map(\.name), ["RFC 6238"])
     }
 
     func testUnlocksWithThePasswordAndRefusesAWrongOne() async throws {

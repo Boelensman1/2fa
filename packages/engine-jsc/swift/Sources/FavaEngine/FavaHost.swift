@@ -11,7 +11,7 @@ import Security
 /// timer and socket events are delivered back to it before touching JS.
 final class FavaHost {
     private let thread: JSThread
-    private let onSave: (String) -> Void
+    private let onSave: (String) throws -> Void
     private let onEvent: (String, String) -> Void
     private let logger = Logger(subsystem: "favaenginejsc", category: "engine")
 
@@ -22,7 +22,7 @@ final class FavaHost {
 
     init(
         thread: JSThread,
-        onSave: @escaping (String) -> Void,
+        onSave: @escaping (String) throws -> Void,
         onEvent: @escaping (String, String) -> Void
     ) {
         self.thread = thread
@@ -119,7 +119,11 @@ final class FavaHost {
         }
 
         let save: @convention(block) (String) -> Void = { [weak self] locked in
-            self?.onSave(locked)
+            do {
+                try self?.onSave(locked)
+            } catch {
+                FavaHost.throwInJS("save: \(error)")
+            }
         }
 
         let emit: @convention(block) (String, String) -> Void = { [weak self] type, detail in

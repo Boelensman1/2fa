@@ -91,9 +91,16 @@ lifecycle is ordered instead -- `createVault`, the unlocks and `lock` bump a
 generation counter, and an unlock that finishes after a later one started is
 discarded (kind `usage`). That is deliberate: a FIFO queue would let a
 `setSyncServer` waiting on the network hold up `lock`, and a lock must take
-effect at once. Pairing codes come back in both forms:
+effect at once. Dropping a vault calls `FavaLib.closeServerConnection`, which
+also cancels a pending server change (including its failure probe) so rollback
+cannot reopen the previous connection. Saves from a dropped vault are rejected.
+Pairing codes come back in both forms:
 `text` and `qrPayload` (the raw JSON other fava clients put in their QR codes),
 and `respondToPairing` accepts either, so QR codes are drawn and scanned natively.
+
+The host's `save` must finish its atomic write before returning and throw on
+failure. Swift's `onSave` is throwing, and the host translates its errors to JS
+exceptions so favalib can reject the operation and roll back a password change.
 
 ## The unlocked session
 

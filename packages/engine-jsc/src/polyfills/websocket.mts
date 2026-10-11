@@ -68,8 +68,8 @@ export const createWebSocketClass = () => {
       if (!/^wss?:\/\//i.test(this.url)) {
         throw namedError('SyntaxError', `Invalid WebSocket url: ${this.url}`)
       }
-      this.#id = getHost().wsConnect(this.url, (type, a, b) => {
-        this.#onHostEvent(type, a, b)
+      this.#id = getHost().wsConnect(this.url, (type, a, b, c) => {
+        this.#onHostEvent(type, a, b, c)
       })
     }
 

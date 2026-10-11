@@ -594,15 +594,20 @@ describe('WebSocket', () => {
     expect(host.closes).toEqual([[4001, 'bye']])
   })
 
-  it('reports wasClean as the host says, and binary frames as ArrayBuffers', () => {
-    const { host, seen } = setUp()
-    host.onEvent?.('open')
-    host.onEvent?.('message', 'text')
-    host.onEvent?.('message', Buffer.from([1, 2, 3]).toString('base64'), true)
-    host.onEvent?.('close', 1000, '', false)
-    expect(seen[1].data).toBe('text')
-    expect(seen[2].data).toBeInstanceOf(ArrayBuffer)
-    expect([...new Uint8Array(seen[2].data as ArrayBuffer)]).toEqual([1, 2, 3])
-    expect(seen[3]).toMatchObject({ type: 'close', wasClean: false })
-  })
+  it.each([true, false])(
+    'reports wasClean=%s as the host says, and binary frames as ArrayBuffers',
+    (wasClean) => {
+      const { host, seen } = setUp()
+      host.onEvent?.('open')
+      host.onEvent?.('message', 'text')
+      host.onEvent?.('message', Buffer.from([1, 2, 3]).toString('base64'), true)
+      host.onEvent?.('close', 1000, '', wasClean)
+      expect(seen[1].data).toBe('text')
+      expect(seen[2].data).toBeInstanceOf(ArrayBuffer)
+      expect([...new Uint8Array(seen[2].data as ArrayBuffer)]).toEqual([
+        1, 2, 3,
+      ])
+      expect(seen[3]).toMatchObject({ type: 'close', wasClean })
+    },
+  )
 })

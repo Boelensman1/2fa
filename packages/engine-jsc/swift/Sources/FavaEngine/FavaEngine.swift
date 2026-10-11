@@ -60,7 +60,7 @@ public final class FavaEngine: @unchecked Sendable {
     private let shutDownLock = NSLock()
     private var isShutDown = false
 
-    private init(onSave: @escaping @Sendable (String) -> Void) {
+    private init(onSave: @escaping @Sendable (String) throws -> Void) {
         let (events, continuation) = AsyncStream<EngineEvent>.makeStream()
         let thread = JSThread()
         self.events = events
@@ -76,10 +76,12 @@ public final class FavaEngine: @unchecked Sendable {
     /// Starts an engine: a thread, a context, the bundle evaluated in it.
     /// - Parameters:
     ///   - configuration: Device type and bundle location.
-    ///   - onSave: Receives every vault favalib saves, on the engine thread.
+    ///   - onSave: Persists every vault on the engine thread. Return only
+    ///     after the atomic write succeeds; throw on failure so the engine
+    ///     rejects the operation and can roll back a password change.
     public static func start(
         configuration: Configuration,
-        onSave: @escaping @Sendable (String) -> Void
+        onSave: @escaping @Sendable (String) throws -> Void
     ) async throws -> FavaEngine {
         guard let url = configuration.bundleURL ?? Bundle.module.url(forResource: "fava-engine", withExtension: "js") else {
             throw FavaEngineError(kind: "usage", message: "fava-engine.js is missing; run `make -C packages/engine-jsc build`")

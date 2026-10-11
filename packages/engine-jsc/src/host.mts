@@ -114,6 +114,8 @@ export interface FavaHost {
   /**
    * Persists the vault. The string is favalib's LockedRepresentation:
    * encrypted, MAC'd, safe to write to a file. Write it atomically.
+   * Return only after the write succeeds; throw on failure so the operation
+   * rejects and a password change can roll back its key material.
    * @param lockedRepresentation - The vault to store.
    */
   save(lockedRepresentation: string): void

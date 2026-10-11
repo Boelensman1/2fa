@@ -222,6 +222,77 @@ describe('a vault', () => {
     expect(await engine.call('status')).toMatchObject({ unlocked: true })
   })
 
+  it.each(['lock', 'createVault', 'unlockWithSession'])(
+    '%s cancels a server change without reconnecting the discarded vault',
+    async (method) => {
+      // A controllable host connection: the first server accepts us, the
+      // second stays pending until the vault is dropped.
+      engine.evaluate(`
+        globalThis.__sockets = []
+        __favaHost.wsConnect = (url, onEvent) => {
+          __sockets.push({ url, onEvent, closed: false })
+          return __sockets.length
+        }
+        __favaHost.wsSend = () => {}
+        __favaHost.wsClose = (id) => {
+          const socket = __sockets[id - 1]
+          socket.closed = true
+          socket.onEvent('close', 1000, '', true)
+        }
+      `)
+      const connected = engine.call(
+        'setSyncServer',
+        'wss://first.test',
+        'secret',
+      )
+      engine.evaluate(`
+        __sockets[0].onEvent('open')
+        __sockets[0].onEvent('message', JSON.stringify({
+          type: 'authChallenge', data: { nonce: 'test-nonce' }
+        }))
+        __sockets[0].onEvent('message', JSON.stringify({ type: 'authAccepted' }))
+      `)
+      await connected
+      const saved = engine.saves.at(-1)
+      const session = await engine.call<string>('exportUnlockedSession')
+      const changing = engine.call(
+        'setSyncServer',
+        'wss://pending.test',
+        'secret',
+      )
+      const cancelled = expect(changing).rejects.toMatchObject({
+        kind: 'usage',
+      })
+
+      if (method === 'unlockWithSession') {
+        await engine.call(method, saved, session, false)
+      } else if (method === 'createVault') {
+        await engine.call(method, PASSWORD)
+      } else {
+        await engine.call(method)
+      }
+      await cancelled
+      expect(engine.evaluate('__sockets.map(s => [s.url, s.closed])')).toEqual([
+        ['wss://first.test', true],
+        ['wss://pending.test', true],
+      ])
+      expect(await engine.call('status')).toMatchObject({
+        unlocked: method !== 'lock',
+        syncConnected: false,
+      })
+    },
+  )
+
+  it('does not save a password change after its vault was locked', async () => {
+    const savesBefore = engine.saves.length
+    const changing = engine.call('changePassword', PASSWORD, `${PASSWORD}-new`)
+    const cancelled = expect(changing).rejects.toMatchObject({ kind: 'usage' })
+    await engine.call('lock')
+    await cancelled
+    expect(engine.saves).toHaveLength(savesBefore)
+    expect(engine.events.map((e) => e.type)).not.toContain('passwordChanged')
+  })
+
   it('refuses a wrong password', async () => {
     const saved = engine.saves.at(-1)
     await engine.call('lock')
@@ -259,6 +330,37 @@ describe('a vault', () => {
       engine.call('unlockWithSession', saved, oldSession, false),
     ).rejects.toBeInstanceOf(EngineCallError)
     await engine.call('unlockWithPassword', saved, `${PASSWORD}-new`, false)
+  })
+
+  it('rolls back a password change when the host cannot save', async () => {
+    const session = await engine.call<string>('exportUnlockedSession')
+    const saved = engine.saves.at(-1)
+    engine.evaluate(`
+      const save = __favaHost.save
+      __favaHost.save = () => {
+        __favaHost.save = save
+        throw new Error('disk full')
+      }
+    `)
+    await expect(
+      engine.call('changePassword', PASSWORD, `${PASSWORD}-new`),
+    ).rejects.toMatchObject({
+      message: expect.stringContaining('disk full') as string,
+    })
+    expect(engine.saves.at(-1)).toBe(saved)
+    expect(await engine.call('exportUnlockedSession')).toBe(session)
+    expect(engine.events.map((e) => e.type)).not.toContain('passwordChanged')
+    await engine.call('addEntry', newEntry('Saved after rollback'))
+    await engine.call('lock')
+    await engine.call(
+      'unlockWithPassword',
+      engine.saves.at(-1),
+      PASSWORD,
+      false,
+    )
+    expect(await engine.call<{ name: string }[]>('listEntries')).toMatchObject([
+      { name: 'Saved after rollback' },
+    ])
   })
 
   it('refuses a sync server url that is not ws:// or wss://', async () => {

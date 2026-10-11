@@ -56,6 +56,24 @@ describe('the context', () => {
   })
 })
 
+describe('the host timers', () => {
+  it('treat clearTimeout and clearInterval as interchangeable', async () => {
+    engine.evaluate(`
+      globalThis.__fired = []
+      const interval = setInterval(() => __fired.push('interval'), 5)
+      clearTimeout(interval)
+      const timeout = setTimeout(() => __fired.push('timeout'), 5)
+      clearInterval(timeout)
+      const kept = setInterval(() => {
+        __fired.push('kept')
+        clearInterval(kept)
+      }, 5)
+    `)
+    await new Promise((resolve) => setTimeout(resolve, 60))
+    expect(engine.evaluate('__fired')).toEqual(['kept'])
+  })
+})
+
 describe('without a vault', () => {
   it('reports usage errors with a stable kind', async () => {
     await expect(engine.call('listEntries')).rejects.toMatchObject({
@@ -181,6 +199,27 @@ describe('a vault', () => {
     await engine.call('unlockWithPassword', saved, PASSWORD, false)
     const entries = await engine.call<EntryMetaWithToken[]>('listEntries')
     expect(entries.map((e) => e.name)).toEqual(['Kept'])
+  })
+
+  it('discards an unlock that a lock overtook', async () => {
+    const saved = engine.saves.at(-1)
+    await engine.call('lock')
+    // Not awaited: the lock is called while the unlock is still in flight.
+    const unlocking = engine.call('unlockWithPassword', saved, PASSWORD, false)
+    await engine.call('lock')
+    await expect(unlocking).rejects.toMatchObject({ kind: 'usage' })
+    expect(await engine.call('status')).toMatchObject({ unlocked: false })
+  })
+
+  it('keeps the later of two overlapping unlocks', async () => {
+    const saved = engine.saves.at(-1)
+    const session = await engine.call<string>('exportUnlockedSession')
+    await engine.call('lock')
+    const first = engine.call('unlockWithPassword', saved, PASSWORD, false)
+    const second = engine.call('unlockWithSession', saved, session, false)
+    await expect(first).rejects.toMatchObject({ kind: 'usage' })
+    await second
+    expect(await engine.call('status')).toMatchObject({ unlocked: true })
   })
 
   it('refuses a wrong password', async () => {

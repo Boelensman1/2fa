@@ -175,6 +175,25 @@ const IMPORTABLE: Record<string, string[] | undefined> = {
   HKDF: ['deriveBits', 'deriveKey'],
 }
 
+/**
+ * WebCrypto's usage checks for a new secret key: every usage must be one the
+ * algorithm allows, and there must be at least one.
+ * @param name - The algorithm.
+ * @param allowed - The usages it allows.
+ * @param usages - The usages asked for.
+ */
+const checkUsages = (name: string, allowed: string[], usages: unknown) => {
+  if (!Array.isArray(usages)) {
+    throw domError('TypeError', 'Key usages must be an array')
+  }
+  if (usages.some((u) => !allowed.includes(u as string))) {
+    throw domError('SyntaxError', `Invalid key usage for ${name}`)
+  }
+  if (usages.length === 0) {
+    throw domError('SyntaxError', 'A secret key needs at least one usage')
+  }
+}
+
 const gcmParams = (algorithm: AlgorithmInput) => {
   const params = algorithm as {
     iv?: unknown
@@ -238,8 +257,9 @@ export const subtle = {
           `importKey(${format}, ${name}) is not supported in this engine`,
         )
       }
-      if (usages.some((u) => !allowed.includes(u))) {
-        throw domError('SyntaxError', `Invalid key usage for ${name}`)
+      checkUsages(name, allowed, usages)
+      if (name === 'HKDF' && extractable) {
+        throw domError('SyntaxError', 'HKDF keys cannot be extractable')
       }
       const raw = copyBytes(keyData)
       const keyAlgorithm: KeyAlgorithm = { name }
@@ -252,6 +272,9 @@ export const subtle = {
       if (name === 'HMAC') {
         const hash = (algorithm as { hash?: AlgorithmInput }).hash
         hashFunction(hash)
+        if (raw.length === 0) {
+          throw domError('DataError', 'HMAC key must not be empty')
+        }
         keyAlgorithm.hash = { name: algorithmName(hash) }
         keyAlgorithm.length = raw.length * 8
       }
@@ -298,6 +321,7 @@ export const subtle = {
       if (algorithmName(algorithm) !== 'AES-GCM') {
         throw unsupported('generateKey', algorithm)
       }
+      checkUsages('AES-GCM', IMPORTABLE['AES-GCM'] ?? [], usages)
       const length = (algorithm as { length?: number }).length
       if (length !== 128 && length !== 192 && length !== 256) {
         throw domError(

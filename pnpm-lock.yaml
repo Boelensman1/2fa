@@ -110,6 +110,9 @@ catalogs:
     '@eslint/js':
       specifier: ^9.10.0
       version: 9.39.4
+    '@noble/hashes':
+      specifier: ^2.4.0
+      version: 2.4.0
     '@types/node':
       specifier: ^22.15.21
       version: 22.19.19
@@ -122,6 +125,9 @@ catalogs:
     '@zxcvbn-ts/core':
       specifier: ^3.0.4
       version: 3.0.4
+    esbuild:
+      specifier: ^0.28.2
+      version: 0.28.2
     eslint:
       specifier: ^9.10.0
       version: 9.39.4
@@ -348,7 +354,7 @@ importers:
         specifier: ^2.4.0
         version: 2.4.0
       '@noble/hashes':
-        specifier: ^2.4.0
+        specifier: 'catalog:'
         version: 2.4.0
       core-js:
         specifier: ^3.50.0
@@ -361,7 +367,7 @@ importers:
         specifier: ^8.18.1
         version: 8.18.1
       esbuild:
-        specifier: ^0.28.2
+        specifier: 'catalog:'
         version: 0.28.2
       vitest:
         specifier: 'catalog:'
@@ -376,7 +382,7 @@ importers:
         specifier: ^2.4.0
         version: 2.4.0
       '@noble/hashes':
-        specifier: ^2.4.0
+        specifier: 'catalog:'
         version: 2.4.0
       '@types/node':
         specifier: 'catalog:'
@@ -394,7 +400,7 @@ importers:
         specifier: ^3.2.3
         version: 3.2.3
       esbuild:
-        specifier: ^0.28.2
+        specifier: 'catalog:'
         version: 0.28.2
       hash-wasm:
         specifier: ^4.12.0

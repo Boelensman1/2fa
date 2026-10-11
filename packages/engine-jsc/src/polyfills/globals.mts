@@ -44,33 +44,33 @@ export const installGlobals = () => {
         getHost().log('error', `Uncaught exception in timer: ${message}`)
       }
     }
+    // Intervals are chained timeouts. Each interval keeps one stable id -- the
+    // host id of its first timer, so it shares the host's id space with plain
+    // timeouts -- and maps it to whichever host timer is currently pending.
+    // As in a browser, clearTimeout and clearInterval are interchangeable.
+    const intervals = new Map<number, number>()
     g.setTimeout = (callback: unknown, ms = 0, ...args: unknown[]) =>
       getHost().setTimeout(call(callback, args), Math.max(0, Number(ms) || 0))
-    g.clearTimeout = (id?: number) => {
-      if (id !== undefined) getHost().clearTimeout(id)
-    }
-
-    // Intervals are chained timeouts. Each interval keeps one stable id and
-    // maps it to whichever host timer is currently pending.
-    const intervals = new Map<number, number>()
-    let nextIntervalId = 1
     g.setInterval = (callback: unknown, ms = 0, ...args: unknown[]) => {
-      const id = -nextIntervalId++
       const delay = Math.max(0, Number(ms) || 0)
+      let id = 0
       const tick = () => {
         if (!intervals.has(id)) return
         intervals.set(id, getHost().setTimeout(tick, delay))
         call(callback, args)()
       }
-      intervals.set(id, getHost().setTimeout(tick, delay))
+      id = getHost().setTimeout(tick, delay)
+      intervals.set(id, id)
       return id
     }
-    g.clearInterval = (id?: number) => {
+    const clear = (id?: number) => {
       if (id === undefined) return
       const pending = intervals.get(id)
       intervals.delete(id)
-      if (pending !== undefined) getHost().clearTimeout(pending)
+      getHost().clearTimeout(pending ?? id)
     }
+    g.clearTimeout = clear
+    g.clearInterval = clear
   }
 
   if (typeof g.console !== 'object' || g.console === null) {

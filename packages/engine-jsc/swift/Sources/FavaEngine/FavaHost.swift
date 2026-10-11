@@ -102,8 +102,8 @@ final class FavaHost {
                 return 0
             }
             let id = self.takeId()
-            let bridge = WebSocketBridge(url: parsed) { [weak self] type, a, b in
-                self?.thread.perform { self?.deliverSocketEvent(id: id, type: type, a: a, b: b) }
+            let bridge = WebSocketBridge(url: parsed) { [weak self] type, args in
+                self?.thread.perform { self?.deliverSocketEvent(id: id, type: type, args: args) }
             }
             self.sockets[id] = (bridge, onEvent)
             bridge.start()
@@ -159,12 +159,12 @@ final class FavaHost {
         return nextId
     }
 
-    private func deliverSocketEvent(id: Int, type: String, a: Any?, b: Any?) {
+    private func deliverSocketEvent(id: Int, type: String, args: [Any]) {
         guard let socket = sockets[id] else { return }
         if type == "close" {
             sockets.removeValue(forKey: id)
         }
-        socket.onEvent.call(withArguments: [type, a ?? NSNull(), b ?? NSNull()])
+        socket.onEvent.call(withArguments: [type] + args)
     }
 
     private static func throwInJS(_ message: String) {
@@ -174,11 +174,12 @@ final class FavaHost {
 }
 
 /// One WebSocket over URLSessionWebSocketTask, reporting through `deliver`
-/// with the host contract's event shapes. `deliver` is called on the
-/// session's delegate queue; FavaHost hops to the JS thread.
+/// with the host contract's event shapes (`type` plus the arguments after it).
+/// `deliver` is called on the session's delegate queue; FavaHost hops to the
+/// JS thread.
 final class WebSocketBridge: NSObject, URLSessionWebSocketDelegate {
     private let url: URL
-    private let deliver: (_ type: String, _ a: Any?, _ b: Any?) -> Void
+    private let deliver: (_ type: String, _ args: [Any]) -> Void
     private let queue: OperationQueue = {
         let queue = OperationQueue()
         queue.maxConcurrentOperationCount = 1
@@ -191,7 +192,7 @@ final class WebSocketBridge: NSObject, URLSessionWebSocketDelegate {
     private var finished = false
     private var requestedClose: (code: Int, reason: String)?
 
-    init(url: URL, deliver: @escaping (_ type: String, _ a: Any?, _ b: Any?) -> Void) {
+    init(url: URL, deliver: @escaping (_ type: String, _ args: [Any]) -> Void) {
         self.url = url
         self.deliver = deliver
         super.init()
@@ -207,7 +208,7 @@ final class WebSocketBridge: NSObject, URLSessionWebSocketDelegate {
 
     func send(_ text: String) {
         task?.send(.string(text)) { [weak self] error in
-            if let error { self?.deliver("error", error.localizedDescription, nil) }
+            if let error { self?.deliver("error", [error.localizedDescription]) }
         }
     }
 
@@ -236,10 +237,10 @@ final class WebSocketBridge: NSObject, URLSessionWebSocketDelegate {
             guard let self else { return }
             switch result {
             case let .success(.string(text)):
-                self.deliver("message", text, nil)
+                self.deliver("message", [text])
                 self.receive()
             case let .success(.data(data)):
-                self.deliver("message", String(decoding: data, as: UTF8.self), nil)
+                self.deliver("message", [data.base64EncodedString(), true])
                 self.receive()
             case .success:
                 self.receive()
@@ -249,34 +250,44 @@ final class WebSocketBridge: NSObject, URLSessionWebSocketDelegate {
         }
     }
 
-    private func finish(code: Int, reason: String) {
+    /// `wasClean` is the contract's: the server's close frame arrived. Only
+    /// `didCloseWith` knows that.
+    private func finish(code: Int, reason: String, wasClean: Bool) {
         guard !finished else { return }
         finished = true
-        deliver("close", code, reason)
+        deliver("close", [code, reason, wasClean])
         session?.finishTasksAndInvalidate()
     }
 
     func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask,
                     didOpenWithProtocol protocol: String?) {
         guard !finished else { return }
-        deliver("open", nil, nil)
+        deliver("open", [])
         receive()
     }
 
     func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask,
                     didCloseWith closeCode: URLSessionWebSocketTask.CloseCode, reason: Data?) {
-        finish(code: closeCode.rawValue, reason: reason.map { String(decoding: $0, as: UTF8.self) } ?? "")
+        finish(
+            code: closeCode.rawValue,
+            reason: reason.map { String(decoding: $0, as: UTF8.self) } ?? "",
+            wasClean: true
+        )
     }
 
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
-        if let requestedClose {
-            finish(code: requestedClose.code, reason: requestedClose.reason)
+        // After didCloseWith, finish is a no-op. Otherwise no close frame came
+        // back: a close we asked for that completed without an error keeps
+        // its own code, but is not reported clean -- the server never
+        // confirmed it.
+        if let requestedClose, error == nil {
+            finish(code: requestedClose.code, reason: requestedClose.reason, wasClean: false)
             return
         }
         if let error, !finished {
-            deliver("error", error.localizedDescription, nil)
+            deliver("error", [error.localizedDescription])
         }
-        finish(code: 1006, reason: "")
+        finish(code: 1006, reason: "", wasClean: false)
     }
 }
 #endif

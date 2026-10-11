@@ -129,13 +129,18 @@ export const loadEngine = async (
       const ws = new NodeWebSocket(url)
       sockets.set(id, ws)
       ws.on('open', () => onEvent('open'))
-      ws.on('message', (data: Buffer) =>
-        onEvent('message', data.toString('utf8')),
-      )
+      ws.on('message', (data: Buffer, isBinary: boolean) => {
+        if (isBinary) {
+          onEvent('message', data.toString('base64'), true)
+        } else {
+          onEvent('message', data.toString('utf8'))
+        }
+      })
       ws.on('error', (error) => onEvent('error', error.message))
       ws.on('close', (code, reason) => {
         sockets.delete(id)
-        onEvent('close', code, reason.toString('utf8'))
+        // ws reports 1006 exactly when no close frame arrived.
+        onEvent('close', code, reason.toString('utf8'), code !== 1006)
       })
       return id
     },

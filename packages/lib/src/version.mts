@@ -65,9 +65,9 @@ export const STORAGE_VERSION = 2
  * kept in a biometric-gated keystore (see
  * PersistentStorageManager.exportUnlockedSession) it lives until the next lock.
  * Either way it is never migrated, and the right answer to one this build does
- * not recognise is to refuse it and ask for the password again. Tying them together would force a storage
- * bump to add a field to a throwaway blob, and would kill every live session
- * on every storage bump for no reason.
+ * not recognise is to refuse it and ask for the password again. Tying them
+ * together would force a storage bump to add a field to a throwaway blob, and
+ * would kill every live session on every storage bump for no reason.
  *
  * Compared with !==, not <. An older blob means the process was upgraded under
  * a live session and a newer one means a downgrade; neither is a shape this

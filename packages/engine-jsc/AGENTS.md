@@ -84,7 +84,14 @@ One entry point, `favaEngine.call(method, argsJson) -> Promise<resultJson>`,
 rejecting with `{ kind, message }` as JSON. `kind` maps favalib's error classes
 (which all report `name === 'FavaLibError'`) to stable strings; native code
 branches on it. The engine holds at most one unlocked vault; saves leave through
-the host's `save`, events through `emit`. Pairing codes come back in both forms:
+the host's `save`, events through `emit`.
+
+Calls are not queued: they start in order, but async ones overlap. The vault's
+lifecycle is ordered instead -- `createVault`, the unlocks and `lock` bump a
+generation counter, and an unlock that finishes after a later one started is
+discarded (kind `usage`). That is deliberate: a FIFO queue would let a
+`setSyncServer` waiting on the network hold up `lock`, and a lock must take
+effect at once. Pairing codes come back in both forms:
 `text` and `qrPayload` (the raw JSON other fava clients put in their QR codes),
 and `respondToPairing` accepts either, so QR codes are drawn and scanned natively.
 

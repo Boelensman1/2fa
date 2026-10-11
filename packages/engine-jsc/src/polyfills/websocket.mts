@@ -6,15 +6,22 @@
  * `WebSocket.OPEN`. It has to be installed globally: the browser provider's
  * WebSocketLib returns the global `WebSocket`.
  */
+import { base64ToBytes, Utf8Encoder } from './encoding.mjs'
 import { EventPolyfill } from './events.mjs'
 import { getHost } from '../host.mjs'
 
 interface SocketEvent extends EventPolyfill {
-  data?: string
+  data?: string | ArrayBuffer
   code?: number
   reason?: string
   wasClean?: boolean
   message?: string
+}
+
+const namedError = (name: string, message: string) => {
+  const error = new Error(message)
+  error.name = name
+  return error
 }
 
 /**
@@ -40,7 +47,11 @@ export const createWebSocketClass = () => {
     readonly url: string
     readonly protocol = ''
     readonly extensions = ''
-    binaryType = 'blob'
+    /**
+     * Binary frames arrive as ArrayBuffers. A browser defaults to 'blob', but
+     * there is no Blob here, and fava's protocol is text anyway.
+     */
+    binaryType = 'arraybuffer'
     readyState = 0
     onopen: ((event: SocketEvent) => void) | null = null
     onmessage: ((event: SocketEvent) => void) | null = null
@@ -55,9 +66,7 @@ export const createWebSocketClass = () => {
       super()
       this.url = String(url)
       if (!/^wss?:\/\//i.test(this.url)) {
-        const error = new Error(`Invalid WebSocket url: ${this.url}`)
-        error.name = 'SyntaxError'
-        throw error
+        throw namedError('SyntaxError', `Invalid WebSocket url: ${this.url}`)
       }
       this.#id = getHost().wsConnect(this.url, (type, a, b) => {
         this.#onHostEvent(type, a, b)
@@ -67,17 +76,26 @@ export const createWebSocketClass = () => {
     #onHostEvent(
       type: 'open' | 'message' | 'close' | 'error',
       a?: string | number,
-      b?: string,
+      b?: string | boolean,
+      c?: boolean,
     ) {
       if (this.readyState === 3) return
-      if (type === 'open') this.readyState = 1
+      if (type === 'open') {
+        // A close() while connecting can cross an open already on its way
+        // from the host. A browser never reopens a closing socket.
+        if (this.readyState !== 0) return
+        this.readyState = 1
+      }
       if (type === 'close') this.readyState = 3
       const event = new EventCtor(type) as SocketEvent
-      if (type === 'message') event.data = String(a)
+      if (type === 'message') {
+        event.data =
+          b === true ? base64ToBytes(String(a)).slice().buffer : String(a)
+      }
       if (type === 'close') {
         event.code = Number(a ?? 1006)
-        event.reason = b ?? ''
-        event.wasClean = event.code === 1000
+        event.reason = typeof b === 'string' ? b : ''
+        event.wasClean = c === true
       }
       if (type === 'error') event.message = String(a ?? '')
       this.dispatchEvent(event as unknown as Event)
@@ -94,22 +112,35 @@ export const createWebSocketClass = () => {
      */
     send(data: string) {
       if (this.readyState !== 1) {
-        const error = new Error('WebSocket is not open')
-        error.name = 'InvalidStateError'
-        throw error
+        throw namedError('InvalidStateError', 'WebSocket is not open')
       }
       getHost().wsSend(this.#id, String(data))
     }
 
     /**
      * Starts the closing handshake; `close` fires when it completes.
-     * @param code - The close code.
-     * @param reason - The close reason.
+     * @param code - The close code: 1000, or 3000-4999 for applications.
+     * @param reason - The close reason, at most 123 bytes of UTF-8.
      */
-    close(code = 1000, reason = '') {
+    close(code?: number, reason?: string) {
+      // Checked before the state, as in a browser: a bad call throws even on
+      // a socket that is already closing.
+      if (code !== undefined) {
+        code = Number(code)
+        if (code !== 1000 && !(code >= 3000 && code <= 4999)) {
+          throw namedError(
+            'InvalidAccessError',
+            `Invalid close code ${String(code)}`,
+          )
+        }
+      }
+      reason = reason === undefined ? '' : String(reason)
+      if (new Utf8Encoder().encode(reason).length > 123) {
+        throw namedError('SyntaxError', 'Close reason exceeds 123 bytes')
+      }
       if (this.readyState >= 2) return
       this.readyState = 2
-      getHost().wsClose(this.#id, code, reason)
+      getHost().wsClose(this.#id, Math.trunc(code ?? 1000), reason)
     }
   }
 }

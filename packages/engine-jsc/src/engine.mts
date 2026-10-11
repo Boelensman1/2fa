@@ -11,6 +11,12 @@
  * The engine holds at most one unlocked vault. Everything it writes leaves
  * through the host: the vault through `save`, events through `emit`.
  *
+ * Calls start in the order they arrive, but an async one does not hold up the
+ * next: two calls can be in flight at once. What must not interleave is the
+ * vault's lifecycle, so `createVault`, the unlocks and `lock` are ordered by
+ * when they START: an unlock that finishes after a later lock or unlock began
+ * is discarded and rejects with kind `usage`. `lock` never waits for anything.
+ *
  * Mirror any change here in `swift/Sources/FavaEngine/FavaEngine.swift`.
  */
 import {
@@ -95,6 +101,7 @@ export const toEngineError = (error: unknown): EngineError => {
       return { kind, message: error.message }
     }
   }
+  // eslint-disable-next-line no-restricted-globals
   if (error instanceof Error) {
     return { kind: 'internal', message: `${error.name}: ${error.message}` }
   }
@@ -102,6 +109,7 @@ export const toEngineError = (error: unknown): EngineError => {
 }
 
 /** A call the engine cannot serve in its current state. */
+// eslint-disable-next-line no-restricted-globals
 class EngineUsageError extends Error {
   /**
    * @param message - What was wrong.
@@ -151,6 +159,8 @@ export const pairingQrPayloadFromText = (text: string): string => {
 export class FavaEngine {
   #config: Required<EngineConfig> | null = null
   #favaLib: FavaLib | null = null
+  /** Bumped by every lifecycle call; see the class comment. */
+  #generation = 0
 
   /**
    * Runs a method by name. The native side's only entry point.
@@ -178,6 +188,7 @@ export class FavaEngine {
       // Rejecting with a plain Error whose message is the JSON keeps the
       // bridge simple: JSContext hands Swift the rejection reason as a
       // JSValue, and `message` is a string property on every engine.
+      // eslint-disable-next-line no-restricted-globals
       throw new Error(JSON.stringify(toEngineError(error)))
     }
   }
@@ -223,6 +234,23 @@ export class FavaEngine {
       })
     }
     this.#favaLib = favaLib
+  }
+
+  /**
+   * Loads a vault and adopts it, unless a later lifecycle call started while
+   * it was loading -- then the loaded vault is closed and never seen.
+   * @param load - Produces the vault.
+   * @returns The adopted vault.
+   */
+  async #replace(load: () => Promise<FavaLib>): Promise<FavaLib> {
+    const generation = ++this.#generation
+    const favaLib = await load()
+    if (generation !== this.#generation) {
+      favaLib.sync?.closeServerConnection()
+      throw new EngineUsageError('A later lock or unlock superseded this one')
+    }
+    this.#adopt(favaLib)
+    return favaLib
   }
 
   #drop() {
@@ -272,10 +300,11 @@ export class FavaEngine {
      * @param password - The vault password.
      */
     createVault: async (password: string) => {
-      const { favaLib } = await this.#utils().createNewFavaLibVault(
-        password as Password,
+      const utils = this.#utils()
+      const favaLib = await this.#replace(
+        async () =>
+          (await utils.createNewFavaLibVault(password as Password)).favaLib,
       )
-      this.#adopt(favaLib)
       await favaLib.storage.forceSave()
     },
 
@@ -290,8 +319,9 @@ export class FavaEngine {
       password: string,
       connectToSyncServer = true,
     ) => {
-      this.#adopt(
-        await this.#utils().loadFavaLibFromLockedRepesentation(
+      const utils = this.#utils()
+      await this.#replace(() =>
+        utils.loadFavaLibFromLockedRepesentation(
           lockedRepresentation as LockedRepresentationString,
           password as Password,
           { connectToSyncServer },
@@ -311,8 +341,9 @@ export class FavaEngine {
       session: string,
       connectToSyncServer = true,
     ) => {
-      this.#adopt(
-        await this.#utils().loadFavaLibFromUnlockedSession(
+      const utils = this.#utils()
+      await this.#replace(() =>
+        utils.loadFavaLibFromUnlockedSession(
           lockedRepresentation as LockedRepresentationString,
           session as UnlockedSessionString,
           { connectToSyncServer },
@@ -328,10 +359,12 @@ export class FavaEngine {
     exportUnlockedSession: () => this.#lib().storage.exportUnlockedSession(),
 
     /**
-     * Drops the unlocked vault and closes its sync connection. The host must
+     * Drops the unlocked vault and closes its sync connection, at once: an
+     * unlock still in flight is discarded when it finishes. The host must
      * also delete any stored session.
      */
     lock: () => {
+      this.#generation++
       this.#drop()
     },
 
@@ -472,6 +505,15 @@ export class FavaEngine {
 
     /** @returns The paired devices. */
     syncDevices: () => this.#sync().getSyncDevices(),
+
+    /**
+     * Records that the user has been shown a device a peer introduced, which
+     * is what clears its `acknowledged: false`. Local only; peers are not told.
+     * @param deviceId - The device that was shown.
+     * @returns Resolves when saved.
+     */
+    acknowledgeSyncDevice: (deviceId: string) =>
+      this.#sync().acknowledgeSyncDevice(deviceId as DeviceId),
 
     /**
      * @param deviceId - The device to remove.

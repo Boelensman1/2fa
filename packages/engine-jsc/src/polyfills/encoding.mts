@@ -69,11 +69,17 @@ const toBytes = (input?: ArrayBuffer | ArrayBufferView): Uint8Array => {
 /**
  * UTF-8 decoder with TextDecoder's semantics: invalid sequences become U+FFFD
  * (one per maximal invalid subpart), or throw with `fatal: true`. A leading
- * BOM is stripped unless `ignoreBOM` is set.
+ * BOM is stripped unless `ignoreBOM` is set. With `{ stream: true }` a
+ * sequence cut off at the end of a chunk is held back for the next call, and
+ * the next call without it ends the stream.
  */
 export class Utf8Decoder {
   readonly fatal: boolean
   readonly ignoreBOM: boolean
+  /** The start of a sequence the previous streaming call ended inside. */
+  #pending = new Uint8Array(0)
+  /** Whether this stream is past the point where a BOM could be. */
+  #bomChecked = false
 
   /**
    * @param label - Must name UTF-8.
@@ -97,10 +103,39 @@ export class Utf8Decoder {
   /**
    * Decodes UTF-8 bytes.
    * @param input - The bytes.
+   * @param options - TextDecodeOptions.
+   * @param options.stream - More chunks follow this one.
    * @returns The string.
    */
-  decode(input?: ArrayBuffer | ArrayBufferView): string {
-    const bytes = toBytes(input)
+  decode(
+    input?: ArrayBuffer | ArrayBufferView,
+    options: { stream?: boolean } = {},
+  ): string {
+    const stream = !!options.stream
+    let bytes = toBytes(input)
+    if (this.#pending.length) {
+      const joined = new Uint8Array(this.#pending.length + bytes.length)
+      joined.set(this.#pending)
+      joined.set(bytes, this.#pending.length)
+      bytes = joined
+      this.#pending = new Uint8Array(0)
+    }
+    try {
+      return this.#decode(bytes, stream)
+    } finally {
+      if (!stream) {
+        // The stream is over: the next call starts a new one.
+        this.#pending = new Uint8Array(0)
+        this.#bomChecked = false
+      } else if (bytes.length > this.#pending.length) {
+        // Something was consumed, so a BOM has either been stripped or cannot
+        // come any more. Bytes merely held back (a lone 0xef) do not count.
+        this.#bomChecked = true
+      }
+    }
+  }
+
+  #decode(bytes: Uint8Array, stream: boolean): string {
     const units: number[] = []
     let out = ''
     const flush = () => {
@@ -115,6 +150,7 @@ export class Utf8Decoder {
     }
     let i = 0
     if (
+      !this.#bomChecked &&
       !this.ignoreBOM &&
       bytes[0] === 0xef &&
       bytes[1] === 0xbb &&
@@ -153,12 +189,20 @@ export class Utf8Decoder {
         let j = 1
         for (; j <= need; j++) {
           const next = bytes[i + j]
+          if (next === undefined && stream) {
+            // Valid so far and cut off by the chunk: finish it next call.
+            this.#pending = bytes.slice(i)
+            break
+          }
           if (next === undefined || next < lower || next > upper) {
             break
           }
           lower = 0x80
           upper = 0xbf
           cp = (cp << 6) | (next & 0x3f)
+        }
+        if (this.#pending.length) {
+          break
         }
         if (j <= need) {
           bad()

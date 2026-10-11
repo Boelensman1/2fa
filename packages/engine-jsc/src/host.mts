@@ -72,11 +72,17 @@ export interface FavaHost {
   log(level: 'debug' | 'info' | 'warn' | 'error', message: string): void
 
   /**
-   * Opens a WebSocket (`URLSessionWebSocketTask`). Text frames only; fava's
-   * sync protocol is JSON.
+   * Opens a WebSocket (`URLSessionWebSocketTask`). Sends text frames only;
+   * fava's sync protocol is JSON.
    * @param url - A ws:// or wss:// url.
-   * @param onEvent - Called on the JS thread with `('open')`,
-   * `('message', text)`, `('close', code, reason)` or `('error', description)`.
+   * @param onEvent - Called on the JS thread with one of:
+   * - `('open')`;
+   * - `('message', text)` for a text frame, or `('message', base64, true)` for
+   *   a binary one;
+   * - `('close', code, reason, wasClean)`, where `wasClean` means the server's
+   *   close frame arrived (the closing handshake completed);
+   * - `('error', description)`.
+   *
    * After `close` no further events arrive for this id.
    * @returns A socket id.
    */
@@ -85,7 +91,8 @@ export interface FavaHost {
     onEvent: (
       type: 'open' | 'message' | 'close' | 'error',
       a?: string | number,
-      b?: string,
+      b?: string | boolean,
+      c?: boolean,
     ) => void,
   ): number
 
@@ -99,8 +106,8 @@ export interface FavaHost {
   /**
    * Starts closing a socket. The `close` event follows.
    * @param id - The socket id.
-   * @param code - The close code.
-   * @param reason - The close reason.
+   * @param code - The close code: 1000 or 3000-4999, already checked.
+   * @param reason - The close reason, at most 123 UTF-8 bytes, already checked.
    */
   wsClose(id: number, code: number, reason: string): void
 

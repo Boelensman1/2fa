@@ -80,14 +80,20 @@ export const buildEngine = async ({
   })
   const output = Object.values(result.metafile.outputs)[0]
   // A WebAssembly reference in the output means a dependency found a path
-  // around the shims, and that path fails on iOS.
+  // around the shims, and that path fails on iOS. Feature tests such as
+  // `typeof WebAssembly` are fine, and so are string literals (openpgp matches
+  // "WebAssembly.Memory.grow" in error messages); anything that compiles,
+  // instantiates or allocates is not, the *Streaming variants included.
   const bundle = (await import('node:fs')).readFileSync(
     path.resolve(root, outfile),
     'utf8',
   )
   if (
-    /WebAssembly\.(instantiate|compile)\b|new WebAssembly\.Memory/.test(bundle)
+    /(?<!["'`])WebAssembly\s*\.\s*(instantiate\w*|compile\w*|Module|Instance|Memory|Table|Global)\b/.test(
+      bundle,
+    )
   ) {
+    // eslint-disable-next-line no-restricted-globals
     throw new Error(`${outfile} still references WebAssembly`)
   }
   return output.bytes

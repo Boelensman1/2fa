@@ -22,6 +22,7 @@ import {
   randomUUID,
   subtle,
 } from '../src/polyfills/crypto.mjs'
+import { createWebSocketClass } from '../src/polyfills/websocket.mjs'
 import type { FavaHost } from '../src/host.mjs'
 
 beforeAll(() => {
@@ -98,6 +99,73 @@ describe('TextDecoder', () => {
 
   it('refuses encodings other than UTF-8', () => {
     expect(() => new Utf8Decoder('latin1')).toThrow(RangeError)
+  })
+})
+
+describe('TextDecoder streaming', () => {
+  const decodeInChunks = (
+    decoder: {
+      decode(input?: Uint8Array, options?: { stream?: boolean }): string
+    },
+    bytes: Uint8Array,
+    cuts: number[],
+  ) => {
+    let out = ''
+    let start = 0
+    for (const cut of cuts) {
+      out += decoder.decode(bytes.subarray(start, cut), { stream: true })
+      start = cut
+    }
+    return out + decoder.decode(bytes.subarray(start))
+  }
+
+  it.each(STRINGS)(
+    'decodes %j split at every point like the native one',
+    (s) => {
+      const bytes = new TextEncoder().encode(s)
+      for (let cut = 0; cut <= bytes.length; cut++) {
+        expect(decodeInChunks(new Utf8Decoder(), bytes, [cut])).toBe(
+          decodeInChunks(new TextDecoder(), bytes, [cut]),
+        )
+      }
+    },
+  )
+
+  it('matches the native one on random bytes in random chunks', () => {
+    for (let round = 0; round < 500; round++) {
+      const bytes = crypto.randomBytes(1 + (round % 32))
+      const cuts = [...crypto.randomBytes(3)]
+        .map((b) => b % (bytes.length + 1))
+        .sort((x, y) => x - y)
+      expect(decodeInChunks(new Utf8Decoder(), bytes, cuts)).toBe(
+        decodeInChunks(new TextDecoder(), bytes, cuts),
+      )
+    }
+  })
+
+  it('strips a BOM split across chunks, once per stream', () => {
+    const bytes = new Uint8Array([0xef, 0xbb, 0xbf, 0x41, 0xef, 0xbb, 0xbf])
+    const ours = new Utf8Decoder()
+    const native = new TextDecoder()
+    for (const cuts of [[1], [2], [1, 2], [4], [5]]) {
+      expect(decodeInChunks(ours, bytes, cuts)).toBe(
+        decodeInChunks(native, bytes, cuts),
+      )
+    }
+    // A second stream on the same decoder strips its own BOM again.
+    expect(ours.decode(bytes)).toBe(native.decode(bytes))
+  })
+
+  it('reports a sequence left unfinished at the end of the stream', () => {
+    const ours = new Utf8Decoder()
+    const native = new TextDecoder()
+    const head = new Uint8Array([0x41, 0xf0, 0x9f])
+    expect(ours.decode(head, { stream: true }) + ours.decode()).toBe(
+      native.decode(head, { stream: true }) + native.decode(),
+    )
+    const fatal = new Utf8Decoder('utf-8', { fatal: true })
+    fatal.decode(head, { stream: true })
+    expect(() => fatal.decode()).toThrow(TypeError)
   })
 })
 
@@ -304,6 +372,48 @@ describe('crypto.subtle subset', () => {
     ).rejects.toMatchObject({ name: 'NotSupportedError' })
   })
 
+  it('rejects the keys WebCrypto rejects, with the same error', async () => {
+    const hmac = { name: 'HMAC', hash: 'SHA-256' }
+    const cases: [string, (api: typeof subtle) => Promise<unknown>][] = [
+      [
+        'empty usages',
+        (api) => api.importKey('raw', keyBytes, 'AES-GCM', false, []),
+      ],
+      [
+        'empty HMAC usages',
+        (api) => api.importKey('raw', keyBytes, hmac, false, []),
+      ],
+      [
+        'an extractable HKDF key',
+        (api) => api.importKey('raw', keyBytes, 'HKDF', true, ['deriveBits']),
+      ],
+      [
+        'an empty HMAC key',
+        (api) => api.importKey('raw', new Uint8Array(0), hmac, false, ['sign']),
+      ],
+      [
+        'generateKey without usages',
+        (api) => api.generateKey({ name: 'AES-GCM', length: 256 }, false, []),
+      ],
+      [
+        'generateKey with a foreign usage',
+        (api) =>
+          api.generateKey({ name: 'AES-GCM', length: 256 }, false, ['sign']),
+      ],
+    ]
+    const native = webcrypto.subtle as unknown as typeof subtle
+    for (const [what, attempt] of cases) {
+      const nativeError = (await attempt(native).then(
+        () => null,
+        (e: unknown) => e,
+      )) as { name: string } | null
+      expect(nativeError, what).not.toBeNull()
+      await expect(attempt(subtle), what).rejects.toMatchObject({
+        name: nativeError?.name,
+      })
+    }
+  })
+
   it('keeps key bytes off the key object', async () => {
     const key = await subtle.importKey('raw', keyBytes, 'AES-GCM', true, [
       'encrypt',
@@ -369,5 +479,130 @@ describe('EventTarget', () => {
       target.dispatchEvent(new EventPolyfill('z', { cancelable: true })),
     ).toBe(false)
     expect(calls).toEqual(['first'])
+  })
+})
+
+describe('EventTarget, against the DOM', () => {
+  const targets = () =>
+    [
+      ['ours', new EventTargetPolyfill(), (t: string) => new EventPolyfill(t)],
+      ['native', new EventTarget(), (t: string) => new Event(t)],
+    ] as const
+
+  it('skips a listener removed by an earlier one in the same dispatch', () => {
+    const results = targets().map(([, target, makeEvent]) => {
+      const calls: string[] = []
+      const second = () => calls.push('second')
+      target.addEventListener('x', () => {
+        calls.push('first')
+        target.removeEventListener('x', second)
+      })
+      target.addEventListener('x', second)
+      target.dispatchEvent(makeEvent('x') as Event & EventPolyfill)
+      return calls
+    })
+    expect(results[0]).toEqual(['first'])
+    expect(results[0]).toEqual(results[1])
+  })
+
+  it('lets an event that was stopped be dispatched again', () => {
+    const run = (
+      makeTarget: () => EventTarget,
+      makeEvent: (type: string) => Event,
+    ) => {
+      const calls: string[] = []
+      const first = makeTarget()
+      first.addEventListener('x', (e: Event) => {
+        calls.push('first')
+        e.stopImmediatePropagation()
+      })
+      const second = makeTarget()
+      second.addEventListener('x', () => calls.push('second'))
+      const event = makeEvent('x')
+      first.dispatchEvent(event)
+      second.dispatchEvent(event)
+      return calls
+    }
+    // The DOM spec unsets the stop flags when dispatch ends (§2.9, step
+    // "Unset event's dispatch flag, stop propagation flag, and stop immediate
+    // propagation flag"), and browsers follow it. Node does not, so this one
+    // is checked against the spec rather than against node.
+    expect(
+      run(
+        () => new EventTargetPolyfill() as unknown as EventTarget,
+        (t) => new EventPolyfill(t) as unknown as Event,
+      ),
+    ).toEqual(['first', 'second'])
+  })
+})
+
+describe('WebSocket', () => {
+  type OnEvent = Parameters<FavaHost['wsConnect']>[1]
+  const setUp = () => {
+    const host = {
+      onEvent: undefined as OnEvent | undefined,
+      closes: [] as [number, string][],
+      sends: [] as string[],
+    }
+    const g = globalThis as { __favaHost?: Partial<FavaHost> }
+    g.__favaHost = {
+      ...g.__favaHost,
+      wsConnect: (_url, onEvent) => {
+        host.onEvent = onEvent
+        return 1
+      },
+      wsSend: (_id, text) => host.sends.push(text),
+      wsClose: (_id, code, reason) => host.closes.push([code, reason]),
+    }
+    const WebSocketClass = createWebSocketClass()
+    const socket = new WebSocketClass('wss://example.test/sync')
+    const seen: { type: string; data?: unknown; wasClean?: boolean }[] = []
+    for (const type of ['open', 'message', 'close', 'error']) {
+      socket.addEventListener(type, (e) => {
+        const event = e as unknown as { data?: unknown; wasClean?: boolean }
+        seen.push({ type, data: event.data, wasClean: event.wasClean })
+      })
+    }
+    return { host, socket, seen }
+  }
+
+  it('does not reopen a socket closed while connecting', () => {
+    const { host, socket, seen } = setUp()
+    socket.close()
+    host.onEvent?.('open')
+    expect(socket.readyState).toBe(2)
+    expect(() => socket.send('x')).toThrow()
+    host.onEvent?.('close', 1006, '', false)
+    expect(socket.readyState).toBe(3)
+    expect(seen.map((e) => e.type)).toEqual(['close'])
+    expect(host.closes).toEqual([[1000, '']])
+  })
+
+  it('validates close codes and reasons like a browser', () => {
+    const { socket, host } = setUp()
+    expect(() => socket.close(1001)).toThrow(
+      expect.objectContaining({ name: 'InvalidAccessError' }) as Error,
+    )
+    expect(() => socket.close(5000)).toThrow(
+      expect.objectContaining({ name: 'InvalidAccessError' }) as Error,
+    )
+    expect(() => socket.close(1000, 'é'.repeat(62))).toThrow(
+      expect.objectContaining({ name: 'SyntaxError' }) as Error,
+    )
+    expect(host.closes).toEqual([])
+    socket.close(4001, 'bye')
+    expect(host.closes).toEqual([[4001, 'bye']])
+  })
+
+  it('reports wasClean as the host says, and binary frames as ArrayBuffers', () => {
+    const { host, seen } = setUp()
+    host.onEvent?.('open')
+    host.onEvent?.('message', 'text')
+    host.onEvent?.('message', Buffer.from([1, 2, 3]).toString('base64'), true)
+    host.onEvent?.('close', 1000, '', false)
+    expect(seen[1].data).toBe('text')
+    expect(seen[2].data).toBeInstanceOf(ArrayBuffer)
+    expect([...new Uint8Array(seen[2].data as ArrayBuffer)]).toEqual([1, 2, 3])
+    expect(seen[3]).toMatchObject({ type: 'close', wasClean: false })
   })
 })

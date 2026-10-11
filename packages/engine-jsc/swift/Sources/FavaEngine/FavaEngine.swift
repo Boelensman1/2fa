@@ -5,9 +5,13 @@ import os
 
 /// favalib, running in a JavaScriptCore context on its own thread.
 ///
-/// Every method is async and safe to call from any thread or actor; calls are
-/// served one at a time, in order, on the engine's thread. The engine holds at
-/// most one unlocked vault.
+/// Every method is async and safe to call from any thread or actor. Calls
+/// start in the order they arrive, on the engine's thread, but they do not
+/// wait for one another: an async method yields at every `await`, so two calls
+/// can be in flight at once. The vault's lifecycle is the exception: create,
+/// unlock and lock are ordered by when they start, so an unlock that finishes
+/// after a later `lock()` or unlock is discarded (it throws, kind `usage`) and
+/// `lock()` itself never waits. The engine holds at most one unlocked vault.
 ///
 /// Two things leave the engine on their own:
 /// - the vault, through `onSave`, whenever favalib saves (encrypted and MAC'd,
@@ -47,6 +51,14 @@ public final class FavaEngine: @unchecked Sendable {
     /// entry into JS, so a stray one from a timer callback cannot fail an
     /// unrelated call.
     private var lastException: JSValue?
+    /// Calls waiting on a JS promise, so `shutdown` can fail them rather than
+    /// leave their callers suspended forever.
+    private var pendingCalls: [Int: CheckedContinuation<String, Error>] = [:]
+    private var nextCallId = 1
+    /// Set by `shutdown`; read from any thread. Once the thread has stopped a
+    /// block queued on it never runs, so a later call must not queue one.
+    private let shutDownLock = NSLock()
+    private var isShutDown = false
 
     private init(onSave: @escaping @Sendable (String) -> Void) {
         let (events, continuation) = AsyncStream<EngineEvent>.makeStream()
@@ -108,14 +120,38 @@ public final class FavaEngine: @unchecked Sendable {
     }
 
     /// Stops the engine: drops the vault, closes sockets, ends the thread.
+    /// Calls still in flight, and any made afterwards, throw kind `usage`.
     public func shutdown() {
+        shutDownLock.lock()
+        let alreadyShutDown = isShutDown
+        isShutDown = true
+        shutDownLock.unlock()
+        guard !alreadyShutDown else { return }
         thread.perform { [self] in
             host.tearDown()
             engine = nil
             context = nil
+            let pending = pendingCalls
+            pendingCalls.removeAll()
+            for continuation in pending.values {
+                continuation.resume(throwing: Self.shutDownError)
+            }
             eventContinuation.finish()
         }
         thread.stop()
+    }
+
+    private static let shutDownError = FavaEngineError(kind: "usage", message: "the engine is shut down")
+
+    /// Queues `block` on the engine thread, or returns false once the engine
+    /// is shut down. Held under the lock so a block cannot slip in after the
+    /// thread's stop.
+    private func performIfRunning(_ block: @escaping () -> Void) -> Bool {
+        shutDownLock.lock()
+        defer { shutDownLock.unlock() }
+        guard !isShutDown else { return false }
+        thread.perform(block)
+        return true
     }
 
     // MARK: - The generic door
@@ -134,29 +170,44 @@ public final class FavaEngine: @unchecked Sendable {
             as: UTF8.self
         )
         let resultJSON: String = try await withCheckedThrowingContinuation { continuation in
-            thread.perform { [self] in
+            let queued = performIfRunning { [self] in
                 guard let context, let engine else {
-                    continuation.resume(throwing: FavaEngineError(kind: "usage", message: "the engine is shut down"))
+                    continuation.resume(throwing: Self.shutDownError)
                     return
                 }
-                let resolve: @convention(block) (JSValue) -> Void = { value in
-                    continuation.resume(returning: value.toString())
+                // Registered before entering JS; whichever of resolve, reject
+                // or shutdown takes it out first is the one that resumes.
+                let callId = nextCallId
+                nextCallId += 1
+                pendingCalls[callId] = continuation
+                let resolve: @convention(block) (JSValue) -> Void = { [weak self] value in
+                    self?.pendingCalls.removeValue(forKey: callId)?.resume(returning: value.toString())
                 }
-                let reject: @convention(block) (JSValue) -> Void = { reason in
+                let reject: @convention(block) (JSValue) -> Void = { [weak self] reason in
                     let message = reason.forProperty("message")?.toString() ?? reason.toString() ?? ""
-                    continuation.resume(throwing: FavaEngineError(rejectionMessage: message))
+                    self?.pendingCalls.removeValue(forKey: callId)?
+                        .resume(throwing: FavaEngineError(rejectionMessage: message))
                 }
                 lastException = nil
                 let promise = engine.invokeMethod("call", withArguments: [method, argumentsJSON])
                 if let exception = lastException {
                     lastException = nil
-                    continuation.resume(throwing: FavaEngineError(kind: "internal", message: exception.toString()))
+                    pendingCalls.removeValue(forKey: callId)?
+                        .resume(throwing: FavaEngineError(kind: "internal", message: exception.toString()))
                     return
                 }
-                promise?.invokeMethod("then", withArguments: [
+                guard let promise, promise.hasProperty("then") else {
+                    pendingCalls.removeValue(forKey: callId)?
+                        .resume(throwing: FavaEngineError(kind: "internal", message: "favaEngine.call did not return a promise"))
+                    return
+                }
+                promise.invokeMethod("then", withArguments: [
                     JSValue(object: unsafeBitCast(resolve, to: AnyObject.self), in: context) as Any,
                     JSValue(object: unsafeBitCast(reject, to: AnyObject.self), in: context) as Any,
                 ])
+            }
+            if !queued {
+                continuation.resume(throwing: Self.shutDownError)
             }
         }
         return try JSONDecoder().decode(Result.self, from: Data(resultJSON.utf8))
@@ -164,7 +215,10 @@ public final class FavaEngine: @unchecked Sendable {
 
     private func onThread<T>(_ body: @escaping () throws -> T) async throws -> T {
         try await withCheckedThrowingContinuation { continuation in
-            thread.perform { continuation.resume(with: Result { try body() }) }
+            let queued = performIfRunning { continuation.resume(with: Result { try body() }) }
+            if !queued {
+                continuation.resume(throwing: Self.shutDownError)
+            }
         }
     }
 
@@ -201,7 +255,8 @@ public final class FavaEngine: @unchecked Sendable {
         try await call("exportUnlockedSession")
     }
 
-    /// Drops the unlocked vault. Delete the stored session too: under
+    /// Drops the unlocked vault, at once: an unlock still in flight is
+    /// discarded when it finishes. Delete the stored session too: under
     /// favalib's contract, a lock means the session is gone.
     public func lock() async throws {
         let _: Nothing = try await call("lock")
@@ -289,6 +344,12 @@ public final class FavaEngine: @unchecked Sendable {
 
     public func syncDevices() async throws -> [SyncDevice] {
         try await call("syncDevices")
+    }
+
+    /// Records that the user has been shown a device a peer introduced,
+    /// clearing its `acknowledged: false`. Local only; peers are not told.
+    public func acknowledgeSyncDevice(_ deviceId: String) async throws {
+        let _: Nothing = try await call("acknowledgeSyncDevice", [deviceId])
     }
 
     public func removeSyncDevice(_ deviceId: String) async throws {

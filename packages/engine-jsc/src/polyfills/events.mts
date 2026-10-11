@@ -88,6 +88,8 @@ type Listener =
 interface Registration {
   listener: Listener
   once: boolean
+  /** Set on removal, so a dispatch already under way skips it too. */
+  removed: boolean
 }
 
 /**
@@ -115,7 +117,7 @@ export class EventTargetPolyfill {
       return
     }
     const once = typeof options === 'object' && !!options.once
-    list.push({ listener, once })
+    list.push({ listener, once, removed: false })
     this.#listeners.set(type, list)
   }
 
@@ -129,14 +131,19 @@ export class EventTargetPolyfill {
     if (list) {
       this.#listeners.set(
         type,
-        list.filter((r) => r.listener !== listener),
+        list.filter((r) => {
+          if (r.listener !== listener) return true
+          r.removed = true
+          return false
+        }),
       )
     }
   }
 
   /**
    * Calls this target's listeners for the event. A throwing listener is
-   * reported and does not stop the others, as in the DOM.
+   * reported and does not stop the others, as in the DOM. The listeners are
+   * those registered when dispatch starts, minus any removed along the way.
    * @param event - The event.
    * @returns False if a listener called preventDefault on a cancelable event.
    */
@@ -144,6 +151,9 @@ export class EventTargetPolyfill {
     event.target = this
     event.currentTarget = this
     for (const registration of [...(this.#listeners.get(event.type) ?? [])]) {
+      if (registration.removed) {
+        continue
+      }
       if (registration.once) {
         this.removeEventListener(event.type, registration.listener)
       }
@@ -162,6 +172,9 @@ export class EventTargetPolyfill {
       }
     }
     event.currentTarget = null
+    // The DOM clears the flag when dispatch ends, so the same event object
+    // can be dispatched again.
+    event.stopped = false
     return !event.defaultPrevented
   }
 }

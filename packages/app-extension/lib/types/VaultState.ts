@@ -63,19 +63,15 @@ export type UpdateEntryResult =
   | { ok: false; error: string; entry: null }
 
 /**
- * zxcvbn's verdict on a candidate master password.
+ * zxcvbn's verdict on a candidate master password, as favalib reports it.
  *
  * Computed in the background rather than the popup: reaching
  * `getPasswordStrength` means importing favalib's vault factory, which drags
  * openpgp, jpake and the rest into whatever bundle touches it. The popup is
- * meant to stay a thin client, so it asks instead.
+ * meant to stay a thin client, so it asks instead. Importing only the type
+ * costs the popup nothing.
  */
-export interface PasswordStrength {
-  /** 0-4. favalib refuses to create a vault below 3. */
-  score: number
-  warning: string
-  suggestions: string[]
-}
+export type { PasswordStrength } from 'favalib'
 
 /** What a create/unlock/pair attempt reports back. */
 export interface VaultActionResult {

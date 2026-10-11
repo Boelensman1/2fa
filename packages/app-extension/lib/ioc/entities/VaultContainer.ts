@@ -547,13 +547,7 @@ class VaultContainer {
 
   /** Feedback for the create screen. favalib rejects a score below 3 outright. */
   async getPasswordStrength(password: Password): Promise<PasswordStrength> {
-    const { score, feedback } =
-      await creationUtils.getPasswordStrength(password)
-    return {
-      score,
-      warning: feedback.warning ?? '',
-      suggestions: feedback.suggestions,
-    }
+    return creationUtils.getPasswordStrength(password)
   }
 
   async generateToken(entryId: EntryId): Promise<string> {

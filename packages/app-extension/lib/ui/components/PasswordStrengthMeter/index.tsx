@@ -31,10 +31,11 @@ const PasswordStrengthMeter: FC<PasswordStrengthMeterProps> = ({
   if (!strength) return null
 
   const score = Math.max(0, Math.min(4, strength.score))
-  // Not `??`: these are strings, and an empty warning should fall through to
-  // a suggestion rather than render as a blank line.
+  // Not just `??`: an empty warning should fall through to a suggestion just
+  // as a null one does, rather than render as a blank line.
+  const { warning, suggestions } = strength.feedback
   const advice =
-    strength.warning !== '' ? strength.warning : (strength.suggestions[0] ?? '')
+    warning !== null && warning !== '' ? warning : (suggestions[0] ?? '')
 
   return (
     <div>

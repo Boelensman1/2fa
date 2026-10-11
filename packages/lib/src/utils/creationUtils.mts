@@ -138,7 +138,7 @@ export const getPasswordStrength = async (
   password: Password,
 ): Promise<PasswordStrength> => {
   const zxcvbn = await libraryLoader.getZxcvbn()
-  return zxcvbn(password, [
+  const { score, guessesLog10, feedback } = zxcvbn(password, [
     'twofactor',
     'authentication',
     'token',
@@ -163,6 +163,14 @@ export const getPasswordStrength = async (
     'secure',
     ...passwordExtraDict,
   ])
+  return {
+    score,
+    guessesLog10,
+    feedback: {
+      warning: feedback.warning,
+      suggestions: feedback.suggestions,
+    },
+  }
 }
 
 /**

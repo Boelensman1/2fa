@@ -1,11 +1,21 @@
-import type { ZxcvbnResult } from '@zxcvbn-ts/core'
-
 /**
- * What `getPasswordStrength` returns: a score out of 4, plus zxcvbn's feedback
- * about why a password scored what it did.
+ * What `getPasswordStrength` returns: a score out of 4, an estimate of how
+ * many guesses the password would take, and zxcvbn's feedback about why it
+ * scored what it did.
  *
- * Named here so a consumer can type the result without depending on
- * `@zxcvbn-ts/core` itself -- which app-cli and app-browser both had to do,
- * purely for this one type, to say what a favalib call gives back.
+ * Deliberately not zxcvbn's own result type. That object also carries the
+ * match sequences, crack-time estimates and the password itself, none of which
+ * any client reads -- and naming it here would put `@zxcvbn-ts/core` into
+ * favalib's public types, making a consumer depend on it just to type a call.
  */
-export type PasswordStrength = ZxcvbnResult
+export interface PasswordStrength {
+  /** 0-4. favalib refuses any vault or export password scoring below 3. */
+  score: number
+  /** log10 of zxcvbn's estimated number of guesses. */
+  guessesLog10: number
+  feedback: {
+    /** Why the password is weak, or null when zxcvbn has nothing to say. */
+    warning: string | null
+    suggestions: string[]
+  }
+}

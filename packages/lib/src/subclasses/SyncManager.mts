@@ -492,7 +492,12 @@ class SyncManager {
    * @returns Whether the socket is open, whatever it is allowed to say on it.
    */
   private get socketOpen(): boolean {
-    return this.ws?.readyState === WebSocket.OPEN
+    // Without a socket, return before asking for the library: an offline
+    // client must never load it, and once a socket exists initWebSocket has.
+    if (!this.ws) {
+      return false
+    }
+    return this.ws.readyState === this.libraryLoader.getWebSocketLib().OPEN
   }
 
   /**

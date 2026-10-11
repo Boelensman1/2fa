@@ -86,15 +86,35 @@ public struct UnlockedSessionStore: Sendable {
     }
 
     /// Reads the session, showing the biometric prompt.
+    ///
+    /// Face ID is evaluated first, with `LAContext`, and the item is then read
+    /// with that authenticated context and no UI of its own. Leaving the prompt
+    /// to the Keychain read fails in an app extension with
+    /// errSecInteractionNotAllowed. The item's `.biometryCurrentSet` still
+    /// decides: only a context that matched the currently enrolled biometrics
+    /// opens it.
     /// - Parameter reason: Shown in the prompt (Touch ID; Face ID uses the
     ///   app's NSFaceIDUsageDescription).
     /// - Returns: The session, or nil if none is stored (or it was invalidated
     ///   by a biometrics change).
     public func load(reason: String) async throws -> String? {
+        // Its attributes are readable without authentication, so a missing
+        // session costs no prompt.
+        guard try exists() else { return nil }
+
+        let context = LAContext()
+        do {
+            _ = try await context.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, localizedReason: reason)
+        } catch let error as LAError {
+            switch error.code {
+            case .userCancel, .appCancel, .systemCancel, .userFallback: throw Failure.cancelled
+            default: throw Failure.unavailable
+            }
+        }
+        context.interactionNotAllowed = true
+
         let query = baseQuery
         return try await Task.detached(priority: .userInitiated) {
-            let context = LAContext()
-            context.localizedReason = reason
             var lookup = query
             lookup[kSecReturnData as String] = true
             lookup[kSecMatchLimit as String] = kSecMatchLimitOne
@@ -115,6 +135,20 @@ public struct UnlockedSessionStore: Sendable {
                 throw Failure.keychain(status)
             }
         }.value
+    }
+
+    private func exists() throws -> Bool {
+        let context = LAContext()
+        context.interactionNotAllowed = true
+        var lookup = baseQuery
+        lookup[kSecReturnAttributes as String] = true
+        lookup[kSecMatchLimit as String] = kSecMatchLimitOne
+        lookup[kSecUseAuthenticationContext as String] = context
+        switch SecItemCopyMatching(lookup as CFDictionary, nil) {
+        case errSecSuccess, errSecInteractionNotAllowed: return true
+        case errSecItemNotFound: return false
+        case let status: throw Failure.keychain(status)
+        }
     }
 
     /// Deletes the stored session, if any.

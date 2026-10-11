@@ -44,8 +44,10 @@ const VAULT_KEY = 'lockedRepresentation'
  * could only build a `FavaLib` from `(lockedRepresentation, password)`.
  *
  * It is still plaintext key material, and favalib's jsdoc states the contract
- * it must be held under: memory-backed storage with the lifetime of a process,
- * and nothing else. `Db`'s session area is exactly that --
+ * it must be held under. Of the two homes it allows, a browser has only one --
+ * memory-backed storage with the lifetime of a process (the other is a
+ * biometric-gated hardware keystore, which no extension API reaches). `Db`'s
+ * session area is exactly that --
  * `browser.storage.session`, never written to disk, wiped when the browser
  * closes, unreadable from content scripts. Do not move it to `local:`, do not
  * log it, and keep `lock()` clearing it.

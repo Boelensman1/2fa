@@ -34,7 +34,8 @@ class StorageOperationsManager {
    * rehydrated later without the password.
    *
    * The returned string is PLAINTEXT KEY MATERIAL and belongs only in
-   * memory-backed, process-lifetime storage. Read
+   * memory-backed, process-lifetime storage or in a biometric-gated,
+   * hardware-backed OS keystore item. Read
    * PersistentStorageManager.exportUnlockedSession's doc comment before using
    * or changing it.
    * @returns The session as a json string, for

@@ -239,25 +239,50 @@ class PersistentStorageManager {
    * Exports the derived key material of this unlocked vault, so that a
    * consumer can rehydrate it later without the password.
    *
-   * An MV3 service worker is evicted after ~30s idle, and the only alternative
-   * is keeping the master password -- the input for every OTHER device too, and
-   * one users reuse. Leaking this device's derived keys is strictly less bad.
+   * An MV3 service worker is evicted after ~30s idle, and an iOS AutoFill
+   * extension starts cold for every code it fills. The only alternative is
+   * keeping the master password -- the input for every OTHER device too, and
+   * one users reuse -- or a 64 MiB argon2id pass per boot. Leaking this
+   * device's derived keys is strictly less bad.
    *
    * ## This is plaintext key material
    *
    * Whoever can read the returned string can read the vault. It is not
-   * encrypted, and deliberately so: encrypting it needs a key held somewhere
-   * with a different lifetime, and on the platforms this exists for there is
-   * no such place -- a key in the same process, in the same storage area, or
-   * derived from the password we are trying not to store is held by exactly
-   * the attacker this would be defending against. A wrap would buy the
+   * encrypted here, and deliberately so: encrypting it needs a key held
+   * somewhere with a different lifetime, and in a browser there is no such
+   * place -- a key in the same process, in the same storage area, or derived
+   * from the password we are trying not to store is held by exactly the
+   * attacker this would be defending against. A wrap done in JS would buy the
    * appearance of protection, which is worse than its absence because it
    * invites storing the blob somewhere weaker.
    *
-   * So the protection is a storage contract instead: memory-backed storage
-   * with the lifetime of a process (browser.storage.session and nothing else).
-   * Never a disk, never localStorage, never a sync channel, never a log or a
-   * crash report. Drop it on lock and on FavaLibEvent.PasswordChanged.
+   * So the protection is a storage contract instead. The blob may live in
+   * exactly two kinds of place:
+   *
+   * 1. Memory-backed storage with the lifetime of a process
+   *    (browser.storage.session). This is where favabrowserext keeps it.
+   * 2. An OS keystore item that the OS encrypts under a key held in secure
+   *    hardware and releases only after a fresh biometric match. On iOS that
+   *    is a Keychain item with `kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly`
+   *    and a `SecAccessControl` of `.biometryCurrentSet`. This is the "somewhere
+   *    with a different lifetime" a browser lacks: the wrapping key is in the
+   *    Secure Enclave, outside the app process and off the disk, and the app
+   *    cannot unwrap the item without the user's face or finger. Every one of
+   *    those attributes is load-bearing. `ThisDeviceOnly` keeps it out of
+   *    backups and iCloud Keychain, `WhenPasscodeSet` deletes it if the
+   *    passcode is removed, and `biometryCurrentSet` invalidates it when the
+   *    enrolled biometrics change, so adding a face does not inherit the
+   *    vault. A keystore item without user-presence gating (a plain Keychain
+   *    item, the desktop keychains favacli uses, the Linux Secret Service)
+   *    does NOT qualify: anything running as the user reads it without asking.
+   *
+   * Never anywhere else: never a file, never localStorage, never a sync
+   * channel, never a log or a crash report.
+   *
+   * Under both, lock means the blob is gone: a lock deletes the keystore item,
+   * not just the in-memory copy, because the item outlives the process that
+   * wrote it. On FavaLibEvent.PasswordChanged, replace it with a fresh export
+   * or drop it (see below for why the old one stops working either way).
    *
    * ## What it is bound to
    *

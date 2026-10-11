@@ -161,9 +161,10 @@ at all — so a worker restart costs nothing, where the master password it
 replaced meant a full argon2id pass on every boot.
 
 It is still plaintext key material, and favalib's jsdoc states the contract it
-must be held under: memory-backed storage with the lifetime of a process, and
-nothing else. Do not move it to `local:`, do not log it, and keep `lock()`
-clearing it.
+must be held under. Of the two homes it allows, a browser only has one:
+memory-backed storage with the lifetime of a process (the other, a
+biometric-gated hardware keystore item, is for native clients such as iOS). Do
+not move it to `local:`, do not log it, and keep `lock()` clearing it.
 
 The blob is bound to a key **generation**, not to a particular save: one export
 opens every envelope that generation goes on to write, and `changePassword` is

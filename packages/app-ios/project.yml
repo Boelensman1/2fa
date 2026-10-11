@@ -1,0 +1,107 @@
+# The Xcode project is generated from this file (`make project`) and is not
+# checked in. Edit this, not Fava.xcodeproj.
+name: Fava
+
+options:
+  bundleIdPrefix: nl.appeal
+  deploymentTarget:
+    iOS: '18.0' # one-time codes in AutoFill
+  createIntermediateGroups: true
+  generateEmptyDirectories: true
+
+settings:
+  base:
+    DEVELOPMENT_TEAM: HW2XFJ2L7B
+    CODE_SIGN_STYLE: Automatic
+    SWIFT_VERSION: '6.0'
+    MARKETING_VERSION: '0.0.1'
+    CURRENT_PROJECT_VERSION: '1'
+    TARGETED_DEVICE_FAMILY: '1,2'
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+
+packages:
+  FavaEngine:
+    path: ../engine-jsc/swift
+
+targets:
+  Fava:
+    type: application
+    platform: iOS
+    sources:
+      - App
+      - Shared
+    dependencies:
+      - package: FavaEngine
+      - target: FavaAutoFill
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: nl.appeal.fava
+        CODE_SIGN_ENTITLEMENTS: App/Fava.entitlements
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleDisplayName: Fava
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        NSFaceIDUsageDescription: Unlock your vault with Face ID.
+        # A sync server on the local network, e.g. a dev server over ws://.
+        # Servers elsewhere need wss://.
+        NSLocalNetworkUsageDescription: Connect to a sync server on your local network.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        FavaAppGroup: group.nl.appeal.fava
+        FavaKeychainGroup: $(AppIdentifierPrefix)nl.appeal.fava.shared
+
+  FavaAutoFill:
+    type: app-extension
+    platform: iOS
+    sources:
+      - AutoFill
+      - Shared
+    dependencies:
+      - package: FavaEngine
+      - sdk: AuthenticationServices.framework
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: nl.appeal.fava.autofill
+        CODE_SIGN_ENTITLEMENTS: AutoFill/FavaAutoFill.entitlements
+    info:
+      path: AutoFill/Info.plist
+      properties:
+        CFBundleDisplayName: Fava
+        NSFaceIDUsageDescription: Unlock your vault with Face ID.
+        FavaAppGroup: group.nl.appeal.fava
+        FavaKeychainGroup: $(AppIdentifierPrefix)nl.appeal.fava.shared
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.authentication-services-credential-provider-ui
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).CredentialProviderViewController
+          NSExtensionAttributes:
+            ASCredentialProviderExtensionCapabilities:
+              ProvidesOneTimeCodes: true
+              ProvidesPasswords: false
+
+  # Hosted by the app, so the tests run with its entitlements: the Keychain
+  # access group and the app group are what they check.
+  FavaTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - Tests
+    dependencies:
+      - target: Fava
+      - package: FavaEngine
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: nl.appeal.fava.tests
+        GENERATE_INFOPLIST_FILE: YES
+
+schemes:
+  Fava:
+    build:
+      targets:
+        Fava: all
+        FavaTests: [test]
+    test:
+      targets:
+        - FavaTests

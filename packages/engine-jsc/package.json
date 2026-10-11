@@ -1,0 +1,21 @@
+{
+  "name": "favaenginejsc",
+  "version": "0.0.1",
+  "description": "favalib packaged to run inside a bare JavaScriptCore JSContext (iOS)",
+  "private": true,
+  "type": "module",
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@noble/ciphers": "^2.4.0",
+    "@noble/hashes": "catalog:",
+    "core-js": "^3.50.0",
+    "favalib": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.18.1",
+    "esbuild": "catalog:",
+    "vitest": "catalog:",
+    "ws": "catalog:"
+  }
+}

@@ -23,6 +23,7 @@ import {
   type LockedRepresentationString,
 } from '../src/main.mjs'
 import { nodeProviders } from '../src/platformProviders/node/index.mjs'
+import { ConnectionStatus } from '../src/subclasses/SyncManager.mjs'
 
 import {
   clearEntries,
@@ -223,6 +224,72 @@ describe('2falib', () => {
   })
 
   describe('setSyncServerUrl', () => {
+    it.each(['authentication', 'diagnosis'])(
+      'closing during %s cancels the change without restoring a connection',
+      async (stage) => {
+        const originalUrl = `ws://original-${stage}:1234`
+        const pendingUrl = `ws://pending-${stage}:1234`
+        const original = new WS(originalUrl, { jsonProtocol: true })
+        const pending = new WS(pendingUrl, { jsonProtocol: true })
+        const save = vi.fn()
+        const { favaLib: lib } = await createFavaLibForTests(save)
+        let finishDiagnosis: (() => void) | undefined
+        try {
+          const setting = lib.setSyncServerUrl(originalUrl, testServerSecret)
+          await completeHandshake(original)
+          await setting
+          const previous = lib.sync!
+          const reconnect = vi.spyOn(previous, 'initServerConnection')
+          const changing = lib.setSyncServerUrl(pendingUrl, testServerSecret)
+          const cancelled = expect(changing).rejects.toThrow(
+            'Sync server change cancelled',
+          )
+          await pending.connected
+          // A second change must not orphan the first one's cancellation.
+          await expect(
+            lib.setSyncServerUrl(originalUrl, testServerSecret),
+          ).rejects.toThrow('already in progress')
+
+          if (stage === 'diagnosis') {
+            const diagnosis = vi
+              .spyOn(lib.sync!, 'diagnoseConnectionFailure')
+              .mockImplementation(
+                () =>
+                  new Promise<string>((resolve) => {
+                    finishDiagnosis = () => resolve('connection failed')
+                  }),
+              )
+            lib.dispatchTypedEvent(
+              FavaLibEvent.ConnectionToSyncServerStatusChanged,
+              new CustomEvent(
+                FavaLibEvent.ConnectionToSyncServerStatusChanged,
+                {
+                  detail: { newStatus: ConnectionStatus.FAILED },
+                },
+              ),
+            )
+            await vi.waitFor(() => expect(diagnosis).toHaveBeenCalledOnce())
+          }
+
+          lib.closeServerConnection()
+          await cancelled
+          // Let the HTTP probe finish after cancellation. Its result must not
+          // revive the old connection or persist the abandoned settings.
+          finishDiagnosis?.()
+          await Promise.resolve()
+          expect(lib.sync).toBe(previous)
+          expect(lib.sync?.webSocketConnected).toBe(false)
+          expect(reconnect).not.toHaveBeenCalled()
+          expect(save).toHaveBeenCalledOnce()
+        } finally {
+          finishDiagnosis?.()
+          lib.closeServerConnection()
+          original.close()
+          pending.close()
+        }
+      },
+    )
+
     it('should properly set server url and initialize sync manager', async () => {
       const newServerUrl = 'ws://newserver:1234'
       const server = new WS(newServerUrl, { jsonProtocol: true })

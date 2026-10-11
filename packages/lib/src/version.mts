@@ -61,11 +61,13 @@ export const STORAGE_VERSION = 2
  * artifacts with opposite obligations. A stored vault must open forever: a
  * bump there drags in a frozen fixture, a read path for the old version and a
  * migration, and getting it wrong costs a user their vault. An unlocked
- * session is memory-backed and lives for one process; it is never migrated,
- * and the right answer to one this build does not recognise is to refuse it
- * and ask for the password again. Tying them together would force a storage
- * bump to add a field to a throwaway blob, and would kill every live session
- * on every storage bump for no reason.
+ * session is a cache: in a browser it lives for one process, and where it is
+ * kept in a biometric-gated keystore (see
+ * PersistentStorageManager.exportUnlockedSession) it lives until the next lock.
+ * Either way it is never migrated, and the right answer to one this build does
+ * not recognise is to refuse it and ask for the password again. Tying them
+ * together would force a storage bump to add a field to a throwaway blob, and
+ * would kill every live session on every storage bump for no reason.
  *
  * Compared with !==, not <. An older blob means the process was upgraded under
  * a live session and a newer one means a downgrade; neither is a shape this

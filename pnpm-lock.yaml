@@ -110,6 +110,9 @@ catalogs:
     '@eslint/js':
       specifier: ^9.10.0
       version: 9.39.4
+    '@noble/hashes':
+      specifier: ^2.4.0
+      version: 2.4.0
     '@types/node':
       specifier: ^22.15.21
       version: 22.19.19
@@ -122,6 +125,9 @@ catalogs:
     '@zxcvbn-ts/core':
       specifier: ^3.0.4
       version: 3.0.4
+    esbuild:
+      specifier: ^0.28.2
+      version: 0.28.2
     eslint:
       specifier: ^9.10.0
       version: 9.39.4
@@ -342,13 +348,41 @@ importers:
         specifier: ^0.21.4
         version: 0.21.4(canvas@3.2.3)(esbuild@0.28.2)(eslint@9.39.4(jiti@2.7.0)(supports-color@7.2.0))(rolldown@1.2.7)(rollup@4.60.4)(typescript@5.9.3)(vite@8.2.2(@types/node@22.19.19)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.47.1)(tsx@4.23.13)(yaml@2.9.0))
 
+  packages/engine-jsc:
+    dependencies:
+      '@noble/ciphers':
+        specifier: ^2.4.0
+        version: 2.4.0
+      '@noble/hashes':
+        specifier: 'catalog:'
+        version: 2.4.0
+      core-js:
+        specifier: ^3.50.0
+        version: 3.50.0
+      favalib:
+        specifier: workspace:*
+        version: link:../lib
+    devDependencies:
+      '@types/ws':
+        specifier: ^8.18.1
+        version: 8.18.1
+      esbuild:
+        specifier: 'catalog:'
+        version: 0.28.2
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.7(@types/node@22.19.19)(@vitest/coverage-v8@4.1.7)(happy-dom@20.14.3(bufferutil@4.1.0))(vite@8.2.2(@types/node@22.19.19)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.47.1)(tsx@4.23.13)(yaml@2.9.0))
+      ws:
+        specifier: 'catalog:'
+        version: 8.20.1(bufferutil@4.1.0)
+
   packages/lib:
     dependencies:
       '@noble/curves':
         specifier: ^2.4.0
         version: 2.4.0
       '@noble/hashes':
-        specifier: ^2.4.0
+        specifier: 'catalog:'
         version: 2.4.0
       '@types/node':
         specifier: 'catalog:'
@@ -366,7 +400,7 @@ importers:
         specifier: ^3.2.3
         version: 3.2.3
       esbuild:
-        specifier: ^0.28.2
+        specifier: 'catalog:'
         version: 0.28.2
       hash-wasm:
         specifier: ^4.12.0
@@ -1483,6 +1517,10 @@ packages:
     resolution: {integrity: sha512-km9J3fomkGSLpImpelq0cMvLBrJ5eVlTzuWdG3Iy0laP6gU90MmHYjqhUhG32aYq0/0++r2TLuAA9xlnh4XU1g==}
     engines: {node: '>= 10'}
 
+  '@noble/ciphers@2.4.0':
+    resolution: {integrity: sha512-AnjFn0Jv92laAkvMrghlFZq4qQCIN/4DxFV/eooqtC2YTjB7kBeLMS2T9KJX4Dn+ZVXLOwK0lSgqDtx9gvxtiw==}
+    engines: {node: '>= 20.19.0'}
+
   '@noble/curves@2.4.0':
     resolution: {integrity: sha512-P4/62zrgfH33CneE3Dn4WhJVA22YUU0eR51wKIan4NVRvwsA0YnPTwWGpNbpuacSujmSFLvyzpyuR30+fbq2Ew==}
     engines: {node: '>= 20.19.0'}
@@ -2515,6 +2553,9 @@ packages:
 
   core-js-compat@3.49.0:
     resolution: {integrity: sha512-VQXt1jr9cBz03b331DFDCCP90b3fanciLkgiOoy8SBHy06gNf+vQ1A3WFLqG7I8TipYIKeYK9wxd0tUrvHcOZA==}
+
+  core-js@3.50.0:
+    resolution: {integrity: sha512-BRWgOLKkFeCgRudR6zrs8p9XJZcE14grzKMMssoYrk6krtuEZ7MTKPIY5RzOnqsEKIR9kst7wNzphttraT+Yqw==}
 
   cross-spawn@7.0.6:
     resolution: {integrity: sha512-uV2QOWP2nWzsy2aMp8aRibhi9dlzF5Hgh5SHaB9OiTGEyDTiJJyx0uy51QXdyWbtAHNua4XJzUKca3OzKUd3vA==}
@@ -6075,6 +6116,8 @@ snapshots:
       '@napi-rs/keyring-win32-ia32-msvc': 2.1.0
       '@napi-rs/keyring-win32-x64-msvc': 2.1.0
 
+  '@noble/ciphers@2.4.0': {}
+
   '@noble/curves@2.4.0':
     dependencies:
       '@noble/hashes': 2.4.0
@@ -7130,6 +7173,8 @@ snapshots:
   core-js-compat@3.49.0:
     dependencies:
       browserslist: 4.28.9
+
+  core-js@3.50.0: {}
 
   cross-spawn@7.0.6:
     dependencies:

@@ -12,8 +12,9 @@ browser PWA and a browser extension, in one pnpm workspace.
 | `packages/app-cli` | `favacli` | Clipanion CLI; keeps secrets in the OS keychain through `@napi-rs/keyring` |
 | `packages/app-browser` | `favabrowser` | SolidJS + Vite PWA |
 | `packages/app-extension` | `favabrowserext` | WXT + React MV3 browser extension |
+| `packages/engine-jsc` | `favaenginejsc` | favalib bundled for a bare JavaScriptCore `JSContext`, plus the `FavaEngine` Swift package that hosts it (iOS); see its AGENTS.md |
 
-Build order is `lib -> {server, app-cli, app-browser, app-extension}`.
+Build order is `lib -> {server, app-cli, app-browser, app-extension, engine-jsc}`.
 `packages/deps.mk`, included by every package Makefile, encodes it as rules that
 rebuild an upstream `build/` when it is missing or older than its sources, so
 building or linting a leaf brings the whole chain up to date. A package that
@@ -40,11 +41,15 @@ and only `sourceInfo` is the repo root.
 the qr-*reading* path, which that client does not take. `packages/lib`'s own
 tests used to define a fake `globalThis.window`, which hid exactly this for as
 long as it existed; they no longer do, so a regression fails the suite.
+`favaenginejsc` holds it to a stricter standard still: it runs the browser
+providers in a JSContext, which has no web platform at all, and its tests run
+the bundle in a context stripped to ECMAScript (and, where a `jsc` shell is
+available, on JavaScriptCore with the JIT off).
 
-`favalib` and `favacli` are published to npm; `favaserver`, `favabrowser` and
-`favabrowserext` are marked `private`. A published package must have no
-`workspace:*` dependencies — `pnpm publish` rewrites those to versions that
-were never published, and `npm i favalib` then fails to resolve. That is why
+`favalib` and `favacli` are published to npm; `favaserver`, `favabrowser`,
+`favabrowserext` and `favaenginejsc` are marked `private`. A published package
+must have no `workspace:*` dependencies — `pnpm publish` rewrites those to
+versions that were never published, and `npm i favalib` then fails to resolve. That is why
 the shared branded types and the sync wire protocol live in `favalib` and
 `favaserver` imports them back from it, rather than the other way round. For
 the same reason, anything appearing in `packages/lib/build/**/*.d.mts` has to

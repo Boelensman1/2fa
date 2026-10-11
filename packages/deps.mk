@@ -11,7 +11,8 @@
 # errors surface as unresolved ("error typed") values in the *consuming*
 # package.
 #
-# Build order is lib -> {server, app-cli, app-browser, app-extension}. Each
+# Build order is lib -> {server, app-cli, app-browser, app-extension,
+# engine-jsc}. Each
 # rule takes the upstream build directory as a prerequisite as well as its own
 # sources, so staleness propagates down the whole chain: touching
 # packages/lib/src rebuilds server and the apps too.

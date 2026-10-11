@@ -88,6 +88,15 @@ export default [
     },
   },
   {
+    // The polyfills stand in for platform APIs, so they throw what the platform
+    // throws: plain Errors named after DOMException types. And the tests drive
+    // node APIs (ws, node:crypto) that hand back Buffers.
+    files: ['packages/engine-jsc/**'],
+    rules: {
+      'no-restricted-globals': ['off'],
+    },
+  },
+  {
     files: ['**/test/**'],
     rules: {
       'no-restricted-globals': ['error', ...restrictedGlobals.filter(g => g.name !== 'Error')],

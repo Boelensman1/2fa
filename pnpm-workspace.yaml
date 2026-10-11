@@ -35,4 +35,7 @@ confirmModulesPurge: false
 allowBuilds:
   bufferutil: true
   canvas: true
+  # Its postinstall only prints a funding banner; favaenginejsc needs nothing
+  # built.
+  core-js: false
   esbuild: true

@@ -65,6 +65,12 @@ engine, `unlock(lockedRepresentation:session:connectToSyncServer: false)`,
 `entries(forURL:)` for the service identifier, and complete the request with
 the chosen entry's `token?.otp`. No password, no argon2, no network.
 
+The extension never asks for the password. Without a session (none saved,
+biometrics changed, the app locked) or if `unlock(session:)` fails, delete the
+session and tell the user to open the app and unlock there; the app saves a
+fresh session. A password unlock runs argon2 at 64 MiB, too much to risk
+under the extension's memory limit.
+
 ## Notes
 
 - Every engine call runs on the engine's own thread, in order. Keep one engine

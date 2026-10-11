@@ -113,6 +113,10 @@ what lets the AutoFill extension produce a code without the password and
 without argon2 (~20 ms). The app's side of the contract: delete it on lock,
 replace it on `passwordChanged`, delete it whenever `unlock(session:)` fails.
 
+The extension only ever unlocks from the session. Without one it sends the user
+to the app instead of asking for the password: a password unlock runs argon2
+at 64 MiB, which we don't risk under the extension's memory limit.
+
 ## Tests
 
 - `tests/polyfills.test.mts`: every polyfill against node's native API.

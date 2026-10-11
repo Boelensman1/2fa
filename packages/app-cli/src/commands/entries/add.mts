@@ -1,5 +1,10 @@
 import { Option, UsageError } from 'clipanion'
-import { URL_MATCHER_TYPES, parseMatcherSpec } from 'favalib'
+import {
+  SUPPORTED_ALGORITHMS,
+  URL_MATCHER_TYPES,
+  parseMatcherSpec,
+  parseOtpAlgorithm,
+} from 'favalib'
 import type { UrlMatcher } from 'favalib'
 
 import BaseCommand from '../../BaseCommand.mjs'
@@ -43,7 +48,9 @@ class EntriesAddCommand extends BaseCommand {
   secret = Option.String('--secret', { required: true })
   period = Option.String('--period', '30')
   digits = Option.String('--digits', '6')
-  algorithm = Option.String('--algorithm', 'SHA-1')
+  algorithm = Option.String('--algorithm', 'SHA-1', {
+    description: `The hash algorithm: ${SUPPORTED_ALGORITHMS.join(', ')}. SHA1, SHA256 and SHA512 work too.`,
+  })
   url = Option.String('--url', {
     description: 'The canonical login url for this entry',
   })
@@ -65,6 +72,13 @@ class EntriesAddCommand extends BaseCommand {
       return matcher
     })
 
+    const algorithm = parseOtpAlgorithm(this.algorithm)
+    if (!algorithm) {
+      throw new UsageError(
+        `Invalid --algorithm "${this.algorithm}". Expected one of ${SUPPORTED_ALGORITHMS.join(', ')}.`,
+      )
+    }
+
     await this.favaLib.vault.addEntry({
       name: this.name,
       issuer: this.issuer,
@@ -76,7 +90,7 @@ class EntriesAddCommand extends BaseCommand {
         secret: this.secret,
         period: Number.parseInt(this.period, 10),
         digits: Number.parseInt(this.digits, 10),
-        algorithm: this.algorithm,
+        algorithm,
       },
     })
     this.output('Entry added!')

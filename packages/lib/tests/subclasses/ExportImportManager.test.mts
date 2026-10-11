@@ -46,10 +46,10 @@ describe('ExportImportManager', () => {
       )
       expect(result.split('\n')[0]).toBe('# fava-export-version: 1')
       expect(result).toContain(
-        'otpauth://totp/Test%20Issuer:Test%20TOTP?secret=TESTSECRET&issuer=Test%20Issuer&algorithm=SHA-1&digits=6&period=30',
+        'otpauth://totp/Test%20Issuer:Test%20TOTP?secret=TESTSECRET&issuer=Test%20Issuer&algorithm=SHA1&digits=6&period=30',
       )
       expect(result).toContain(
-        'otpauth://totp/Another%20Issuer:Another%20TOTP?secret=TESTSECRET&issuer=Another%20Issuer&algorithm=SHA-1&digits=6&period=30',
+        'otpauth://totp/Another%20Issuer:Another%20TOTP?secret=TESTSECRET&issuer=Another%20Issuer&algorithm=SHA1&digits=6&period=30',
       )
     })
 
@@ -90,10 +90,10 @@ describe('ExportImportManager', () => {
 
       expect(decrypted.data).toContain('# fava-export-version: 1\n')
       expect(decrypted.data).toContain(
-        'otpauth://totp/Test%20Issuer:Test%20TOTP?secret=TESTSECRET&issuer=Test%20Issuer&algorithm=SHA-1&digits=6&period=30',
+        'otpauth://totp/Test%20Issuer:Test%20TOTP?secret=TESTSECRET&issuer=Test%20Issuer&algorithm=SHA1&digits=6&period=30',
       )
       expect(decrypted.data).toContain(
-        'otpauth://totp/Another%20Issuer:Another%20TOTP?secret=TESTSECRET&issuer=Another%20Issuer&algorithm=SHA-1&digits=6&period=30',
+        'otpauth://totp/Another%20Issuer:Another%20TOTP?secret=TESTSECRET&issuer=Another%20Issuer&algorithm=SHA1&digits=6&period=30',
       )
     })
 
@@ -313,7 +313,7 @@ describe('ExportImportManager', () => {
 
     it('should import and preserve match properties from URI', async () => {
       const uriWithMatchers =
-        'otpauth://totp/GitHub:GitHub%20TOTP?secret=GITHUBSECRET&issuer=GitHub&algorithm=SHA-1&digits=6&period=30' +
+        'otpauth://totp/GitHub:GitHub%20TOTP?secret=GITHUBSECRET&issuer=GitHub&algorithm=SHA1&digits=6&period=30' +
         '&favaMatcher=BaseDomain:github.com' +
         '&favaMatcher=UrlPrefix:https%3A%2F%2Fgithub.com%2Flogin' +
         '&favaUrl=https%3A%2F%2Fgithub.com%2Flogin' +
@@ -339,7 +339,7 @@ describe('ExportImportManager', () => {
 
     it('should drop an unusable matcher but keep the secret', async () => {
       const uriWithBadMatcher =
-        'otpauth://totp/GitHub:GitHub%20TOTP?secret=GITHUBSECRET&issuer=GitHub&algorithm=SHA-1&digits=6&period=30' +
+        'otpauth://totp/GitHub:GitHub%20TOTP?secret=GITHUBSECRET&issuer=GitHub&algorithm=SHA1&digits=6&period=30' +
         '&favaMatcher=NotAType:github.com' +
         '&favaMatcher=Regex:(a%2B)%2B' +
         '&favaMatcher=Host:github.com'
@@ -441,11 +441,37 @@ describe('ExportImportManager', () => {
 
       const parsed = new URL(uri)
       expect(parsed.searchParams.get('secret')).toBe('TESTSECRET')
-      expect(parsed.searchParams.get('algorithm')).toBe('SHA-1')
+      expect(parsed.searchParams.get('algorithm')).toBe('SHA1')
       expect(parsed.searchParams.get('digits')).toBe('6')
       expect(parsed.searchParams.get('period')).toBe('30')
       expect(parsed.searchParams.get('issuer')).toBe('Matcher Issuer')
     })
+
+    it.each([
+      ['SHA-256', 'SHA256'],
+      ['SHA-512', 'SHA512'],
+    ] as const)(
+      'should export %s as algorithm=%s and import it back',
+      async (algorithm, spelling) => {
+        await clearEntries(favaLib)
+        await favaLib.vault.addEntry({
+          ...newTotpEntry,
+          payload: { ...newTotpEntry.payload, algorithm },
+        })
+        const uri = (
+          await favaLib.exportImport.exportEntries('text', undefined, true)
+        ).split('\n')[1]
+        expect(new URL(uri).searchParams.get('algorithm')).toBe(spelling)
+
+        await clearEntries(favaLib)
+        const entryId = await favaLib.exportImport.importFromUri(uri)
+        // @ts-expect-error Accessing a private property for testing.
+        const entry = favaLib.mediator
+          .getComponent('vaultDataManager')
+          .getFullEntry(entryId)
+        expect(entry.payload.algorithm).toBe(algorithm)
+      },
+    )
   })
 
   describe('importFromTextFile', () => {
@@ -479,6 +505,41 @@ describe('ExportImportManager', () => {
         issuer: 'Another Issuer',
         type: 'TOTP',
       })
+    })
+
+    it.each([
+      ['SHA1', 'SHA-1'],
+      ['sha-1', 'SHA-1'],
+      ['SHA256', 'SHA-256'],
+      ['SHA-256', 'SHA-256'],
+      ['SHA512', 'SHA-512'],
+      ['sha-512', 'SHA-512'],
+    ])('should accept algorithm=%s as %s', async (spelling, expected) => {
+      const fileContents = `otpauth://totp/Example:Account?secret=JBSWY3DPEHPK3PXP&issuer=Example&algorithm=${spelling}`
+
+      const [result] =
+        await favaLib.exportImport.importFromTextFile(fileContents)
+
+      expect(result.error).toBeNull()
+      expect(result.entryId).toBeTruthy()
+      // @ts-expect-error Accessing a private property for testing.
+      const entry = favaLib.mediator
+        .getComponent('vaultDataManager')
+        .getFullEntry(result.entryId!)
+      expect(entry.payload.algorithm).toBe(expected)
+      const token = await favaLib.vault.generateTokenForEntry(result.entryId!)
+      expect(token.otp).toHaveLength(6)
+    })
+
+    it('should reject an unknown algorithm', async () => {
+      const fileContents =
+        'otpauth://totp/Example:Account?secret=JBSWY3DPEHPK3PXP&issuer=Example&algorithm=MD5'
+
+      const [result] =
+        await favaLib.exportImport.importFromTextFile(fileContents)
+
+      expect(result.entryId).toBeNull()
+      expect(result.error).toBeTruthy()
     })
 
     it('should treat the export version as informational', async () => {
@@ -597,9 +658,10 @@ describe('ExportImportManager', () => {
       expect(result).toHaveLength(1)
       expect(result[0].entryId).toBeTruthy()
       expect(result[0].error).toBeNull()
+      // Older exports wrote SHA-1; exports now use the key uri spelling.
       expect(
         await favaLib.exportImport.exportEntries('text', undefined, true),
-      ).toContain(contents)
+      ).toContain(contents.replace('algorithm=SHA-1', 'algorithm=SHA1'))
     })
 
     it('should throw an error when trying to decrypt with an incorrect password', async () => {

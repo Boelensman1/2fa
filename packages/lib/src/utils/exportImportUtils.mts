@@ -1,6 +1,6 @@
 import type { NewEntry, UrlMatcher } from '../interfaces/Entry.mjs'
 import type Entry from '../interfaces/Entry.mjs'
-import type { SupportedAlgorithmsType } from './constants.mjs'
+import { formatOtpAlgorithm, parseOtpAlgorithm } from './constants.mjs'
 import type { EntryId } from '../interfaces/Entry.mjs'
 import type { QrCodeLib } from '../interfaces/QrCodeLib.mjs'
 import type { OpenPgpLib } from '../interfaces/OpenPgpLib.mjs'
@@ -25,29 +25,6 @@ const MAX_EXPORTED_MATCHERS = 4
 
 /** The longest single encoded matcher to write into an exported uri. */
 const MAX_EXPORTED_MATCHER_LENGTH = 200
-
-/**
- * Determines the hashing algorithm based on the input string.
- * @param alg - The algorithm string to parse.
- * @returns The standardized algorithm name or null if unsupported.
- */
-const parseOtpAlgorithm = (
-  alg: string | null,
-): null | SupportedAlgorithmsType => {
-  if (!alg) {
-    return 'SHA-1' // default algorithm
-  }
-  switch (alg.toLowerCase()) {
-    case 'sha1':
-    case 'sha-1':
-    case 'algorithm.sha1':
-      return 'SHA-1'
-    case 'sha-256':
-      return 'SHA-256'
-    default:
-      return null
-  }
-}
 
 /**
  * Parses an OTP URI and extracts the relevant information to create a new entry.
@@ -82,7 +59,9 @@ export const parseOtpUri = (parseUrl: UrlParser, otpUri: string): NewEntry => {
     decodeURIComponent(path[0]),
   ).split(splitOn)
   const secret = searchParams.get('secret')
-  const algorithm = parseOtpAlgorithm(searchParams.get('algorithm'))
+  // An absent or empty algorithm means SHA-1, the key uri format's default.
+  const algorithmParam = searchParams.get('algorithm')
+  const algorithm = algorithmParam ? parseOtpAlgorithm(algorithmParam) : 'SHA-1'
   const digits = parseInt(searchParams.get('digits') ?? '6', 10)
   const period = parseInt(searchParams.get('period') ?? '30', 10)
   const matchers = searchParams
@@ -108,7 +87,7 @@ export const parseOtpUri = (parseUrl: UrlParser, otpUri: string): NewEntry => {
   }
   if (!algorithm) {
     throw new ExportImportError(
-      `Unsupported algorithm "${searchParams.get('algorithm')}"`,
+      `Unsupported algorithm "${String(algorithmParam)}"`,
     )
   }
 
@@ -147,7 +126,7 @@ export const generateOtpUrl = (entry: Entry) => {
   // Note: Using manual encodeURIComponent instead of URLSearchParams because
   // URLSearchParams encodes spaces as '+' while encodeURIComponent uses '%20'.
   // OTP clients expect standard percent encoding (%20) for better compatibility.
-  let url = `otpauth://totp/${encodeURIComponent(issuer)}:${encodeURIComponent(name)}?secret=${secret}&issuer=${encodeURIComponent(issuer)}&algorithm=${algorithm}&digits=${digits}&period=${period}`
+  let url = `otpauth://totp/${encodeURIComponent(issuer)}:${encodeURIComponent(name)}?secret=${secret}&issuer=${encodeURIComponent(issuer)}&algorithm=${formatOtpAlgorithm(algorithm)}&digits=${digits}&period=${period}`
 
   // Add the matching properties if they exist. Other authenticators ignore
   // query parameters they do not know, so these are safe to carry along.

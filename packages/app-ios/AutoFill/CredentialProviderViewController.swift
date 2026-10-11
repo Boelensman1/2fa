@@ -8,6 +8,10 @@ import SwiftUI
 /// the user to open the app.
 final class CredentialProviderViewController: ASCredentialProviderViewController {
     private let model = AutoFillModel()
+    /// iOS asks for codes before the view is on screen, and Face ID cannot be
+    /// shown until it is: the request waits here until `viewDidAppear`.
+    private var pending: (() -> Void)?
+    private var appeared = false
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -23,12 +27,32 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         host.didMove(toParent: self)
     }
 
-    override func prepareOneTimeCodeCredentialList(for serviceIdentifiers: [ASCredentialServiceIdentifier]) {
-        Task { await model.load(for: serviceIdentifiers) }
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        appeared = true
+        pending?()
+        pending = nil
     }
 
+    override func prepareOneTimeCodeCredentialList(for serviceIdentifiers: [ASCredentialServiceIdentifier]) {
+        whenOnScreen { [model] in Task { await model.load(for: serviceIdentifiers) } }
+    }
+
+    /// A suggestion the keyboard offered from the identities the app
+    /// registered: fill that entry's code straight after Face ID.
     override func prepareInterfaceToProvideCredential(for credentialRequest: any ASCredentialRequest) {
-        Task { await model.load(for: [credentialRequest.credentialIdentity.serviceIdentifier]) }
+        let identity = credentialRequest.credentialIdentity
+        whenOnScreen { [weak self, model] in
+            Task {
+                if let code = await model.load(for: [identity.serviceIdentifier], picking: identity.recordIdentifier) {
+                    self?.complete(with: code)
+                }
+            }
+        }
+    }
+
+    private func whenOnScreen(_ work: @escaping () -> Void) {
+        if appeared { work() } else { pending = work }
     }
 
     /// Reading the session needs Face ID, which needs the extension's UI.
@@ -53,7 +77,8 @@ final class AutoFillModel {
     enum State {
         case loading
         /// No session, or it no longer works: the app has to unlock first.
-        case needsApp
+        /// `reason` says which, small, for when it should have worked.
+        case needsApp(reason: String)
         case ready(matches: [Entry], others: [Entry])
         case failed(String)
     }
@@ -61,19 +86,34 @@ final class AutoFillModel {
     private(set) var state = State.loading
     private var engine: FavaEngine?
 
-    func load(for serviceIdentifiers: [ASCredentialServiceIdentifier]) async {
-        let session: String?
+    /// - Parameter entryId: The entry the user already chose. When it is
+    ///   still there, its code is returned instead of showing the list.
+    @discardableResult
+    func load(for serviceIdentifiers: [ASCredentialServiceIdentifier], picking entryId: String? = nil) async -> String? {
+        let session: String
+        let locked: String
         do {
-            session = try await SharedStorage.sessions.load(reason: "Fill in a code")
+            guard let stored = try await SharedStorage.sessions.load(reason: "Fill in a code") else {
+                state = .needsApp(reason: "No saved session.")
+                return nil
+            }
+            session = stored
         } catch UnlockedSessionStore.Failure.cancelled {
-            state = .needsApp
-            return
+            state = .needsApp(reason: "Face ID was cancelled.")
+            return nil
         } catch {
-            session = nil
+            state = .needsApp(reason: "Reading the saved session failed: \(error).")
+            return nil
         }
-        guard let session, let locked = try? SharedStorage.readVault() else {
-            state = .needsApp
-            return
+        do {
+            guard let vault = try SharedStorage.readVault() else {
+                state = .needsApp(reason: "No vault file.")
+                return nil
+            }
+            locked = vault
+        } catch {
+            state = .needsApp(reason: "Reading the vault failed: \(error.localizedDescription)")
+            return nil
         }
 
         do {
@@ -85,8 +125,11 @@ final class AutoFillModel {
                 // The contract: a session that failed once is never tried again.
                 try? SharedStorage.sessions.delete()
                 close()
-                state = .needsApp
-                return
+                state = .needsApp(reason: "The saved session did not open the vault: \((error as? FavaEngineError)?.message ?? error.localizedDescription)")
+                return nil
+            }
+            if let entryId, let otp = try? await engine.token(for: entryId).otp {
+                return otp
             }
             var matches: [Entry] = []
             for identifier in serviceIdentifiers {
@@ -99,6 +142,7 @@ final class AutoFillModel {
             close()
             state = .failed((error as? FavaEngineError)?.message ?? error.localizedDescription)
         }
+        return nil
     }
 
     func close() {
@@ -135,12 +179,14 @@ struct AutoFillView: View {
         switch model.state {
         case .loading:
             ProgressView()
-        case .needsApp:
-            ContentUnavailableView(
-                "Open Fava to unlock",
-                systemImage: "lock",
-                description: Text("Unlock Fava with your password, with \"Unlock with Face ID\" turned on in its settings. Then try again.")
-            )
+        case .needsApp(let reason):
+            ContentUnavailableView {
+                Label("Open Fava to unlock", systemImage: "lock")
+            } description: {
+                Text("Unlock Fava with your password, with \"Unlock with Face ID\" turned on in its settings. Then try again.")
+            } actions: {
+                Text(reason).font(.caption).foregroundStyle(.secondary)
+            }
         case .failed(let message):
             ContentUnavailableView("Something went wrong", systemImage: "exclamationmark.triangle", description: Text(message))
         case .ready(let matches, let others):

@@ -122,6 +122,7 @@ struct SettingsView: View {
     @Environment(VaultModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     @State private var error: String?
+    @State private var confirmingReset = false
 
     var body: some View {
         NavigationStack {
@@ -142,16 +143,50 @@ struct SettingsView: View {
                     Text(error).foregroundStyle(.red)
                 }
                 Section {
+                    NavigationLink {
+                        SyncSettingsView()
+                    } label: {
+                        LabeledContent("Sync", value: syncSummary)
+                    }
+                }
+                Section {
                     Button("Lock vault", role: .destructive) {
                         dismiss()
                         Task { await model.lock() }
                     }
+                }
+                Section {
+                    Button("Reset Fava", role: .destructive) { confirmingReset = true }
+                } footer: {
+                    Text("Deletes the vault on this device, to start fresh or join a vault from another device.")
                 }
             }
             .navigationTitle("Settings")
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
             }
+            .confirmationDialog("Delete the vault on this device?", isPresented: $confirmingReset, titleVisibility: .visible) {
+                Button("Delete vault", role: .destructive) {
+                    dismiss()
+                    Task { await model.reset() }
+                }
+            } message: {
+                Text(resetWarning)
+            }
         }
+    }
+
+    private var resetWarning: String {
+        let count = model.entries.count
+        let codes = count == 1 ? "1 code" : "\(count) codes"
+        if model.syncDevices.isEmpty {
+            return "Its \(codes) will be gone for good. This cannot be undone."
+        }
+        return "Its \(codes) stay on your other devices, which will still list this one until you remove it there. This cannot be undone."
+    }
+
+    private var syncSummary: String {
+        guard let status = model.syncStatus, status.syncConfigured else { return "Off" }
+        return status.syncConnected ? "Connected" : "Not connected"
     }
 }

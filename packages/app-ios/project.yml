@@ -45,6 +45,11 @@ targets:
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
         NSFaceIDUsageDescription: Unlock your vault with Face ID.
+        # A sync server on the local network, e.g. a dev server over ws://.
+        # Servers elsewhere need wss://.
+        NSLocalNetworkUsageDescription: Connect to a sync server on your local network.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
         FavaAppGroup: group.nl.appeal.fava
         FavaKeychainGroup: $(AppIdentifierPrefix)nl.appeal.fava.shared
 

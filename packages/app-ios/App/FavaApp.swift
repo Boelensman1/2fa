@@ -33,7 +33,11 @@ struct RootView: View {
         case .locked:
             UnlockView()
         case .unlocked:
-            EntriesView()
+            if model.isJoining {
+                JoinVaultView()
+            } else {
+                EntriesView()
+            }
         case .failed(let message):
             ContentUnavailableView("Fava could not start", systemImage: "exclamationmark.triangle", description: Text(message))
         }

@@ -57,7 +57,40 @@ at 64 MiB, too much to risk under the extension's memory limit. It does not
 connect to the sync server. Enable it on the device under Settings > General >
 AutoFill & Passwords.
 
+iOS suggests a provider on a one-time code field only for identities the
+provider registered, so the app registers one per entry and domain
+(`CredentialIdentities`, from the entry's matchers; Regex matchers and entries
+without matchers give none) whenever it refreshes the entries, and removes them
+all on reset. Locking leaves them: picking one still takes Face ID. A picked
+suggestion carries the entry id, and the extension fills that code without
+showing its list. iOS keeps the domains and labels outside the vault's
+encryption.
+
+## Sync
+
+Settings > Sync takes the server address and its shared secret (one setting,
+stored in the vault), lists the paired devices, and "Add a device" starts
+pairing as the device that has the vault, showing the code as text and as a QR
+code.
+
+Joining another device's vault starts on the first-run screen ("Join a vault
+from another device"): it creates a placeholder vault under a password for this
+device, then asks for the server and the pairing code. Pairing replaces the
+vault's contents but not this device's keys, so the password stays per device
+and a saved session keeps working. `isJoining` is persisted, so a relaunch
+mid-join comes back to the join screen. favalib fires
+`connectToExistingVaultFinished` on success and on a cancel alike; the model
+tells them apart by whether the vault now lists another device. "Start over"
+deletes the placeholder vault. Joining is offered only on first run, so it
+never replaces a vault with codes in it: to join with a vault already there,
+Settings > "Reset Fava" deletes it first (`VaultModel.reset()`, behind a
+confirmation that says how many codes go and whether other devices have them).
+
+`ws://` works only to servers on the local network (`NSAllowsLocalNetworking`);
+anything else needs `wss://`. Going to the background shuts the engine down,
+which also drops a pairing in progress.
+
 ## Not there yet
 
-Sync (server, pairing), QR scanning, editing entries, changing the password,
-import/export. The engine supports all of them.
+QR scanning (joining takes the text code), editing entries, changing the
+password, import/export. The engine supports all of them.

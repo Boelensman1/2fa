@@ -36,6 +36,12 @@ enum SharedStorage {
         try Data(locked.utf8).write(to: try vaultURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
     }
 
+    static func deleteVault() throws {
+        let url = try vaultURL
+        guard FileManager.default.fileExists(atPath: url.path) else { return }
+        try FileManager.default.removeItem(at: url)
+    }
+
     private static func infoString(_ key: String) -> String {
         guard let value = Bundle.main.object(forInfoDictionaryKey: key) as? String, !value.isEmpty else {
             fatalError("\(key) is missing from Info.plist")

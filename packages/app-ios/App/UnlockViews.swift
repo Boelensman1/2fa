@@ -7,6 +7,9 @@ struct CreateVaultView: View {
     @State private var confirmation = ""
     @State private var error: String?
     @State private var working = false
+    /// Joining another device's vault: this device still gets a password of
+    /// its own, since the vault is encrypted per device.
+    @State private var joining = false
 
     var body: some View {
         NavigationStack {
@@ -17,15 +20,24 @@ struct CreateVaultView: View {
                     SecureField("Repeat password", text: $confirmation)
                         .textContentType(.newPassword)
                 } footer: {
-                    Text("The password encrypts your vault. It cannot be recovered if you forget it.")
+                    if joining {
+                        Text("Choose a password for this device. It does not have to match your other devices'. It cannot be recovered if you forget it.")
+                    } else {
+                        Text("The password encrypts your vault. It cannot be recovered if you forget it.")
+                    }
                 }
                 if let error {
                     Text(error).foregroundStyle(.red)
                 }
-                Button("Create vault") { Task { await create() } }
+                Button(joining ? "Continue" : "Create vault") { Task { await create() } }
                     .disabled(password.isEmpty || password != confirmation || working)
+                Section {
+                    Button(joining ? "Create a new vault instead" : "Join a vault from another device") {
+                        joining.toggle()
+                    }
+                }
             }
-            .navigationTitle("New vault")
+            .navigationTitle(joining ? "Join a vault" : "New vault")
         }
     }
 
@@ -38,7 +50,7 @@ struct CreateVaultView: View {
                 error = strength.feedback.warning ?? strength.feedback.suggestions.first ?? "That password is too easy to guess."
                 return
             }
-            try await model.create(password: password)
+            try await model.create(password: password, joining: joining)
         } catch {
             self.error = (error as? FavaEngineError)?.message ?? error.localizedDescription
         }

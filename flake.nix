@@ -185,6 +185,8 @@
             chromium
             libuuid
             glib
+          ] ++ pkgs.lib.optionals pkgs.stdenv.isDarwin [
+            xcodegen # packages/app-ios generates its Xcode project
           ];
           # On Darwin the default stdenv now bundles the Apple SDK (Foundation
           # et al.), so the old `darwin.apple_sdk.frameworks.*` inputs — removed

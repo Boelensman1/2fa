@@ -1,7 +1,7 @@
 # 2fa
 
 A 2FA (TOTP) client suite: a core library, a WebSocket sync server, a CLI, a
-browser PWA and a browser extension, in one pnpm workspace.
+browser PWA, a browser extension and an iOS app, in one pnpm workspace.
 
 ## Layout
 
@@ -13,8 +13,10 @@ browser PWA and a browser extension, in one pnpm workspace.
 | `packages/app-browser` | `favabrowser` | SolidJS + Vite PWA |
 | `packages/app-extension` | `favabrowserext` | WXT + React MV3 browser extension |
 | `packages/engine-jsc` | `favaenginejsc` | favalib bundled for a bare JavaScriptCore `JSContext`, plus the `FavaEngine` Swift package that hosts it (iOS); see its AGENTS.md |
+| `packages/app-ios` | (none) | SwiftUI iOS app and AutoFill extension over `FavaEngine`; an XcodeGen project, macOS only (its targets are no-ops elsewhere); see its AGENTS.md |
 
-Build order is `lib -> {server, app-cli, app-browser, app-extension, engine-jsc}`.
+Build order is `lib -> {server, app-cli, app-browser, app-extension, engine-jsc}`,
+then `engine-jsc -> app-ios`.
 `packages/deps.mk`, included by every package Makefile, encodes it as rules that
 rebuild an upstream `build/` when it is missing or older than its sources, so
 building or linting a leaf brings the whole chain up to date. A package that

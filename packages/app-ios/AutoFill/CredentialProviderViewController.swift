@@ -162,6 +162,7 @@ struct AutoFillView: View {
     let model: AutoFillModel
     let onPick: (String) -> Void
     let onCancel: () -> Void
+    @State private var search = ""
 
     var body: some View {
         NavigationStack {
@@ -189,7 +190,9 @@ struct AutoFillView: View {
             }
         case .failed(let message):
             ContentUnavailableView("Something went wrong", systemImage: "exclamationmark.triangle", description: Text(message))
-        case .ready(let matches, let others):
+        case .ready(let allMatches, let allOthers):
+            let matches = allMatches.filter { $0.matches(search: search) }
+            let others = allOthers.filter { $0.matches(search: search) }
             List {
                 if !matches.isEmpty {
                     Section("For this site") { rows(matches) }
@@ -199,10 +202,13 @@ struct AutoFillView: View {
                 }
             }
             .overlay {
-                if matches.isEmpty && others.isEmpty {
+                if allMatches.isEmpty && allOthers.isEmpty {
                     ContentUnavailableView("No codes", systemImage: "key")
+                } else if matches.isEmpty && others.isEmpty {
+                    ContentUnavailableView.search(text: search)
                 }
             }
+            .searchable(text: $search, prompt: "Name or issuer")
         }
     }
 

@@ -6,15 +6,21 @@ struct EntriesView: View {
     @Environment(VaultModel.self) private var model
     @State private var adding = false
     @State private var showingSettings = false
+    @State private var search = ""
+
+    private var shownEntries: [Entry] {
+        model.entries.filter { $0.matches(search: search) }
+    }
 
     var body: some View {
         NavigationStack {
             List {
-                ForEach(model.entries) { entry in
+                ForEach(shownEntries) { entry in
                     EntryRow(entry: entry)
                 }
                 .onDelete { offsets in
-                    let doomed = offsets.map { model.entries[$0] }
+                    let shown = shownEntries
+                    let doomed = offsets.map { shown[$0] }
                     Task {
                         for entry in doomed { try? await model.delete(entry) }
                     }
@@ -23,9 +29,12 @@ struct EntriesView: View {
             .overlay {
                 if model.entries.isEmpty {
                     ContentUnavailableView("No codes yet", systemImage: "key", description: Text("Add one with the + button."))
+                } else if shownEntries.isEmpty {
+                    ContentUnavailableView.search(text: search)
                 }
             }
             .navigationTitle("Codes")
+            .searchable(text: $search, prompt: "Name or issuer")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Settings", systemImage: "gear") { showingSettings = true }

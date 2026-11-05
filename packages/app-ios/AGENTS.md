@@ -22,12 +22,12 @@ overwritten). XcodeGen comes from the root flake's dev shell on macOS.
 
 ## Layout
 
-| Path        | What                                                                                                       |
-| ----------- | ---------------------------------------------------------------------------------------------------------- |
-| `Shared/`   | Compiled into both targets: the app group, the Keychain access group, the vault file and the session store |
-| `App/`      | The app. `VaultModel` owns the one engine and its lifecycle                                                |
-| `AutoFill/` | The credential provider extension, one-time codes only                                                     |
-| `Tests/`    | Unit tests hosted by the app, so they run with its entitlements                                            |
+| Path        | What                                                                                                                     |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `Shared/`   | Compiled into both targets: the app group, the Keychain access group, the vault file, the session store and entry search |
+| `App/`      | The app. `VaultModel` owns the one engine and its lifecycle                                                              |
+| `AutoFill/` | The credential provider extension, one-time codes only                                                                   |
+| `Tests/`    | Unit tests hosted by the app, so they run with its entitlements                                                          |
 
 ## Identifiers
 

@@ -10,7 +10,8 @@ import SwiftUI
 struct AutoFillSettingsView: View {
     @Environment(VaultModel.self) private var model
     @State private var enabled: Bool?
-    @State private var domains: [String] = []
+    @State private var readBack: CredentialIdentities.ReadBack?
+    private var domains: [String] { readBack?.all ?? [] }
     @State private var status = CredentialIdentities.status
     @State private var working = false
 
@@ -33,7 +34,11 @@ struct AutoFillSettingsView: View {
             Section {
                 LabeledContent("Codes with a website", value: "\(withWebsite) of \(model.entries.count)")
                 LabeledContent("Last registered", value: statusText)
-                LabeledContent("Sites iOS reports", value: "\(domains.count)")
+                // Asked three ways, because registering succeeds while the
+                // plain read-back came back empty.
+                LabeledContent("iOS reports, any type", value: readBack.map { "\($0.all.count)" } ?? "…")
+                LabeledContent("iOS reports, code identities", value: readBack.map { "\($0.oneTimeCodes.count)" } ?? "…")
+                LabeledContent("iOS finds by name", value: readBack.map { "\($0.foundByName) of \($0.asked)" } ?? "…")
                 Button("Register again") { Task { await register() } }
                     .disabled(working || model.state != .unlocked)
             } footer: {
@@ -72,7 +77,7 @@ struct AutoFillSettingsView: View {
 
     private func reload() async {
         enabled = await CredentialIdentities.isEnabled()
-        domains = await CredentialIdentities.registeredDomains()
+        readBack = await CredentialIdentities.readBack()
         status = CredentialIdentities.status
     }
 }

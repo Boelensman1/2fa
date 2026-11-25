@@ -70,8 +70,11 @@ encryption.
 iOS empties a provider's store behind its back (switching the provider off and
 on, some OS updates), so the app forgets what it registered every time it comes
 to the foreground and writes the store again on the next refresh. Settings >
-AutoFill shows whether Fava is on as a provider and the sites iOS actually holds
-for it, read back from its store, with "Register again".
+AutoFill shows whether Fava is on as a provider, how many codes have a
+website, and what the app last registered, with "Register again". It cannot
+show what iOS holds: `ASCredentialIdentityStore.credentialIdentities(forService:credentialIdentityTypes:)`
+returns nothing in the app, for every type and for each registered domain by
+name, while the suggestions do show up in Safari.
 
 The extension serves three kinds of request, and finishes each its own way
 (`CredentialProviderViewController.Mode`):

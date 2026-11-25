@@ -2,16 +2,13 @@ import AuthenticationServices
 import FavaEngine
 import SwiftUI
 
-/// What iOS knows about Fava as an AutoFill provider: whether it is switched
-/// on, and the sites it will suggest Fava on, read back from iOS's own store.
-/// When a site's suggestion does not show up, this tells apart "not
-/// registered" (fixed by registering again) from "iOS did not see a code
-/// field" (use long-press > AutoFill > Fava instead).
+/// Fava as an AutoFill provider: whether iOS has it switched on, how many
+/// codes have a website to be suggested on, and what the app last registered,
+/// with "Register again". iOS offers no way to list what is registered, so
+/// the count is what the app sent, not what iOS holds.
 struct AutoFillSettingsView: View {
     @Environment(VaultModel.self) private var model
     @State private var enabled: Bool?
-    @State private var readBack: CredentialIdentities.ReadBack?
-    private var domains: [String] { readBack?.all ?? [] }
     @State private var status = CredentialIdentities.status
     @State private var working = false
 
@@ -29,25 +26,16 @@ struct AutoFillSettingsView: View {
                     Text("Turn on Fava under Settings > General > AutoFill & Passwords.")
                 }
             }
-            // Three numbers that should agree; where they stop agreeing is
-            // where suggestions get lost.
+            // iOS has no way to list what a provider registered (asking it
+            // returns nothing, although the suggestions show up), so this says
+            // what the app sent.
             Section {
                 LabeledContent("Codes with a website", value: "\(withWebsite) of \(model.entries.count)")
                 LabeledContent("Last registered", value: statusText)
-                // Asked three ways, because registering succeeds while the
-                // plain read-back came back empty.
-                LabeledContent("iOS reports, any type", value: readBack.map { "\($0.all.count)" } ?? "…")
-                LabeledContent("iOS reports, code identities", value: readBack.map { "\($0.oneTimeCodes.count)" } ?? "…")
-                LabeledContent("iOS finds by name", value: readBack.map { "\($0.foundByName) of \($0.asked)" } ?? "…")
                 Button("Register again") { Task { await register() } }
                     .disabled(working || model.state != .unlocked)
             } footer: {
                 Text("An entry is suggested on the sites in its site matchers. On any other field, long-press it and choose AutoFill > Fava.")
-            }
-            if !domains.isEmpty {
-                Section("Suggested on") {
-                    ForEach(domains, id: \.self) { Text($0) }
-                }
             }
         }
         .navigationTitle("AutoFill")
@@ -77,7 +65,6 @@ struct AutoFillSettingsView: View {
 
     private func reload() async {
         enabled = await CredentialIdentities.isEnabled()
-        readBack = await CredentialIdentities.readBack()
         status = CredentialIdentities.status
     }
 }

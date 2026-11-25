@@ -70,43 +70,6 @@ enum CredentialIdentities {
         await ASCredentialIdentityStore.shared.state().isEnabled
     }
 
-    /// What iOS's store gives back, asked three ways. Registering reported
-    /// success while a read-back of all one-time code identities came back
-    /// empty, so this tells apart "nothing stored" (every count zero) from
-    /// "stored, but that query does not list it".
-    struct ReadBack {
-        /// Distinct domains from asking for every identity type.
-        var all: [String]
-        /// Distinct domains from asking for one-time code identities only.
-        var oneTimeCodes: [String]
-        /// How many of the domains this process registered come back when
-        /// asked for by name, out of `asked`.
-        var foundByName: Int
-        var asked: Int
-    }
-
-    static func readBack() async -> ReadBack {
-        let store = ASCredentialIdentityStore.shared
-        // `[]` is every type: the Objective-C `...TypesAll` is 0, which Swift
-        // imports as the empty option set and marks `.all` unavailable.
-        let all = await store.credentialIdentities(forService: nil, credentialIdentityTypes: [])
-        let codes = await store.credentialIdentities(forService: nil, credentialIdentityTypes: .oneTimeCode)
-        let domains = Set((registered ?? []).map(\.domain))
-        var found = 0
-        for domain in domains {
-            let service = ASCredentialServiceIdentifier(identifier: domain, type: .domain)
-            if !(await store.credentialIdentities(forService: service, credentialIdentityTypes: [])).isEmpty {
-                found += 1
-            }
-        }
-        return ReadBack(
-            all: Set(all.map(\.serviceIdentifier.identifier)).sorted(),
-            oneTimeCodes: Set(codes.map(\.serviceIdentifier.identifier)).sorted(),
-            foundByName: found,
-            asked: domains.count
-        )
-    }
-
     private struct Identity: Hashable {
         var domain: String
         var label: String

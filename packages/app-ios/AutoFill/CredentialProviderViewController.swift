@@ -134,9 +134,7 @@ final class AutoFillModel {
         /// No session, or it no longer works: the app has to unlock first.
         /// `reason` says which, small, for when it should have worked.
         case needsApp(reason: String)
-        /// `nearby`: favalib matched nothing, and these claim a subdomain of
-        /// the site iOS named (it may name only the registrable domain).
-        case ready(matches: [Entry], nearby: [Entry], others: [Entry])
+        case ready(matches: [Entry], others: [Entry])
         case failed(String)
     }
 
@@ -214,16 +212,9 @@ final class AutoFillModel {
             if mode == .oneTimeCode, matches.count == 1, let token = matches[0].token {
                 return token
             }
-            let all = try await engine.entries()
             let matched = Set(matches.map(\.id))
-            var nearby: [Entry] = []
-            if matches.isEmpty, let site {
-                nearby = all.filter { entry in
-                    SiteDomains.of(entry).contains { $0 == site || $0.hasSuffix("." + site) }
-                }
-            }
-            let shown = matched.union(nearby.map(\.id))
-            state = .ready(matches: matches, nearby: nearby, others: all.filter { !shown.contains($0.id) })
+            let others = try await engine.entries().filter { !matched.contains($0.id) }
+            state = .ready(matches: matches, others: others)
         } catch {
             close()
             state = .failed((error as? FavaEngineError)?.message ?? error.localizedDescription)
@@ -298,9 +289,8 @@ struct AutoFillView: View {
             }
         case .failed(let message):
             ContentUnavailableView("Something went wrong", systemImage: "exclamationmark.triangle", description: Text(message))
-        case .ready(let allMatches, let allNearby, let allOthers):
+        case .ready(let allMatches, let allOthers):
             let matches = allMatches.filter { $0.matches(search: search) }
-            let nearby = allNearby.filter { $0.matches(search: search) }
             let others = allOthers.filter { $0.matches(search: search) }
             List {
                 Section {
@@ -317,17 +307,14 @@ struct AutoFillView: View {
                 if !matches.isEmpty {
                     Section("For this site") { rows(matches, offerToRemember: false) }
                 }
-                if !nearby.isEmpty, let site = model.site {
-                    Section("On sites under \(site)") { rows(nearby, offerToRemember: false) }
-                }
                 if !others.isEmpty {
-                    Section(matches.isEmpty && nearby.isEmpty ? "All codes" : "Other codes") { rows(others, offerToRemember: model.site != nil) }
+                    Section(matches.isEmpty ? "All codes" : "Other codes") { rows(others, offerToRemember: model.site != nil) }
                 }
             }
             .overlay {
-                if allMatches.isEmpty && allNearby.isEmpty && allOthers.isEmpty {
+                if allMatches.isEmpty && allOthers.isEmpty {
                     ContentUnavailableView("No codes", systemImage: "key")
-                } else if matches.isEmpty && nearby.isEmpty && others.isEmpty {
+                } else if matches.isEmpty && others.isEmpty {
                     ContentUnavailableView.search(text: search)
                 }
             }

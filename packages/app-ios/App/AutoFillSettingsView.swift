@@ -28,26 +28,37 @@ struct AutoFillSettingsView: View {
                     Text("Turn on Fava under Settings > General > AutoFill & Passwords.")
                 }
             }
+            // Three numbers that should agree; where they stop agreeing is
+            // where suggestions get lost.
             Section {
-                ForEach(domains, id: \.self) { Text($0) }
+                LabeledContent("Codes with a website", value: "\(withWebsite) of \(model.entries.count)")
+                LabeledContent("Last registered", value: statusText)
+                LabeledContent("Sites iOS reports", value: "\(domains.count)")
                 Button("Register again") { Task { await register() } }
                     .disabled(working || model.state != .unlocked)
-            } header: {
-                Text("Suggested on \(domains.count == 1 ? "1 site" : "\(domains.count) sites")")
             } footer: {
-                Text(statusText + " An entry is suggested on the sites in its site matchers. On any other field, long-press it and choose AutoFill > Fava.")
+                Text("An entry is suggested on the sites in its site matchers. On any other field, long-press it and choose AutoFill > Fava.")
+            }
+            if !domains.isEmpty {
+                Section("Suggested on") {
+                    ForEach(domains, id: \.self) { Text($0) }
+                }
             }
         }
         .navigationTitle("AutoFill")
         .task { await reload() }
     }
 
+    private var withWebsite: Int {
+        model.entries.filter { !SiteDomains.of($0).isEmpty }.count
+    }
+
     private var statusText: String {
         switch status {
-        case .unknown: ""
-        case .disabled: "Not registered: Fava is off as an AutoFill provider."
-        case .registered: ""
-        case .failed(let message): "Registering failed: \(message)."
+        case .unknown: "Not yet"
+        case .disabled: "Skipped: Fava is off"
+        case .registered(let count, let at): "\(count == 1 ? "1 site" : "\(count) sites"), \(at.formatted(date: .omitted, time: .shortened))"
+        case .failed(let message, _): "Failed: \(message)"
         }
     }
 

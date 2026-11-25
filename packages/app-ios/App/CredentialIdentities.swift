@@ -14,12 +14,13 @@ import Foundation
 @MainActor
 enum CredentialIdentities {
     enum Status: Equatable {
-        /// Nothing tried yet in this process.
+        /// Nothing tried yet in this process: the vault has not been
+        /// unlocked since the app started.
         case unknown
         /// Fava is not switched on under AutoFill & Passwords.
         case disabled
-        case registered(count: Int)
-        case failed(String)
+        case registered(count: Int, at: Date)
+        case failed(String, at: Date)
     }
 
     private(set) static var status = Status.unknown
@@ -51,10 +52,10 @@ enum CredentialIdentities {
         do {
             try await store.replaceCredentialIdentities(identities.map(\.credentialIdentity))
             registered = identities
-            status = .registered(count: identities.count)
+            status = .registered(count: identities.count, at: .now)
         } catch {
             registered = nil
-            status = .failed(error.localizedDescription)
+            status = .failed(error.localizedDescription, at: .now)
         }
     }
 

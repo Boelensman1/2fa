@@ -87,9 +87,7 @@ The extension serves three kinds of request, and finishes each its own way
 
 On a one-time code field, the list matches the entries against the site iOS
 names (shown small at the top of the list). One match is filled straight away,
-without the list. iOS may name only the registrable domain (`appeal.nl` for
-`pangolin.appeal.nl`), which favalib's matchers do not cover. When nothing
-matches, entries claiming a subdomain of it come next, under "On sites under …".
+without the list.
 
 When the request names a site and the user picks a code from "Other codes", the
 extension offers to remember the site: it adds a `Host` matcher to the entry,

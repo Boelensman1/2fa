@@ -11,6 +11,10 @@ import Foundation
 /// matchers name no domain and are skipped, and an entry without matchers is
 /// reachable only through the extension's full list. iOS stores the domains
 /// and labels outside the vault's encryption; never the secrets or codes.
+///
+/// There is no reading them back: `credentialIdentities(forService:...)`
+/// returns nothing in the app although they are stored (see AGENTS.md,
+/// AutoFill), so `status` is what the app sent, not what iOS holds.
 @MainActor
 enum CredentialIdentities {
     enum Status: Equatable {

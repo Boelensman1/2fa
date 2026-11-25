@@ -71,10 +71,19 @@ iOS empties a provider's store behind its back (switching the provider off and
 on, some OS updates), so the app forgets what it registered every time it comes
 to the foreground and writes the store again on the next refresh. Settings >
 AutoFill shows whether Fava is on as a provider, how many codes have a
-website, and what the app last registered, with "Register again". It cannot
-show what iOS holds: `ASCredentialIdentityStore.credentialIdentities(forService:credentialIdentityTypes:)`
-returns nothing in the app, for every type and for each registered domain by
-name, while the suggestions do show up in Safari.
+website, and what the app last registered, with "Register again".
+
+**The registered identities cannot be read back; do not try again.**
+`ASCredentialIdentityStore.credentialIdentities(forService:credentialIdentityTypes:)`
+returns nothing when the app calls it. On a device (iOS 18 deployment
+target, iOS 27.2 SDK), right after `replaceCredentialIdentities` had succeeded
+with 33 identities, it returned none for every type (`[]`; Swift marks `.all`
+unavailable, since the Objective-C value is 0), none for `.oneTimeCode`, and
+none for each of the 31 registered domains asked for by name. Safari meanwhile
+suggested "Fava — GitHub" on github.com, so the identities were stored. That
+is why the settings screen shows what the app sent, never what iOS holds. To
+check that registration works, open a site with a registered matcher and a
+standard code field (github.com's 2FA page) and look for Fava in the bar.
 
 The extension serves three kinds of request, and finishes each its own way
 (`CredentialProviderViewController.Mode`):

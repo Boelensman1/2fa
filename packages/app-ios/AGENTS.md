@@ -99,7 +99,11 @@ The extension serves three kinds of request, and finishes each its own way
 
 On a one-time code field, the list matches the entries against the site iOS
 names (shown small at the top of the list). One match is filled straight away,
-without the list.
+without the list. Within each section the codes AutoFill filled most recently
+come first (`RecentEntries`: entry ids in the app group's defaults, cleared on
+reset). That is all there is to go by where iOS names no site: pangolin's split
+code input gets no suggestion in the bar, and picking Fava under "Passwords"
+there opens the list with no site at all.
 
 When the request names a site and the user picks a code from "Other codes", the
 extension offers to remember the site: it adds a `Host` matcher to the entry,

@@ -98,6 +98,7 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         guard let token = entry.token else { return }
         Task {
             if remember { await model.rememberSite(for: entry) }
+            RecentEntries.record(entry.id)
             complete(with: token)
         }
     }
@@ -200,6 +201,7 @@ final class AutoFillModel {
                 return nil
             }
             if let entryId, let token = try? await engine.token(for: entryId) {
+                RecentEntries.record(entryId)
                 return token
             }
             var matches: [Entry] = []
@@ -210,11 +212,12 @@ final class AutoFillModel {
             // Text to insert names no site, and a password field cannot take
             // the code, so those always show the list.
             if mode == .oneTimeCode, matches.count == 1, let token = matches[0].token {
+                RecentEntries.record(matches[0].id)
                 return token
             }
             let matched = Set(matches.map(\.id))
             let others = try await engine.entries().filter { !matched.contains($0.id) }
-            state = .ready(matches: matches, others: others)
+            state = .ready(matches: RecentEntries.sorted(matches), others: RecentEntries.sorted(others))
         } catch {
             close()
             state = .failed((error as? FavaEngineError)?.message ?? error.localizedDescription)

@@ -184,6 +184,7 @@ final class VaultModel {
         try? SharedStorage.sessions.delete()
         try? SharedStorage.deleteVault()
         await CredentialIdentities.removeAll()
+        RecentEntries.removeAll()
         setJoining(false)
         clearUnlockedState()
         state = .noVault

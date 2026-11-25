@@ -64,6 +64,16 @@ describe('rejections', () => {
       'rejectedAutocomplete',
     ],
     [
+      'an email input whose id says 2fa',
+      { type: 'email', id: 'login2FAMail' },
+      'rejectedInputType',
+    ],
+    [
+      'a checkbox named for the otp',
+      { type: 'checkbox', name: 'otp' },
+      'rejectedInputType',
+    ],
+    [
       'a recovery code',
       { name: 'recovery_code', maxLength: 8 },
       'rejectedRecoveryCode',

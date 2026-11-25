@@ -3,7 +3,11 @@
  * @module
  */
 
-import { createSignalCollector, nearbyTextFor } from './collectSignals'
+import {
+  createSignalCollector,
+  nearbyTextFor,
+  scopeFor,
+} from './collectSignals'
 import { groupSegmentedInputs, stripSegmentIndex } from './groupSegments'
 import type { SegmentGroup } from './groupSegments'
 import { scoreCandidate } from './scoreField'
@@ -135,6 +139,59 @@ const handleFor = (
 }
 
 /**
+ * Decides between candidates that share a form.
+ *
+ * Each field is scored on its own, and some fields only look like the code
+ * box once you can see the rest of the form. cloudns.net's password input is
+ * `id="login2FAPassword"`, and Chromium's `2fa.?pass` alternative reads that
+ * as "one-time password" -- which is right for some bank pages and wrong
+ * here. Its name cannot tell the two apart. The fields next to it can:
+ *
+ * 1. A field the page declared (`autocomplete="one-time-code"`) beats the
+ *    guesses in its form. This is the same reasoning as the `inputSelector`
+ *    override: the page has said where the code goes.
+ * 2. A masked candidate gives way to an unmasked one. A login with a password
+ *    and a code box keeps the code box. A masked otp box on a page of its own
+ *    has nothing competing with it, so it is kept.
+ *
+ * Applied per form scope, never across the frame, so a separate otp form
+ * elsewhere on the page is unaffected.
+ * @param handles - Every candidate the scan found.
+ * @returns The candidates that survive, in their original order.
+ */
+const arbitrateWithinForms = (
+  handles: readonly DetectedOtpFieldHandle[],
+): DetectedOtpFieldHandle[] => {
+  const byScope = new Map<Element | null, DetectedOtpFieldHandle[]>()
+  for (const handle of handles) {
+    const first = handle.elements[0]
+    const scope = first === undefined ? null : scopeFor(first)
+    byScope.set(scope, [...(byScope.get(scope) ?? []), handle])
+  }
+
+  const dropped = new Set<DetectedOtpFieldHandle>()
+  const isMasked = (handle: DetectedOtpFieldHandle): boolean =>
+    handle.elements[0]?.type === 'password'
+
+  for (const group of byScope.values()) {
+    let survivors = group
+    if (survivors.some((handle) => handle.field.source === 'autocomplete')) {
+      survivors = survivors.filter(
+        (handle) => handle.field.source === 'autocomplete',
+      )
+    }
+    if (survivors.some((handle) => !isMasked(handle))) {
+      survivors = survivors.filter((handle) => !isMasked(handle))
+    }
+    for (const handle of group) {
+      if (!survivors.includes(handle)) dropped.add(handle)
+    }
+  }
+
+  return handles.filter((handle) => !dropped.has(handle))
+}
+
+/**
  * Resolves an entry's `inputSelector` overrides against one root.
  *
  * A selector arriving from a synced vault is untrusted input and may be
@@ -262,10 +319,11 @@ export const detectOtpFields = (
   }
   for (const input of ungrouped) consider([input], collect(input))
 
-  handles.sort((a, b) => b.field.score - a.field.score)
+  const survivors = arbitrateWithinForms(handles)
+  survivors.sort((a, b) => b.field.score - a.field.score)
 
   return {
-    handles,
+    handles: survivors,
     overrideMissed: inputSelectors.length > 0,
     scannedRoots: roots.length,
   }

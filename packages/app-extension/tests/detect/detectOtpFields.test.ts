@@ -116,6 +116,51 @@ describe('fields that must be found', () => {
   })
 })
 
+describe('candidates sharing a form', () => {
+  it('drops a password whose id says 2fa when the page names the code field', () => {
+    // cloudns.net, as served. `login2FAPassword` matches Chromium's
+    // `2fa.?pass` on its own, so it scores `likely`; the token box beside it
+    // declares one-time-code, which settles where the code goes.
+    const handle = only(scan('cloudns-2fa-in-password-id'))
+
+    expect(handle.elements[0]?.id).toBe('login2FAToken')
+    expect(handle.field.confidence).toBe('definite')
+  })
+
+  it('prefers the unmasked candidate when nothing is declared', () => {
+    document.body.innerHTML = fixture('cloudns-2fa-in-password-id').replace(
+      'autocomplete="one-time-code" ',
+      '',
+    )
+
+    const handle = only(detectOtpFields().handles)
+
+    expect(handle.elements[0]?.id).toBe('login2FAToken')
+    expect(handle.field.source).toBe('heuristic')
+  })
+
+  it('keeps a masked otp box that has nothing competing with it', () => {
+    document.body.innerHTML =
+      '<form><input type="password" name="otpPassword"><button>Go</button></form>'
+
+    const handle = only(detectOtpFields().handles)
+
+    expect(handle.elements[0]?.getAttribute('name')).toBe('otpPassword')
+  })
+
+  it('leaves a candidate in another form alone', () => {
+    document.body.innerHTML =
+      fixture('cloudns-2fa-in-password-id') +
+      '<form><input name="otp" maxlength="6"></form>'
+
+    const names = detectOtpFields().handles.map((handle) =>
+      handle.elements[0]?.getAttribute('name'),
+    )
+
+    expect(names.sort()).toEqual(['otp', 'token'])
+  })
+})
+
 describe('segmented rows', () => {
   it('reads six boxes as one field', () => {
     const handle = only(scan('segmented-six-inputs'))

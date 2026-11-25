@@ -18,7 +18,7 @@ import {
   matchesAnyOtpField,
   matchesAnySignal,
 } from './patterns'
-import { describingText, identifyingText } from './signals'
+import { TEXTUAL_INPUT_TYPES, describingText, identifyingText } from './signals'
 import type { FieldSignals } from './signals'
 import type {
   DetectionReason,
@@ -120,6 +120,12 @@ export const scoreCandidate = (signals: FieldSignals): ScoreResult => {
   }
 
   if (!declaresOneTimeCode) {
+    // An `email`, `url`, `date` or `checkbox` input cannot take a typed code
+    // whatever it is called. cloudns.net's login names all three of its
+    // fields `login2FA…`, and the email box scored `likely` on that alone.
+    if (!TEXTUAL_INPUT_TYPES.has(signals.type)) {
+      return reject('rejectedInputType', signals.type)
+    }
     if (matchesAnySignal(RECOVERY_CODE_RE, textual)) {
       // A real second factor, and one a totp code must never be typed into:
       // filling it burns a recovery code to no effect.

@@ -8,19 +8,9 @@
  */
 
 import { CARD_CVC_RE, CARD_FIELD_RE, matchesAnySignal } from './patterns'
-import { emptySignals } from './signals'
+import { TEXTUAL_INPUT_TYPES, emptySignals } from './signals'
 import type { FieldSignals } from './signals'
 import { isPlausiblyVisible } from './visibility'
-
-/** Input types that could plausibly hold a typed code. */
-const TEXTUAL_INPUT_TYPES = new Set([
-  '',
-  'text',
-  'tel',
-  'number',
-  'password',
-  'search',
-])
 
 /** How much text before an unlabelled field is worth reading. */
 const MAX_NEARBY_TEXT = 120
@@ -104,8 +94,15 @@ export const nearbyTextFor = (element: Element): string => {
   return parts.join(' ').slice(0, MAX_NEARBY_TEXT)
 }
 
-/** Finds the form, or the nearest container substantial enough to stand in. */
-const scopeFor = (input: HTMLInputElement): Element | null => {
+/**
+ * Finds the form, or the nearest container substantial enough to stand in.
+ *
+ * Exported so that "the same form" means one thing everywhere: the facts the
+ * scorer reads, and the arbitration between candidates in `detectOtpFields`.
+ * @param input - The field.
+ * @returns Its scope, or null for an input with no parent at all.
+ */
+export const scopeFor = (input: HTMLInputElement): Element | null => {
   if (input.form !== null) return input.form
 
   let current: Element | null = input.parentElement

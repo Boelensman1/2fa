@@ -283,7 +283,15 @@ The seam is `signals.ts`. Above it (`collectSignals`, `walkDom`,
   and an `inputSelector` override are decisive at 100; heuristic scores are
   clamped to 99 so `definite` always means "the page said so". The three
   signal families are capped separately because their members are correlated.
-- `detectOtpFields.ts` — the orchestrator. `observe.ts` wraps it in a
+- `detectOtpFields.ts` — the orchestrator. Fields are scored one at a time,
+  and then `arbitrateWithinForms` decides between candidates in the same form
+  scope (`scopeFor`): a declared `one-time-code` field drops the guesses next
+  to it, and a masked candidate gives way to an unmasked one. This exists for
+  cloudns.net, whose password input is `login2FAPassword` and matches
+  Chromium's `2fa.?pass` by name; a masked otp box with nothing competing
+  still gets through. Inputs whose type can't hold a code (`email`,
+  `checkbox`, …) are rejected in `scoreField.ts` before any of this, unless
+  they declare `one-time-code`. `observe.ts` wraps it in a
   debounced `MutationObserver`, one per root, and exposes two ways in:
   `rescan()`, which reports only a change, and `scanNow()`, which hands the
   result back whether or not anything moved. The background needs the second

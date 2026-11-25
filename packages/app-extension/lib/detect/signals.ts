@@ -9,6 +9,22 @@
  * @module
  */
 
+/**
+ * Input types that could plausibly hold a typed code.
+ *
+ * Here rather than beside the dom code because both sides read it: the
+ * collector to count a form's text inputs, and the scorer to refuse a field
+ * no code can be typed into -- an `email` box whose id happens to say `2fa`.
+ */
+export const TEXTUAL_INPUT_TYPES: ReadonlySet<string> = new Set([
+  '',
+  'text',
+  'tel',
+  'number',
+  'password',
+  'search',
+])
+
 /** One candidate field, as plain data. */
 export interface FieldSignals {
   /** The `type` attribute, lowercased. `'text'` when absent. */

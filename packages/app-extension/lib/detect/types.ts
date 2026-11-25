@@ -55,6 +55,7 @@ export type DetectionReasonCode =
   | 'ambiguousCardContext'
   // Rejections
   | 'rejectedAutocomplete'
+  | 'rejectedInputType'
   | 'rejectedCardCvc'
   | 'rejectedPaymentContext'
   | 'rejectedSocialSecurity'

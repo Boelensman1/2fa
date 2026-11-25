@@ -1,13 +1,27 @@
 import AuthenticationServices
 import FavaEngine
 import SwiftUI
+import UIKit
 
 /// Fills in one-time codes. It only ever unlocks from the session the app
 /// saved, behind Face ID: no password, so no argon2 (64 MiB) under the
 /// extension's memory limit, and no network. Without a usable session it tells
 /// the user to open the app.
+///
+/// iOS reaches it three ways, and each finishes differently (`Mode`):
+/// - a one-time code field: the bar's suggestion, or the code list;
+/// - long-press a field > AutoFill > Fava: any field, recognised or not;
+/// - Fava picked from the password sheet, which iOS offers on login forms and
+///   which cannot take a code: the code is copied to paste instead.
 final class CredentialProviderViewController: ASCredentialProviderViewController {
+    enum Mode {
+        case oneTimeCode
+        case textToInsert
+        case password
+    }
+
     private let model = AutoFillModel()
+    private var mode = Mode.oneTimeCode
     /// iOS asks for codes before the view is on screen, and Face ID cannot be
     /// shown until it is: the request waits here until `viewDidAppear`.
     private var pending: (() -> Void)?
@@ -17,7 +31,7 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         super.viewDidLoad()
         let host = UIHostingController(rootView: AutoFillView(
             model: model,
-            onPick: { [weak self] code in self?.complete(with: code) },
+            onPick: { [weak self] entry, remember in self?.pick(entry, remember: remember) },
             onCancel: { [weak self] in self?.cancel() }
         ))
         addChild(host)
@@ -35,20 +49,34 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
     }
 
     override func prepareOneTimeCodeCredentialList(for serviceIdentifiers: [ASCredentialServiceIdentifier]) {
-        whenOnScreen { [model] in Task { await model.load(for: serviceIdentifiers) } }
+        start(.oneTimeCode, for: serviceIdentifiers)
+    }
+
+    override func prepareInterfaceForUserChoosingTextToInsert() {
+        start(.textToInsert, for: [])
+    }
+
+    override func prepareCredentialList(for serviceIdentifiers: [ASCredentialServiceIdentifier]) {
+        start(.password, for: serviceIdentifiers)
     }
 
     /// A suggestion the keyboard offered from the identities the app
     /// registered: fill that entry's code straight after Face ID.
     override func prepareInterfaceToProvideCredential(for credentialRequest: any ASCredentialRequest) {
+        mode = .oneTimeCode
         let identity = credentialRequest.credentialIdentity
         whenOnScreen { [weak self, model] in
             Task {
-                if let code = await model.load(for: [identity.serviceIdentifier], picking: identity.recordIdentifier) {
-                    self?.complete(with: code)
+                if let token = await model.load(for: [identity.serviceIdentifier], mode: .oneTimeCode, picking: identity.recordIdentifier) {
+                    self?.complete(with: token)
                 }
             }
         }
+    }
+
+    private func start(_ mode: Mode, for serviceIdentifiers: [ASCredentialServiceIdentifier]) {
+        self.mode = mode
+        whenOnScreen { [model] in Task { await model.load(for: serviceIdentifiers, mode: mode) } }
     }
 
     private func whenOnScreen(_ work: @escaping () -> Void) {
@@ -60,9 +88,30 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         extensionContext.cancelRequest(withError: ASExtensionError(.userInteractionRequired))
     }
 
-    private func complete(with code: String) {
+    private func pick(_ entry: Entry, remember: Bool) {
+        guard let token = entry.token else { return }
+        Task {
+            if remember { await model.rememberSite(for: entry) }
+            complete(with: token)
+        }
+    }
+
+    private func complete(with token: Token) {
         model.close()
-        extensionContext.completeOneTimeCodeRequest(using: ASOneTimeCodeCredential(code: code))
+        switch mode {
+        case .oneTimeCode:
+            extensionContext.completeOneTimeCodeRequest(using: ASOneTimeCodeCredential(code: token.otp))
+        case .textToInsert:
+            extensionContext.completeRequest(withTextToInsert: token.otp)
+        case .password:
+            // A password request cannot carry a code. Copy it, local to this
+            // device and only for as long as it is valid, and step aside.
+            UIPasteboard.general.setItems(
+                [[UIPasteboard.typeAutomatic: token.otp]],
+                options: [.localOnly: true, .expirationDate: token.validTillDate]
+            )
+            extensionContext.cancelRequest(withError: ASExtensionError(.userCanceled))
+        }
     }
 
     private func cancel() {
@@ -84,12 +133,22 @@ final class AutoFillModel {
     }
 
     private(set) var state = State.loading
+    private(set) var mode = CredentialProviderViewController.Mode.oneTimeCode
+    /// The site the request is for, when it names one: picking a code from
+    /// "Other codes" offers to remember it, so iOS suggests that entry here.
+    private(set) var site: String?
     private var engine: FavaEngine?
 
     /// - Parameter entryId: The entry the user already chose. When it is
     ///   still there, its code is returned instead of showing the list.
     @discardableResult
-    func load(for serviceIdentifiers: [ASCredentialServiceIdentifier], picking entryId: String? = nil) async -> String? {
+    func load(
+        for serviceIdentifiers: [ASCredentialServiceIdentifier],
+        mode: CredentialProviderViewController.Mode,
+        picking entryId: String? = nil
+    ) async -> Token? {
+        self.mode = mode
+        site = serviceIdentifiers.lazy.compactMap { SiteDomains.of($0) }.first
         let session: String
         let locked: String
         do {
@@ -128,8 +187,8 @@ final class AutoFillModel {
                 state = .needsApp(reason: "The saved session did not open the vault: \((error as? FavaEngineError)?.message ?? error.localizedDescription)")
                 return nil
             }
-            if let entryId, let otp = try? await engine.token(for: entryId).otp {
-                return otp
+            if let entryId, let token = try? await engine.token(for: entryId) {
+                return token
             }
             var matches: [Entry] = []
             for identifier in serviceIdentifiers {
@@ -143,6 +202,24 @@ final class AutoFillModel {
             state = .failed((error as? FavaEngineError)?.message ?? error.localizedDescription)
         }
         return nil
+    }
+
+    /// Adds the request's site to the entry, so the next time iOS suggests
+    /// it there: in the vault, which syncs it to the other devices when the
+    /// app next connects (favalib keeps the edit queued until then), and in
+    /// iOS's store directly, so it works before the app is opened again.
+    /// Best effort: the code is filled whether or not this works.
+    func rememberSite(for entry: Entry) async {
+        guard let engine, let site, !SiteDomains.of(entry).contains(site) else { return }
+        do {
+            _ = try await engine.updateEntry(entry.id, EntryUpdate(matchers: entry.matchers + [UrlMatcher(type: "BaseDomain", value: site)]))
+        } catch {
+            return
+        }
+        let store = ASCredentialIdentityStore.shared
+        if await store.state().isEnabled {
+            try? await store.saveCredentialIdentities([SiteDomains.identity(domain: site, entry: entry)])
+        }
     }
 
     func close() {
@@ -160,9 +237,12 @@ final class AutoFillModel {
 
 struct AutoFillView: View {
     let model: AutoFillModel
-    let onPick: (String) -> Void
+    /// The entry picked, and whether to remember the site for it.
+    let onPick: (Entry, Bool) -> Void
     let onCancel: () -> Void
     @State private var search = ""
+    /// Picked from "Other codes" on a site: asking whether to remember it.
+    @State private var offering: Entry?
 
     var body: some View {
         NavigationStack {
@@ -194,11 +274,18 @@ struct AutoFillView: View {
             let matches = allMatches.filter { $0.matches(search: search) }
             let others = allOthers.filter { $0.matches(search: search) }
             List {
+                if model.mode == .password {
+                    Section {
+                        Text("This field takes a password, not a code. Picking a code copies it: paste it into the code field.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                }
                 if !matches.isEmpty {
-                    Section("For this site") { rows(matches) }
+                    Section("For this site") { rows(matches, offerToRemember: false) }
                 }
                 if !others.isEmpty {
-                    Section(matches.isEmpty ? "All codes" : "Other codes") { rows(others) }
+                    Section(matches.isEmpty ? "All codes" : "Other codes") { rows(others, offerToRemember: model.site != nil) }
                 }
             }
             .overlay {
@@ -209,13 +296,31 @@ struct AutoFillView: View {
                 }
             }
             .searchable(text: $search, prompt: "Name or issuer")
+            .confirmationDialog(
+                offerTitle,
+                isPresented: Binding(get: { offering != nil }, set: { if !$0 { offering = nil } }),
+                titleVisibility: .visible,
+                presenting: offering
+            ) { entry in
+                Button("Suggest it here") { onPick(entry, true) }
+                Button("Just this time") { onPick(entry, false) }
+            } message: { _ in
+                Text("Adds the site to the entry. With sync on, your other devices get it too.")
+            }
         }
     }
 
-    private func rows(_ entries: [Entry]) -> some View {
+    private var offerTitle: String {
+        guard let entry = offering, let site = model.site else { return "" }
+        return "Suggest \(SiteDomains.label(for: entry)) on \(site) from now on?"
+    }
+
+    private func rows(_ entries: [Entry], offerToRemember: Bool) -> some View {
         ForEach(entries) { entry in
             if let otp = entry.token?.otp {
-                Button { onPick(otp) } label: {
+                Button {
+                    if offerToRemember { offering = entry } else { onPick(entry, false) }
+                } label: {
                     HStack {
                         VStack(alignment: .leading) {
                             Text(entry.issuer.isEmpty ? entry.name : entry.issuer).font(.headline)

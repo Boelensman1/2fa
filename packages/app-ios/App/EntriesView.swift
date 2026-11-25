@@ -69,6 +69,13 @@ struct EntryRow: View {
                     if !entry.issuer.isEmpty {
                         Text(entry.name).font(.subheadline).foregroundStyle(.secondary)
                     }
+                    // iOS suggests an entry only on the sites its matchers
+                    // name; this one it never will.
+                    if SiteDomains.of(entry).isEmpty {
+                        Text("No website: not suggested by AutoFill")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    }
                 }
                 Spacer()
                 if let token = entry.token {
@@ -157,6 +164,7 @@ struct SettingsView: View {
                     } label: {
                         LabeledContent("Sync", value: syncSummary)
                     }
+                    NavigationLink("AutoFill") { AutoFillSettingsView() }
                 }
                 Section {
                     Button("Lock vault", role: .destructive) {

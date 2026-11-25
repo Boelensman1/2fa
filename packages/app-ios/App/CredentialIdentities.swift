@@ -7,34 +7,76 @@ import Foundation
 /// extension is still what fills the code, behind Face ID.
 ///
 /// Registered: one identity per entry and domain, taken from the entry's
-/// matchers (the same rules the extension matches with). Regex matchers name
-/// no domain and are skipped, and an entry without matchers is reachable only
-/// through the extension's full list. iOS stores the domains and labels outside
-/// the vault's encryption; never the secrets or codes.
+/// matchers (`SiteDomains`, the same rules the extension matches with). Regex
+/// matchers name no domain and are skipped, and an entry without matchers is
+/// reachable only through the extension's full list. iOS stores the domains
+/// and labels outside the vault's encryption; never the secrets or codes.
 @MainActor
 enum CredentialIdentities {
+    enum Status: Equatable {
+        /// Nothing tried yet in this process.
+        case unknown
+        /// Fava is not switched on under AutoFill & Passwords.
+        case disabled
+        case registered(count: Int)
+        case failed(String)
+    }
+
+    private(set) static var status = Status.unknown
+
     /// What was registered last, so the half-minute code refresh does not
     /// rewrite the store each time.
     private static var registered: Set<Identity>?
 
+    /// Makes the next `update` write the store even if the entries did not
+    /// change. iOS empties a provider's store behind its back (switching the
+    /// provider off and on, some OS updates), and this process would never
+    /// notice: the app calls it every time it comes to the foreground.
+    static func invalidate() {
+        registered = nil
+    }
+
     static func update(for entries: [Entry]) async {
-        let identities = Set(entries.flatMap(identities(for:)))
+        let identities = Set(entries.flatMap { entry in
+            SiteDomains.of(entry).map { Identity(domain: $0, label: SiteDomains.label(for: entry), entryId: entry.id) }
+        })
         guard identities != registered else { return }
         let store = ASCredentialIdentityStore.shared
         // Off until Fava is enabled under AutoFill & Passwords; leaving
         // `registered` unset makes the next refresh try again.
-        guard await store.state().isEnabled else { return }
+        guard await store.state().isEnabled else {
+            status = .disabled
+            return
+        }
         do {
             try await store.replaceCredentialIdentities(identities.map(\.credentialIdentity))
             registered = identities
+            status = .registered(count: identities.count)
         } catch {
             registered = nil
+            status = .failed(error.localizedDescription)
         }
     }
 
     static func removeAll() async {
         registered = nil
+        status = .unknown
         try? await ASCredentialIdentityStore.shared.removeAllCredentialIdentities()
+    }
+
+    /// Whether Fava is switched on as an AutoFill provider.
+    static func isEnabled() async -> Bool {
+        await ASCredentialIdentityStore.shared.state().isEnabled
+    }
+
+    /// The domains iOS actually holds for Fava, read back from its store, not
+    /// from what this process believes it wrote.
+    static func registeredDomains() async -> [String] {
+        let identities = await ASCredentialIdentityStore.shared.credentialIdentities(
+            forService: nil,
+            credentialIdentityTypes: .oneTimeCode
+        )
+        return Set(identities.map(\.serviceIdentifier.identifier)).sorted()
     }
 
     private struct Identity: Hashable {
@@ -49,24 +91,5 @@ enum CredentialIdentities {
                 recordIdentifier: entryId
             )
         }
-    }
-
-    private static func identities(for entry: Entry) -> [Identity] {
-        let label = entry.issuer.isEmpty ? entry.name : entry.name.isEmpty ? entry.issuer : "\(entry.issuer) (\(entry.name))"
-        let domains = Set(entry.matchers.compactMap(domain(of:)))
-        return domains.map { Identity(domain: $0, label: label, entryId: entry.id) }
-    }
-
-    private static func domain(of matcher: UrlMatcher) -> String? {
-        let host: String? = switch matcher.type {
-        case "BaseDomain", "Host": matcher.value
-        case "Origin", "UrlPrefix": URL(string: matcher.value)?.host()
-        default: nil
-        }
-        // Normalised the way favalib compares hostnames.
-        guard var host = host?.lowercased() else { return nil }
-        while host.hasPrefix(".") { host.removeFirst() }
-        while host.hasSuffix(".") { host.removeLast() }
-        return host.isEmpty ? nil : host
     }
 }

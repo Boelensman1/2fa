@@ -22,12 +22,12 @@ overwritten). XcodeGen comes from the root flake's dev shell on macOS.
 
 ## Layout
 
-| Path        | What                                                                                                                     |
-| ----------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `Shared/`   | Compiled into both targets: the app group, the Keychain access group, the vault file, the session store and entry search |
-| `App/`      | The app. `VaultModel` owns the one engine and its lifecycle                                                              |
-| `AutoFill/` | The credential provider extension, one-time codes only                                                                   |
-| `Tests/`    | Unit tests hosted by the app, so they run with its entitlements                                                          |
+| Path        | What                                                                                                                                                                  |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Shared/`   | Compiled into both targets: the app group, the Keychain access group, the vault file, the session store, entry search and the domains an entry claims (`SiteDomains`) |
+| `App/`      | The app. `VaultModel` owns the one engine and its lifecycle                                                                                                           |
+| `AutoFill/` | The credential provider extension, one-time codes only                                                                                                                |
+| `Tests/`    | Unit tests hosted by the app, so they run with its entitlements                                                                                                       |
 
 ## Identifiers
 
@@ -59,12 +59,37 @@ AutoFill & Passwords.
 
 iOS suggests a provider on a one-time code field only for identities the
 provider registered, so the app registers one per entry and domain
-(`CredentialIdentities`, from the entry's matchers; Regex matchers and entries
-without matchers give none) whenever it refreshes the entries, and removes them
-all on reset. Locking leaves them: picking one still takes Face ID. A picked
-suggestion carries the entry id, and the extension fills that code without
-showing its list. iOS keeps the domains and labels outside the vault's
+(`CredentialIdentities`, with the domains from `SiteDomains`: the entry's
+matchers, where Regex matchers and entries without matchers give none, and the
+codes list marks those entries) whenever it refreshes the entries, and removes
+them all on reset. Locking leaves them: picking one still takes Face ID. A
+picked suggestion carries the entry id, and the extension fills that code
+without showing its list. iOS keeps the domains and labels outside the vault's
 encryption.
+
+iOS empties a provider's store behind its back (switching the provider off and
+on, some OS updates), so the app forgets what it registered every time it comes
+to the foreground and writes the store again on the next refresh. Settings >
+AutoFill shows whether Fava is on as a provider and the sites iOS actually holds
+for it, read back from its store, with "Register again".
+
+The extension serves three kinds of request, and finishes each its own way
+(`CredentialProviderViewController.Mode`):
+
+- One-time code: the bar's suggestion, or its list of codes.
+- Text to insert (`ProvidesTextToInsert`): long-press any field > AutoFill >
+  Fava. This works where Safari did not recognise a code field (and so offers
+  no suggestion), or the site is not registered.
+- Password: iOS lists Fava in its password sheet on login forms although it
+  declares `ProvidesPasswords: false`. A password request cannot carry a code,
+  so picking one copies it (local to the device, expiring with the code) and
+  cancels the request.
+
+When the request names a site and the user picks a code from "Other codes", the
+extension offers to remember the site: it adds a `BaseDomain` matcher to the
+entry and registers the identity with iOS directly. The edit is saved to the
+vault file; favalib keeps it queued and sends it to the sync server the next
+time the app connects.
 
 ## Sync
 

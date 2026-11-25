@@ -79,7 +79,11 @@ targets:
           NSExtensionAttributes:
             ASCredentialProviderExtensionCapabilities:
               ProvidesOneTimeCodes: true
+              # Picking Fava from the password sheet copies a code instead.
               ProvidesPasswords: false
+              # Long-press a field > AutoFill > Fava: works on any field,
+              # whether or not iOS recognised it as a one-time code field.
+              ProvidesTextToInsert: true
 
   # Hosted by the app, so the tests run with its entitlements: the Keychain
   # access group and the app group are what they check.

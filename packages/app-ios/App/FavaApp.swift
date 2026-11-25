@@ -14,7 +14,10 @@ struct FavaApp: App {
         .onChange(of: scenePhase) { _, phase in
             switch phase {
             case .background: model.close()
-            case .active: Task { await model.start() }
+            case .active:
+                // iOS may have emptied the AutoFill store meanwhile.
+                CredentialIdentities.invalidate()
+                Task { await model.start() }
             default: break
             }
         }

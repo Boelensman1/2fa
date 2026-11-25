@@ -12,6 +12,7 @@ import type { AutofillMenu } from './autofillMenu'
 import { createRememberPrompt } from './rememberPrompt'
 import type { RememberPrompt } from './rememberPrompt'
 import { fillOtpField } from './fillField'
+import { deepActiveElement, newlyFocusedField } from './focusedField'
 import type {
   CtActionObject,
   DetectOtpFieldsResponse,
@@ -141,6 +142,7 @@ export const load = (ctx: ContentScriptContext): void => {
       },
     },
     onChange: (result) => {
+      const previousIds = new Set(handles.keys())
       remember(result.handles)
       // The handles the open menu is anchored to have just been replaced, so
       // it has to be pointed at the new one -- or closed, if the field it was
@@ -148,6 +150,18 @@ export const load = (ctx: ContentScriptContext): void => {
       // is what this did, takes the menu away again on any page that
       // re-renders while it is up.
       menu?.retarget(result.handles)
+      // A field that already had focus when it was found never sends the
+      // focusin the menu opens on: an `autofocus` that fired before this script
+      // ran, or a box focused before it became detectable. The observer's
+      // first scan runs as it starts, which is what covers the first case.
+      // `hasFocus` keeps a background tab or an unfocused frame quiet.
+      const active = document.hasFocus() ? deepActiveElement(document) : null
+      if (
+        active !== null &&
+        newlyFocusedField(active, (element) => owners.get(element), previousIds)
+      ) {
+        menu?.offerFor(active)
+      }
       void report(result)
     },
   })

@@ -47,6 +47,15 @@ export interface AutofillMenuOptions {
 export interface AutofillMenu {
   /** Call from `focusin`. Does nothing for elements we did not detect. */
   focused: (target: EventTarget | null) => void
+  /**
+   * Offers for an element that already has focus, with no `focusin` behind it.
+   *
+   * For a field that a scan found after the focus landed: an `autofocus` on a
+   * page loaded before the content script ran, or a field that only became
+   * detectable once focused. Unlike `focused` it leaves `ignoreFocusOnce`'s
+   * flag alone, which belongs to a real `focus()` call.
+   */
+  offerFor: (target: Element) => void
   /** Call when the field's frame should stop offering: lock, navigation, teardown. */
   close: () => void
   /**
@@ -128,9 +137,19 @@ export const createAutofillMenu = (
   let generation = 0
   /** Set by a popup-driven fill; see `ignoreFocusOnce`. */
   let ignoreNextFocus = false
+  /**
+   * The field an open is in flight for, before `openFor` is set.
+   *
+   * A click into a field nobody had detected yet reaches here twice: once
+   * from the rescan that finds it (`offerFor`) and once from the same
+   * `focusin` straight after. Without this the second cancels the first and
+   * asks the background all over again.
+   */
+  let pendingFor: string | null = null
 
   const close = () => {
     generation += 1
+    pendingFor = null
     if (frame !== null) cancelAnimationFrame(frame)
     frame = null
     host?.destroy()
@@ -189,10 +208,12 @@ export const createAutofillMenu = (
 
   const open = async (handle: DetectedOtpFieldHandle) => {
     const mine = (generation += 1)
+    pendingFor = handle.field.id
 
     const offer = await bgActions.openAutofillMenu(handle.field.id)
     // Focus moved on, or the menu was closed, while the background answered.
     if (mine !== generation) return
+    pendingFor = null
     if (!offer) return
     if (offer.state === 'off' || offer.state === 'no-match') return
 
@@ -266,7 +287,10 @@ export const createAutofillMenu = (
       return
     }
     if (!(target instanceof Element)) return
+    offerFor(target)
+  }
 
+  function offerFor(target: Element): void {
     const handle = handleForElement(target)
     if (!handle) {
       // Focus went somewhere that is not a detected field. If it went into the
@@ -277,6 +301,7 @@ export const createAutofillMenu = (
     }
 
     if (openFor?.field.id === handle.field.id) return
+    if (pendingFor === handle.field.id) return
     close()
     void open(handle).catch((error: unknown) => {
       log.error(error instanceof Error ? error : new Error(String(error)))
@@ -324,6 +349,7 @@ export const createAutofillMenu = (
 
   return {
     focused,
+    offerFor,
     retarget,
     close,
     ignoreFocusOnce: () => {

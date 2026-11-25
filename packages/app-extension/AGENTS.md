@@ -334,6 +334,14 @@ offer; if there is, the content script mounts an **iframe of an extension page,
 inside a closed shadow root**, under the field. Picking a row makes the
 background generate a code and deliver it to that one frame.
 
+A field that already has focus when a scan first finds it is offered the
+same way, through `menu.offerFor` from the observer's `onChange`
+(`lib/content/focusedField.ts`). That covers a second-factor page that loads
+with `autofocus`, where the focus lands before the content script runs at
+`document_idle`, and a box focused before it became detectable. Only a field
+that is _new_ in that scan counts, so a rescan never brings back a menu the
+user dismissed.
+
 It never fills on its own, and that is not a default — there is no other mode.
 The user's click is the authorisation, and it has to happen somewhere the page
 cannot draw over, read or click for them.

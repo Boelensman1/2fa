@@ -25,7 +25,9 @@ enum SiteDomains {
         switch identifier.type {
         case .domain: normalise(identifier.identifier)
         case .URL: URL(string: identifier.identifier)?.host().flatMap { normalise($0) }
-        @unknown default: nil
+        // Newer SDKs add `.app` (a request from an app, not a site); `default`
+        // rather than naming it keeps this compiling with SDKs before it.
+        default: nil
         }
     }
 

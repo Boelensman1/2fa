@@ -76,7 +76,13 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
 
     private func start(_ mode: Mode, for serviceIdentifiers: [ASCredentialServiceIdentifier]) {
         self.mode = mode
-        whenOnScreen { [model] in Task { await model.load(for: serviceIdentifiers, mode: mode) } }
+        whenOnScreen { [weak self, model] in
+            Task {
+                if let token = await model.load(for: serviceIdentifiers, mode: mode) {
+                    self?.complete(with: token)
+                }
+            }
+        }
     }
 
     private func whenOnScreen(_ work: @escaping () -> Void) {
@@ -128,7 +134,9 @@ final class AutoFillModel {
         /// No session, or it no longer works: the app has to unlock first.
         /// `reason` says which, small, for when it should have worked.
         case needsApp(reason: String)
-        case ready(matches: [Entry], others: [Entry])
+        /// `nearby`: favalib matched nothing, and these claim a subdomain of
+        /// the site iOS named (it may name only the registrable domain).
+        case ready(matches: [Entry], nearby: [Entry], others: [Entry])
         case failed(String)
     }
 
@@ -137,10 +145,15 @@ final class AutoFillModel {
     /// The site the request is for, when it names one: picking a code from
     /// "Other codes" offers to remember it, so iOS suggests that entry here.
     private(set) var site: String?
+    /// What iOS said the request is for, shown small at the top of the list:
+    /// it decides what matches, and is otherwise invisible.
+    private(set) var requestedFor: [String] = []
     private var engine: FavaEngine?
 
     /// - Parameter entryId: The entry the user already chose. When it is
     ///   still there, its code is returned instead of showing the list.
+    /// - Returns: The code to fill without showing the list: the chosen
+    ///   entry's, or on a one-time code field the only entry for the site.
     @discardableResult
     func load(
         for serviceIdentifiers: [ASCredentialServiceIdentifier],
@@ -149,6 +162,7 @@ final class AutoFillModel {
     ) async -> Token? {
         self.mode = mode
         site = serviceIdentifiers.lazy.compactMap { SiteDomains.of($0) }.first
+        requestedFor = serviceIdentifiers.map(\.identifier)
         let session: String
         let locked: String
         do {
@@ -194,9 +208,22 @@ final class AutoFillModel {
             for identifier in serviceIdentifiers {
                 matches += try await engine.entries(forURL: Self.url(for: identifier))
             }
+            // One entry for the site, on a code field: nothing to choose.
+            // Text to insert names no site, and a password field cannot take
+            // the code, so those always show the list.
+            if mode == .oneTimeCode, matches.count == 1, let token = matches[0].token {
+                return token
+            }
+            let all = try await engine.entries()
             let matched = Set(matches.map(\.id))
-            let others = try await engine.entries().filter { !matched.contains($0.id) }
-            state = .ready(matches: matches, others: others)
+            var nearby: [Entry] = []
+            if matches.isEmpty, let site {
+                nearby = all.filter { entry in
+                    SiteDomains.of(entry).contains { $0 == site || $0.hasSuffix("." + site) }
+                }
+            }
+            let shown = matched.union(nearby.map(\.id))
+            state = .ready(matches: matches, nearby: nearby, others: all.filter { !shown.contains($0.id) })
         } catch {
             close()
             state = .failed((error as? FavaEngineError)?.message ?? error.localizedDescription)
@@ -204,15 +231,16 @@ final class AutoFillModel {
         return nil
     }
 
-    /// Adds the request's site to the entry, so the next time iOS suggests
-    /// it there: in the vault, which syncs it to the other devices when the
+    /// Adds the request's site to the entry as a `Host` matcher, exactly the
+    /// host iOS named and nothing under it, so the next time iOS suggests it
+    /// there: in the vault, which syncs it to the other devices when the
     /// app next connects (favalib keeps the edit queued until then), and in
     /// iOS's store directly, so it works before the app is opened again.
     /// Best effort: the code is filled whether or not this works.
     func rememberSite(for entry: Entry) async {
         guard let engine, let site, !SiteDomains.of(entry).contains(site) else { return }
         do {
-            _ = try await engine.updateEntry(entry.id, EntryUpdate(matchers: entry.matchers + [UrlMatcher(type: "BaseDomain", value: site)]))
+            _ = try await engine.updateEntry(entry.id, EntryUpdate(matchers: entry.matchers + [UrlMatcher(type: "Host", value: site)]))
         } catch {
             return
         }
@@ -270,10 +298,15 @@ struct AutoFillView: View {
             }
         case .failed(let message):
             ContentUnavailableView("Something went wrong", systemImage: "exclamationmark.triangle", description: Text(message))
-        case .ready(let allMatches, let allOthers):
+        case .ready(let allMatches, let allNearby, let allOthers):
             let matches = allMatches.filter { $0.matches(search: search) }
+            let nearby = allNearby.filter { $0.matches(search: search) }
             let others = allOthers.filter { $0.matches(search: search) }
             List {
+                Section {
+                } footer: {
+                    Text(model.requestedFor.isEmpty ? "iOS did not say which site this is for." : "For \(model.requestedFor.joined(separator: ", "))")
+                }
                 if model.mode == .password {
                     Section {
                         Text("This field takes a password, not a code. Picking a code copies it: paste it into the code field.")
@@ -284,14 +317,17 @@ struct AutoFillView: View {
                 if !matches.isEmpty {
                     Section("For this site") { rows(matches, offerToRemember: false) }
                 }
+                if !nearby.isEmpty, let site = model.site {
+                    Section("On sites under \(site)") { rows(nearby, offerToRemember: false) }
+                }
                 if !others.isEmpty {
-                    Section(matches.isEmpty ? "All codes" : "Other codes") { rows(others, offerToRemember: model.site != nil) }
+                    Section(matches.isEmpty && nearby.isEmpty ? "All codes" : "Other codes") { rows(others, offerToRemember: model.site != nil) }
                 }
             }
             .overlay {
-                if allMatches.isEmpty && allOthers.isEmpty {
+                if allMatches.isEmpty && allNearby.isEmpty && allOthers.isEmpty {
                     ContentUnavailableView("No codes", systemImage: "key")
-                } else if matches.isEmpty && others.isEmpty {
+                } else if matches.isEmpty && nearby.isEmpty && others.isEmpty {
                     ContentUnavailableView.search(text: search)
                 }
             }

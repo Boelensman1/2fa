@@ -85,11 +85,19 @@ The extension serves three kinds of request, and finishes each its own way
   so picking one copies it (local to the device, expiring with the code) and
   cancels the request.
 
+On a one-time code field, the list matches the entries against the site iOS
+names (shown small at the top of the list). One match is filled straight away,
+without the list. iOS may name only the registrable domain (`appeal.nl` for
+`pangolin.appeal.nl`), which favalib's matchers do not cover. When nothing
+matches, entries claiming a subdomain of it come next, under "On sites under …".
+
 When the request names a site and the user picks a code from "Other codes", the
-extension offers to remember the site: it adds a `BaseDomain` matcher to the
-entry and registers the identity with iOS directly. The edit is saved to the
-vault file; favalib keeps it queued and sends it to the sync server the next
-time the app connects.
+extension offers to remember the site: it adds a `Host` matcher to the entry,
+for exactly the host iOS named, and registers the identity with iOS directly.
+It uses `Host` rather than `BaseDomain` because iOS may have named only the
+registrable domain, and a `BaseDomain` for that would claim every site under
+it. The edit is saved to the vault file; favalib keeps it queued and sends it
+to the sync server the next time the app connects.
 
 ## Sync
 

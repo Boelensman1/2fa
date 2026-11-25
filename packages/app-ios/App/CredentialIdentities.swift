@@ -87,13 +87,15 @@ enum CredentialIdentities {
 
     static func readBack() async -> ReadBack {
         let store = ASCredentialIdentityStore.shared
-        let all = await store.credentialIdentities(forService: nil, credentialIdentityTypes: .all)
+        // `[]` is every type: the Objective-C `...TypesAll` is 0, which Swift
+        // imports as the empty option set and marks `.all` unavailable.
+        let all = await store.credentialIdentities(forService: nil, credentialIdentityTypes: [])
         let codes = await store.credentialIdentities(forService: nil, credentialIdentityTypes: .oneTimeCode)
         let domains = Set((registered ?? []).map(\.domain))
         var found = 0
         for domain in domains {
             let service = ASCredentialServiceIdentifier(identifier: domain, type: .domain)
-            if !(await store.credentialIdentities(forService: service, credentialIdentityTypes: .all)).isEmpty {
+            if !(await store.credentialIdentities(forService: service, credentialIdentityTypes: [])).isEmpty {
                 found += 1
             }
         }

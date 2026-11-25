@@ -1,0 +1,4 @@
+# Copied from build/ by `make build`; the Swift package reads it from here.
+swift/Sources/FavaEngine/Resources/fava-engine.js
+swift/.build/
+swift/.swiftpm/

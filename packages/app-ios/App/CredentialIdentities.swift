@@ -1,0 +1,90 @@
+import AuthenticationServices
+import FavaEngine
+import Foundation
+
+/// Tells iOS which sites have codes, so the keyboard can suggest Fava on a
+/// one-time code field. iOS only suggests what a provider has registered; the
+/// extension is still what fills the code, behind Face ID.
+///
+/// Registered: one identity per entry and domain, taken from the entry's
+/// matchers (`SiteDomains`, the same rules the extension matches with). Regex
+/// matchers name no domain and are skipped, and an entry without matchers is
+/// reachable only through the extension's full list. iOS stores the domains
+/// and labels outside the vault's encryption; never the secrets or codes.
+///
+/// There is no reading them back: `credentialIdentities(forService:...)`
+/// returns nothing in the app although they are stored (see AGENTS.md,
+/// AutoFill), so `status` is what the app sent, not what iOS holds.
+@MainActor
+enum CredentialIdentities {
+    enum Status: Equatable {
+        /// Nothing tried yet in this process: the vault has not been
+        /// unlocked since the app started.
+        case unknown
+        /// Fava is not switched on under AutoFill & Passwords.
+        case disabled
+        case registered(count: Int, at: Date)
+        case failed(String, at: Date)
+    }
+
+    private(set) static var status = Status.unknown
+
+    /// What was registered last, so the half-minute code refresh does not
+    /// rewrite the store each time.
+    private static var registered: Set<Identity>?
+
+    /// Makes the next `update` write the store even if the entries did not
+    /// change. iOS empties a provider's store behind its back (switching the
+    /// provider off and on, some OS updates), and this process would never
+    /// notice: the app calls it every time it comes to the foreground.
+    static func invalidate() {
+        registered = nil
+    }
+
+    static func update(for entries: [Entry]) async {
+        let identities = Set(entries.flatMap { entry in
+            SiteDomains.of(entry).map { Identity(domain: $0, label: SiteDomains.label(for: entry), entryId: entry.id) }
+        })
+        guard identities != registered else { return }
+        let store = ASCredentialIdentityStore.shared
+        // Off until Fava is enabled under AutoFill & Passwords; leaving
+        // `registered` unset makes the next refresh try again.
+        guard await store.state().isEnabled else {
+            status = .disabled
+            return
+        }
+        do {
+            try await store.replaceCredentialIdentities(identities.map(\.credentialIdentity))
+            registered = identities
+            status = .registered(count: identities.count, at: .now)
+        } catch {
+            registered = nil
+            status = .failed(error.localizedDescription, at: .now)
+        }
+    }
+
+    static func removeAll() async {
+        registered = nil
+        status = .unknown
+        try? await ASCredentialIdentityStore.shared.removeAllCredentialIdentities()
+    }
+
+    /// Whether Fava is switched on as an AutoFill provider.
+    static func isEnabled() async -> Bool {
+        await ASCredentialIdentityStore.shared.state().isEnabled
+    }
+
+    private struct Identity: Hashable {
+        var domain: String
+        var label: String
+        var entryId: String
+
+        var credentialIdentity: ASOneTimeCodeCredentialIdentity {
+            ASOneTimeCodeCredentialIdentity(
+                serviceIdentifier: ASCredentialServiceIdentifier(identifier: domain, type: .domain),
+                label: label,
+                recordIdentifier: entryId
+            )
+        }
+    }
+}

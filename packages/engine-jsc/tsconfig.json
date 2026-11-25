@@ -1,0 +1,16 @@
+{
+  "extends": "@tsconfig/node20/tsconfig.json",
+  "include": ["src/**/*", "tests/**/*", "scripts/**/*", "vitest.config.ts"],
+  "exclude": ["build", "node_modules", "swift"],
+  "compilerOptions": {
+    "types": ["node"],
+    // Same pairing as packages/lib: `dom` alone would replace the base's ES
+    // lib list rather than add to it.
+    "lib": ["dom", "es2023"],
+    "module": "nodenext",
+    "resolveJsonModule": true,
+    "strictBindCallApply": true,
+    "esModuleInterop": true,
+    "noEmit": true
+  }
+}

@@ -5,10 +5,12 @@ packages:
 # Reference these in a package.json with "<dep>": "catalog:".
 catalog:
   '@eslint/js': ^9.10.0
+  '@noble/hashes': ^2.4.0
   '@types/node': ^22.15.21
   '@types/qrcode': ^1.5.6
   '@vitest/coverage-v8': ^4.1.7
   '@zxcvbn-ts/core': ^3.0.4
+  esbuild: ^0.28.2
   eslint: ^9.10.0
   qrcode: ^1.5.4
   type-fest: ^5.6.0
@@ -35,4 +37,7 @@ confirmModulesPurge: false
 allowBuilds:
   bufferutil: true
   canvas: true
+  # Its postinstall only prints a funding banner; favaenginejsc needs nothing
+  # built.
+  core-js: false
   esbuild: true

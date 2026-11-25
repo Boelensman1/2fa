@@ -86,7 +86,8 @@ export type LockedRepresentationString = Tagged<
  * declared here rather than in BrandedTypes.mts (which is what `favalib/types`
  * resolves to, and what favaserver imports back) on purpose: that module holds
  * the types that legitimately cross a process boundary, and this one must
- * never leave the device.
+ * never leave the device. Where it may be kept on the device is spelled out on
+ * PersistentStorageManager.exportUnlockedSession.
  */
 export interface UnlockedSession {
   sessionVersion: number

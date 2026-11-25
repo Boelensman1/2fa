@@ -70,6 +70,9 @@ class FavaLib extends TypedEventTarget<FavaLibEventMapEvents> {
   private readonly publicKeys: DevicePublicKeys
   private readonly secretKeys: DeviceSecretKeys
 
+  /** Cancels the one server change currently waiting on the network. */
+  private cancelServerChange?: () => void
+
   public readonly ready: Promise<unknown>
 
   /**
@@ -278,6 +281,16 @@ class FavaLib extends TypedEventTarget<FavaLibEventMapEvents> {
   }
 
   /**
+   * Closes sync and cancels a pending server change without reconnecting its
+   * previous server. Consumers dropping an unlocked vault must use this,
+   * rather than closing only the current SyncManager's socket.
+   */
+  public closeServerConnection() {
+    this.cancelServerChange?.()
+    this.sync?.closeServerConnection()
+  }
+
+  /**
    * Sets a sync server, this will allow syncing with the server.
    *
    * The two arguments are one setting. A sync server will not accept a socket
@@ -300,6 +313,9 @@ class FavaLib extends TypedEventTarget<FavaLibEventMapEvents> {
     serverSecret: ServerSecret,
     force = false,
   ) {
+    if (this.cancelServerChange) {
+      throw new SyncError('A sync server change is already in progress')
+    }
     const oldSyncManager = this.sync
     if (oldSyncManager) {
       // close connection so no data is send to the old syncServer
@@ -329,53 +345,93 @@ class FavaLib extends TypedEventTarget<FavaLibEventMapEvents> {
     this.mediator.unRegisterComponent('syncManager')
     this.mediator.registerComponent('syncManager', newSyncManager)
 
-    const success = await new Promise((resolve) => {
-      this.addEventListener(
-        FavaLibEvent.ConnectionToSyncServerStatusChanged,
-        (event) => {
-          if (event.detail.newStatus === ConnectionStatus.CONNECTED) {
-            resolve(true)
-          }
-          if (event.detail.newStatus === ConnectionStatus.FAILED) {
-            resolve(false)
-          }
-        },
-      )
+    let cancelled = false
+    const cancellationError = new SyncError('Sync server change cancelled')
+    const cancellation = new Promise<never>((_resolve, reject) => {
+      this.cancelServerChange = () => {
+        cancelled = true
+        reject(cancellationError)
+      }
     })
-    if (!success) {
-      if (force) {
-        // No HTTP probe on this path: force means the caller has already
-        // decided, so the diagnosis would buy nothing and cost a request to a
-        // server that may well be the wrong one.
-        this.log(
-          'warning',
-          `${newSyncManager.describeConnectionFailure()}. Force setting anyway.`,
-        )
-      } else {
-        // Diagnosed before the connection is closed, so the description is of
-        // the failure and not of our own hang-up.
-        const diagnosis = await newSyncManager.diagnoseConnectionFailure()
-
-        // Close the new sync manager and restore the old one
-        newSyncManager.closeServerConnection()
-        this.mediator.unRegisterComponent('syncManager')
-
-        if (oldSyncManager) {
-          // re-establish old connection
-          this.mediator.registerComponent('syncManager', oldSyncManager)
-          oldSyncManager.initServerConnection()
-        }
-
-        throw new SyncError(
-          `${diagnosis}. The sync server was not changed -- pass force to ` +
-            'set it regardless.',
-        )
+    const checkCancelled = () => {
+      // A network result can win the race just before close is called, but
+      // its continuation must still observe that close.
+      if (cancelled) throw cancellationError
+    }
+    let resolveConnection: (success: boolean) => void
+    const connection = new Promise<boolean>((resolve) => {
+      resolveConnection = resolve
+    })
+    const onStatus = (
+      event: FavaLibEventMapEvents[FavaLibEvent.ConnectionToSyncServerStatusChanged],
+    ) => {
+      if (event.detail.newStatus === ConnectionStatus.CONNECTED) {
+        resolveConnection(true)
+      }
+      if (event.detail.newStatus === ConnectionStatus.FAILED) {
+        resolveConnection(false)
       }
     }
+    this.addEventListener(
+      FavaLibEvent.ConnectionToSyncServerStatusChanged,
+      onStatus,
+    )
+    try {
+      const success = await Promise.race([connection, cancellation])
+      checkCancelled()
+      if (!success) {
+        if (force) {
+          // No HTTP probe on this path: force means the caller has already
+          // decided, so the diagnosis would buy nothing and cost a request to a
+          // server that may well be the wrong one.
+          this.log(
+            'warning',
+            `${newSyncManager.describeConnectionFailure()}. Force setting anyway.`,
+          )
+        } else {
+          // Diagnosed before the connection is closed, so the description is of
+          // the failure and not of our own hang-up. Closing the vault also
+          // cancels this wait; a slow HTTP probe must not hold it open.
+          const diagnosis = await Promise.race([
+            newSyncManager.diagnoseConnectionFailure(),
+            cancellation,
+          ])
+          checkCancelled()
 
-    // connection succeeded (or force=true) - new sync manager is already registered
-    // save
-    await this.persistentStorageManager.save()
+          // Close the new sync manager and restore the old one
+          newSyncManager.closeServerConnection()
+          this.mediator.unRegisterComponent('syncManager')
+
+          if (oldSyncManager) {
+            // re-establish old connection
+            this.mediator.registerComponent('syncManager', oldSyncManager)
+            oldSyncManager.initServerConnection()
+          }
+
+          throw new SyncError(
+            `${diagnosis}. The sync server was not changed -- pass force to ` +
+              'set it regardless.',
+          )
+        }
+      }
+
+      // connection succeeded (or force=true) - new sync manager is already registered
+      await this.persistentStorageManager.save()
+      checkCancelled()
+    } finally {
+      this.removeEventListener(
+        FavaLibEvent.ConnectionToSyncServerStatusChanged,
+        onStatus,
+      )
+      this.cancelServerChange = undefined
+      if (cancelled) {
+        newSyncManager.closeServerConnection()
+        this.mediator.unRegisterComponent('syncManager')
+        if (oldSyncManager) {
+          this.mediator.registerComponent('syncManager', oldSyncManager)
+        }
+      }
+    }
   }
 
   /**
